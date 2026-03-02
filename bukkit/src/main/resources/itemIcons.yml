@@ -1,0 +1,4 @@
+# 编号必须为 CustomModeldata
+1:
+  identifier: "custom_wrapper"
+  texture: "lantern:item/custom_wrapper"

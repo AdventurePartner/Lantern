@@ -1,0 +1,4 @@
+O:
+  press: true
+  commands:
+    - "console:say %player% KeyPress"

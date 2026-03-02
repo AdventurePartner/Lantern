@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "lantern",
+  "version": "${version}",
+  "name": "Lantern",
+  "description": "Lantern mod for Minecraft",
+  "authors": [
+    "Me!"
+  ],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/lantern/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+    ],
+    "client": [
+      {
+        "adapter": "kotlin",
+        "value": "org.lantern.LanternFabric"
+      }
+    ]
+  },
+  "mixins": [
+    "lantern.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "geckolib": "*"
+  }
+}
+

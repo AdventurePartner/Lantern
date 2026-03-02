@@ -1,0 +1,9 @@
+name: Lantern
+main: org.lantern.LanternPlugin
+depend:
+  - AyCore
+version: ${version}
+api-version: 1.20
+commands:
+  lantern:
+    description: Command for Lantern.

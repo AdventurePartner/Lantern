@@ -1,0 +1,11 @@
+字符例子:
+  # 字符
+  character: "帅"
+  # 材质
+  texture: "textures/example/icon.png"
+  # 宽
+  width: 8
+  # 高
+  height: 8
+  # 占用位宽
+  wide: 9

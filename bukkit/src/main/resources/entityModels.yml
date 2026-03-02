@@ -1,0 +1,61 @@
+# ============================================
+# 实体模型配置文件
+# ============================================
+#
+# 新配置格式（推荐）- 支持多动画状态：
+# animations:
+#   file: "动画文件路径"
+#   states:
+#     idle: "idle 动画名称"
+#     walk: "walk 动画名称"
+#     attack: "attack 动画名称（可选）"
+#     hurt: "hurt 动画名称（可选）"
+#     death: "death 动画名称（可选）"
+#
+# 旧配置格式（仍然支持）：
+# animation: "动画文件路径"
+#   - 此格式默认使用 "idle" 作为动画名称
+#
+# 注意：
+# - 动画文件路径相对于客户端资源包的 assets/lantern/ 目录
+# - 动画名称必须与动画文件中定义的名称完全一致
+# ============================================
+
+example:
+  # 覆盖实体名
+  name: "TEST"
+  # 建模路径
+  geo: "geo/entity/example_pig.geo.json"
+  # 材质路径
+  texture: "textures/entity/example_pig.png"
+  # 动作配置（新格式 - 支持多动画状态）
+  animations:
+    file: "animations/entity/example_pig.animation.json"
+    states:
+      idle: "animation.example_pig.idle"
+      walk: "animation.example_pig.walk"
+      # attack: "animation.example_pig.attack"   # 可选
+      # hurt: "animation.example_pig.hurt"       # 可选
+      # death: "animation.example_pig.death"     # 可选
+  # 模型缩放比例
+  scale: 10.0
+  # 碰撞箱高度
+  height: 10.0
+  # 碰撞箱宽度
+  width: 8.0
+  # 是否隐藏名字
+  hidden: false
+  # 名字渲染 y 轴偏移量
+  offset-y: 10.0
+
+# 简化配置示例（仅使用 idle 动画）
+# example_simple:
+#   name: "SIMPLE"
+#   geo: "geo/entity/simple.geo.json"
+#   texture: "textures/entity/simple.png"
+#   animation: "animations/entity/simple.animation.json"
+#   scale: 1.0
+#   height: 1.0
+#   width: 1.0
+#   hidden: false
+#   offset-y: 0.0
