@@ -2,22 +2,41 @@ package org.lantern.internal.listen
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.minecraft.client.Minecraft
+import org.lantern.internal.handler.HudClickDispatcher
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.network.PacketNetwork
+import org.lantern.uix.canvas.impl.GuiCanvas
 import org.lwjgl.glfw.GLFW
 
 object FabricClientListener {
 
     private val pressedKeys = mutableSetOf<String>()
     private val parsedKeys = mutableMapOf<String, ParsedKey>()
+    private var wasMouseDown = false
 
     fun register() {
-        // Poll keyboard each tick for runtime-configured key bindings.
+        // Poll keyboard and mouse each tick (only when no screen is open).
         ClientTickEvents.END_CLIENT_TICK.register tick@{ client ->
-            if (client.screen != null) return@tick
+            if (client.screen is GuiCanvas) {
+                wasMouseDown = false
+                return@tick
+            }
 
             handleKeyboardInput(client)
+            handleMouseInput(client)
         }
+    }
+
+    private fun handleMouseInput(client: Minecraft) {
+        val window = client.window.window
+        val leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
+        if (leftDown && !wasMouseDown) {
+            val scale = client.window.guiScale
+            val mx = (client.mouseHandler.xpos() / scale).toInt()
+            val my = (client.mouseHandler.ypos() / scale).toInt()
+            HudClickDispatcher.dispatch(mx, my)
+        }
+        wasMouseDown = leftDown
     }
 
     private fun handleKeyboardInput(client: Minecraft) {
