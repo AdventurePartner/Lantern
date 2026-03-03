@@ -9,6 +9,10 @@ import org.lantern.uix.widget.BaseWidget
 
 class ImageWidgetImpl(properties: IProperties) : BaseWidget() {
 
+    override val widgetType: String = "image"
+
+    var texture: String = ""
+
     override fun render(arg: GuiGraphics, i: Int, j: Int, f: Float) {
         val mount = parent?.getMount(MountPoint.MOUNT_2_MIDDLE) ?: intArrayOf(0, 0)
         arg.blit(

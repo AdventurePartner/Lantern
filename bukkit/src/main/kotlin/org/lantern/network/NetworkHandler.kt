@@ -9,6 +9,7 @@ import org.lantern.LanternPlugin
 import org.lantern.cache.ItemIconCache
 import org.lantern.cache.KeyCache
 import org.lantern.config.Configurations
+import org.lantern.config.UiConfigurations
 import org.lantern.handler.CacheHandler
 import org.lantern.util.JsonUtil
 import org.lantern.util.TextUtil.colorify
@@ -24,10 +25,25 @@ object NetworkHandler {
         sendEntityModelsPacket(player, Configurations.models)
         sendKeyboards(player, CacheHandler.keys)
         sendItemIcons(player, CacheHandler.itemIcons)
+        sendUiScreens(player, UiConfigurations.getScreens())
 
         // 延迟一秒发送重载资源数据包
         val relaodRunnable = Runnable { sendReloadResourceManagerPacket(player) }
         Bukkit.getScheduler().runTaskLaterAsynchronously(LanternPlugin.instance, relaodRunnable, 20L)
+    }
+
+    fun sendUiScreens(player: Player, screens: List<JsonObject>) {
+        val array = JsonArray()
+        screens.forEach { array.add(it) }
+        val packet = JsonObject()
+        packet.add("screens", array)
+        sendPacket(player, 5, packet)
+    }
+
+    fun sendOpenGui(player: Player, screenId: String) {
+        val packet = JsonObject()
+        packet.addProperty("screen-id", screenId)
+        sendPacket(player, 6, packet)
     }
 
     fun sendCharactersPacket(player: Player, config: FileConfiguration) {

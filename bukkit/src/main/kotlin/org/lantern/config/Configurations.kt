@@ -39,5 +39,6 @@ object Configurations {
                 CacheHandler.itemIcons[i.toInt()] = ItemIconCache(section)
             }
         }
+        UiConfigurations.load()
     }
 }

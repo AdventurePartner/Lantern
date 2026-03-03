@@ -1,0 +1,59 @@
+id: example_gui
+screen-type: gui
+
+styles:
+  dialog:
+    background: "#1a1a2e"
+    width: 240
+    height: 140
+  btn-confirm:
+    background: "#4a90d9"
+    color: "#ffffff"
+    width: 90
+    height: 22
+    border-radius: 3
+  btn-cancel:
+    background: "#c0392b"
+    color: "#ffffff"
+    width: 90
+    height: 22
+    border-radius: 3
+
+root:
+  type: panel
+  style-ref: dialog
+  style:
+    x: 80
+    y: 60
+  children:
+    - type: text
+      text: "Are you sure?"
+      style:
+        color: "#ffffff"
+        font-size: 12
+        x: 75
+        y: 20
+
+    - type: text
+      text: "This action cannot be undone."
+      style:
+        color: "#aaaaaa"
+        font-size: 9
+        x: 45
+        y: 38
+
+    - type: button
+      text: "Confirm"
+      style-ref: btn-confirm
+      style:
+        x: 15
+        y: 100
+      action: "command:lantern_confirm"
+
+    - type: button
+      text: "Cancel"
+      style-ref: btn-cancel
+      style:
+        x: 135
+        y: 100
+      action: "close"

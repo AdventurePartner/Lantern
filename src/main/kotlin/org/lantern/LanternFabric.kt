@@ -18,6 +18,7 @@ import org.lantern.internal.handler.CycleHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.listen.FabricClientListener
 import org.lantern.internal.network.PacketNetwork
+import org.lantern.uix.renderer.CanvasRenderer
 import org.slf4j.LoggerFactory
 
 class LanternFabric : ClientModInitializer {
@@ -33,6 +34,11 @@ class LanternFabric : ClientModInitializer {
         // 注册客户端事件
         registerClientEvents()
         FabricClientListener.register()
+
+        // 注册 HUD 渲染回调
+        HudRenderCallback.EVENT.register { graphics, tickDeltaManager ->
+            CanvasRenderer.hudCanvas.render(graphics, 0, 0, tickDeltaManager.getGameTimeDeltaPartialTick(false))
+        }
 
         // 注册网络包
         PacketNetwork.registerPackets()

@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import net.minecraft.client.Minecraft
 import org.lantern.Lantern
 import org.lantern.internal.handler.ResourceHandler
+import org.lantern.internal.parser.UiParser
 import org.lantern.internal.wrapper.key.CharacterWrapper
 import org.lantern.internal.wrapper.key.KeyWrapper
 import org.lantern.internal.wrapper.resource.ItemIconResourceWrapperImpl
@@ -17,7 +18,25 @@ object NetworkParser {
             2 -> parseEntityModels(obj)
             3 -> parseKeyboard(obj)
             4 -> parseCustomItemIcon(obj)
+            5 -> parseUiScreens(obj)
+            6 -> openGuiScreen(obj)
             99 -> reloadResourcePack()
+        }
+    }
+
+    private fun parseUiScreens(obj: JsonObject) {
+        val screens = obj.getAsJsonArray("screens") ?: return
+        UiParser.parseScreens(screens)
+    }
+
+    private fun openGuiScreen(obj: JsonObject) {
+        val screenId = obj.get("screen-id")?.asString ?: return
+        val entry = org.lantern.internal.storage.UiScreenStorage.get(screenId) ?: return
+        if (entry.type != org.lantern.internal.storage.ScreenType.GUI) return
+        Minecraft.getInstance().execute {
+            Minecraft.getInstance().setScreen(
+                org.lantern.uix.canvas.impl.GuiCanvas(screenId, entry.rootWidget)
+            )
         }
     }
 
