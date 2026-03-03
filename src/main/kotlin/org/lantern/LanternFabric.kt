@@ -3,10 +3,12 @@ package org.lantern
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
+import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener
+import org.lantern.item.plugin.LanternModelPlugin
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.entity.EntityRendererProvider
 import net.minecraft.resources.ResourceLocation
@@ -31,14 +33,17 @@ class LanternFabric : ClientModInitializer {
         // 注册客户端事件
         registerClientEvents()
         FabricClientListener.register()
-        
+
         // 注册网络包
         PacketNetwork.registerPackets()
         Lantern.logger.info("Registered communication data packets")
 
+        // 注册自定义物品模型插件（纯代码烘焙，不需要 JSON 文件）
+        ModelLoadingPlugin.register(LanternModelPlugin)
+
         // 注册资源重载监听器
         registerResourceReloadListener()
-        
+
         Lantern.logger.info("Lantern Fabric initialized successfully!")
     }
 
@@ -73,4 +78,3 @@ class LanternFabric : ClientModInitializer {
         )
     }
 }
-

@@ -47,7 +47,7 @@ object NetworkParser {
 
     private fun parseCustomItemIcon(obj: JsonObject) {
         val icons = obj.getAsJsonArray("icons").map { it as JsonObject }
-        Lantern.logger.info("[Lantern-DEBUG] parseCustomItemIcon: received {} icons", icons.size)
+        Lantern.logger.info("[Lantern] Received {} custom item icons", icons.size)
         icons.forEach {
             val customModelData = it.get("data").asInt
             val rawIdentifier = it.get("identifier").asString
@@ -77,12 +77,11 @@ object NetworkParser {
                 val path = texture.substring(lastColon + 1)
                 texture = "$namespace:$path"
             }
-            Lantern.logger.info("[Lantern-DEBUG]   Parsing icon: data={}, rawIdentifier={}, identifier={}, texture={}", 
-                customModelData, rawIdentifier, identifier, texture)
+            Lantern.logger.debug("[Lantern] Parsing icon: data={}, identifier={}, texture={}",
+                customModelData, identifier, texture)
             val res = ItemIconResourceWrapperImpl(identifier, texture)
             ResourceHandler.addItemIcon(customModelData, identifier, res)
         }
-        Lantern.logger.info("[Lantern-DEBUG] Registered {} custom item icon mappings", icons.size)
     }
 
     private fun reloadResourcePack() {

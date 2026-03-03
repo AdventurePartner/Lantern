@@ -40,12 +40,7 @@ object ResourceHandler {
     }
 
     fun getResource(rl: ResourceLocation): IResourceWrapper? {
-        val result = dynamicResourceLinked[rl]
-        if (rl.namespace == "lantern" && rl.path.startsWith("models/")) {
-            Lantern.logger.info("[Lantern-DEBUG] ResourceHandler.getResource: rl={}, found={}, registeredKeys={}", 
-                rl, result != null, dynamicResourceLinked.keys.count { it.namespace == "lantern" && it.path.startsWith("models/") })
-        }
-        return result
+        return dynamicResourceLinked[rl]
     }
 
     fun getResource(identifier: String): IResourceWrapper? {
@@ -60,16 +55,33 @@ object ResourceHandler {
             } else {
                 identifier
             }
-            val loc = ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, normalizedPath))
-            Lantern.logger.info("[Lantern-DEBUG] getItemCustomIcons: identifier={} -> normalizedPath={} -> modelLoc={}", identifier, normalizedPath, loc)
-            loc
+            ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, normalizedPath))
         }
-        Lantern.logger.info("[Lantern-DEBUG] getItemCustomIcons returning {} entries", result.size)
+        Lantern.logger.debug("[Lantern] getItemCustomIcons returning {} entries", result.size)
         return result
     }
 
     fun getItemIcon(customModeLData: Int): String? {
         return itemCustomIcons[customModeLData]
+    }
+
+    /**
+     * 根据 ModelBakery 传入的模型路径（如 "item/custom_wrapper"）查找对应纹理路径。
+     * Fabric ModelLoadingPlugin.resolveModel() 的 ctx.id().path 为 "item/{identifier}"。
+     */
+    fun getTextureByModelPath(modelPath: String): String? {
+        val name = if (modelPath.startsWith("item/")) modelPath.removePrefix("item/") else modelPath
+        return clientStorage.itemIcons.values
+            .firstOrNull { (identifier, _) -> identifier == name }
+            ?.second
+    }
+
+    /**
+     * 获取所有动态纹理路径
+     * 用于在纹理图集构建时注册精灵
+     */
+    fun getDynamicTextures(): Set<String> {
+        return clientStorage.itemIcons.values.map { (_, texturePath) -> texturePath }.toSet()
     }
 
     fun addItemIcon(customModeLData: Int, identifier: String, res: ItemIconResourceWrapperImpl) {
@@ -81,9 +93,7 @@ object ResourceHandler {
         dynamicResourceLinked[res.getSecondaryResourceLocation()] = res
         // 保存到 clientStorage 以便 rebuild 时恢复
         clientStorage.itemIcons[customModeLData] = identifier to res.getTexturePath()
-        Lantern.logger.info("[Lantern-DEBUG] addItemIcon: customModelData={}, identifier={}, primaryLocation={}, secondaryLocation={}", 
-            customModeLData, identifier, res.getResourceLocation(), res.getSecondaryResourceLocation())
-        Lantern.logger.info("[Lantern-DEBUG] addItemIcon: dynamicResourceLinked now has {} entries", dynamicResourceLinked.size)
+        Lantern.logger.info("[Lantern] Registered item icon: customModelData={}, identifier={}", customModeLData, identifier)
     }
 
     fun getCharacterWrapper(char: Char): CharacterWrapper? {
@@ -112,12 +122,12 @@ object ResourceHandler {
      * 当资源管理器重载资源时执行，用来释放 Lantern 加载的内部资源
      */
     fun reload() {
-        Lantern.logger.info("Reload lantern resources")
+        Lantern.logger.info("[Lantern] Reloading resources")
         rebuild()
     }
 
     fun rebuild() {
-        Lantern.logger.info("[Lantern-DEBUG] rebuild: START - itemCustomIcons={}, clientStorage.itemIcons={}", itemCustomIcons.size, clientStorage.itemIcons.size)
+        Lantern.logger.debug("[Lantern] rebuild: START - itemCustomIcons={}", itemCustomIcons.size)
         // 清空当前临时缓存
         characterWrappers.clear()
         keyboards.clear()
@@ -135,8 +145,8 @@ object ResourceHandler {
             dynamicResources["customIcons_$identifier"] = res
             dynamicResourceLinked[res.getResourceLocation()] = res
             dynamicResourceLinked[res.getSecondaryResourceLocation()] = res
-            Lantern.logger.info("[Lantern-DEBUG] rebuild: restored icon customModelData={}, identifier={}", customModelData, identifier)
+            Lantern.logger.debug("[Lantern] rebuild: restored icon customModelData={}", customModelData)
         }
-        Lantern.logger.info("[Lantern-DEBUG] rebuild: END - itemCustomIcons={}", itemCustomIcons.size)
+        Lantern.logger.debug("[Lantern] rebuild: END - itemCustomIcons={}", itemCustomIcons.size)
     }
 }

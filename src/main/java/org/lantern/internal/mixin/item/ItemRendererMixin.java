@@ -1,15 +1,15 @@
 package org.lantern.internal.mixin.item;
 
+import net.fabricmc.fabric.api.client.model.loading.v1.FabricBakedModelManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.ItemRenderer;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelManager;
 import net.minecraft.client.resources.model.ModelResourceLocation;
-import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
@@ -22,8 +22,6 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-
-import java.util.Map;
 
 @Mixin(ItemRenderer.class)
 public abstract class ItemRendererMixin {
@@ -41,59 +39,17 @@ public abstract class ItemRendererMixin {
 
         String identifier = ResourceHandler.INSTANCE.getItemIcon(customData);
         if (identifier == null) {
-            Lantern.logger.info("[Lantern-DEBUG] ItemRenderer: customModelData={} found, but no identifier mapped", customData);
             return;
         }
-
-        Lantern.logger.info("[Lantern-DEBUG] ItemRenderer: customModelData={}, identifier={}", customData, identifier);
 
         ModelManager modelManager = Minecraft.getInstance().getModelManager();
-        Object[] resolved = lantern$resolveModel(modelManager, identifier);
-        if (resolved == null) {
-            Lantern.logger.warn("[Lantern-DEBUG] ItemRenderer: FAILED to resolve model for identifier='{}', checking all registered...", identifier);
-            Map<Integer, ModelResourceLocation> allIcons = ResourceHandler.INSTANCE.getItemCustomIcons();
-            allIcons.forEach((k, v) -> Lantern.logger.info("[Lantern-DEBUG]   Registered: customModelData={} -> modelLoc={}", k, v));
-            
-            // 尝试直接从 ModelManager 获取
-            lantern$debugModelManager(modelManager, identifier);
+        BakedModel model = lantern$resolveModel(modelManager, identifier);
+        if (model == null) {
             return;
         }
 
-        ModelResourceLocation resolvedLocation = (ModelResourceLocation) resolved[0];
-        BakedModel model = (BakedModel) resolved[1];
-        int quadCount = model.getQuads(null, null, RandomSource.create(0L)).size();
-        ResourceLocation particle = model.getParticleIcon().contents().name();
-        boolean isMissingTexture = particle.equals(MissingTextureAtlasSprite.getLocation());
-        
-        Lantern.logger.info(
-            "[Lantern-DEBUG] ItemRenderer SUCCESS: customModelData={}, model={}, quads={}, particle={}, isMissingTexture={}",
-            customData, resolvedLocation, quadCount, particle, isMissingTexture
-        );
-        
-        if (isMissingTexture) {
-            Lantern.logger.warn("[Lantern-DEBUG] Model found but using missing texture! This indicates texture loading failed.");
-        }
-        
         cir.setReturnValue(model);
         cir.cancel();
-    }
-
-    @Unique
-    private void lantern$debugModelManager(ModelManager modelManager, String identifier) {
-        String normalized = identifier.startsWith("item/") ? identifier.substring("item/".length()) : identifier;
-        ModelResourceLocation[] candidates = new ModelResourceLocation[] {
-            ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, normalized)),
-            ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "item/" + normalized)),
-            ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "item/" + identifier))
-        };
-
-        BakedModel missingModel = modelManager.getMissingModel();
-        for (ModelResourceLocation candidate : candidates) {
-            BakedModel model = modelManager.getModel(candidate);
-            boolean isMissing = model == missingModel;
-            ResourceLocation particle = model.getParticleIcon().contents().name();
-            Lantern.logger.info("[Lantern-DEBUG]   Candidate: {}, isMissing={}, particle={}", candidate, isMissing, particle);
-        }
     }
 
     @Unique
@@ -116,29 +72,34 @@ public abstract class ItemRendererMixin {
         return legacy.copyTag().getInt("CustomModelData");
     }
 
+    /**
+     * 解析 identifier 對應的 BakedModel。
+     *
+     * ctx.addModels() 將模型注冊為 fabric_resource 變體（而非 inventory 變體），
+     * 通過 FabricBakedModelManager.getModel(ResourceLocation) 可直接訪問此正確烘焙的模型。
+     */
     @Unique
-    private Object[] lantern$resolveModel(ModelManager modelManager, String identifier) {
+    private BakedModel lantern$resolveModel(ModelManager modelManager, String identifier) {
         String normalized = identifier.startsWith("item/") ? identifier.substring("item/".length()) : identifier;
-        ModelResourceLocation[] candidates = new ModelResourceLocation[] {
-            ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, normalized)),
-            ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "item/" + normalized))
-        };
+        ResourceLocation resourceId = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, normalized);
 
-        Object[] fallback = null;
-        for (ModelResourceLocation candidate : candidates) {
-            BakedModel model = modelManager.getModel(candidate);
-            if (model == modelManager.getMissingModel()) {
-                Lantern.logger.info("[Lantern-DEBUG]   Candidate {} is missing model, skipping", candidate);
-                continue;
-            }
-            ResourceLocation particle = model.getParticleIcon().contents().name();
-            if (!particle.equals(MissingTextureAtlasSprite.getLocation())) {
-                return new Object[] { candidate, model };
-            }
-            if (fallback == null) {
-                fallback = new Object[] { candidate, model };
+        // 優先通過 FabricBakedModelManager 獲取 fabric_resource 變體（由 ctx.addModels 正確烘焙）
+        BakedModel fabricModel = ((FabricBakedModelManager) modelManager).getModel(resourceId);
+        if (fabricModel != null && fabricModel != modelManager.getMissingModel()) {
+            if (!fabricModel.getParticleIcon().contents().name().equals(MissingTextureAtlasSprite.getLocation())) {
+                return fabricModel;
             }
         }
-        return fallback;
+
+        // 降級：嘗試 inventory 變體
+        ModelResourceLocation inventoryLoc = ModelResourceLocation.inventory(resourceId);
+        BakedModel inventoryModel = modelManager.getModel(inventoryLoc);
+        if (inventoryModel != null && inventoryModel != modelManager.getMissingModel()) {
+            if (!inventoryModel.getParticleIcon().contents().name().equals(MissingTextureAtlasSprite.getLocation())) {
+                return inventoryModel;
+            }
+        }
+
+        return null;
     }
 }
