@@ -29,7 +29,10 @@ class LanternChannelMessageListener : PluginMessageListener {
         val bytes = ByteArray(length)
         dataInputStream.read(bytes)
         val press = dataInputStream.readBoolean()
+        val inGui = if (dataInputStream.available() > 0) dataInputStream.readBoolean() else false
         val key = String(bytes, Charsets.UTF_8)
-        CacheHandler.keys[key]?.takeIf { it.press == press }?.let { player.executeCommands(it.commands) }
+        CacheHandler.keys[key]
+            ?.takeIf { it.press == press && (it.inGui || !inGui) }
+            ?.let { player.executeCommands(it.commands) }
     }
 }

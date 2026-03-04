@@ -9,6 +9,8 @@ enum class StyleProperty(val key: String) {
     BACKGROUND("background"),
     FONT_SIZE("font-size"),
     BORDER_RADIUS("border-radius"),
+    BORDER_COLOR("border-color"),
+    PLACEHOLDER_COLOR("placeholder-color"),
     OPACITY("opacity"),
     VISIBLE("visible");
 

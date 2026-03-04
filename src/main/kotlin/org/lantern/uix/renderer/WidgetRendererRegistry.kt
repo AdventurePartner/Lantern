@@ -3,6 +3,7 @@ package org.lantern.uix.renderer
 import net.minecraft.client.gui.GuiGraphics
 import org.lantern.uix.renderer.impl.ButtonRenderer
 import org.lantern.uix.renderer.impl.ImageRenderer
+import org.lantern.uix.renderer.impl.InputRenderer
 import org.lantern.uix.renderer.impl.PanelRenderer
 import org.lantern.uix.renderer.impl.TextRenderer
 import org.lantern.uix.style.StyleRule
@@ -17,6 +18,7 @@ object WidgetRendererRegistry {
         register("button", ButtonRenderer)
         register("image", ImageRenderer)
         register("panel", PanelRenderer)
+        register("input", InputRenderer)
     }
 
     fun register(type: String, renderer: IWidgetRenderer<*>) {

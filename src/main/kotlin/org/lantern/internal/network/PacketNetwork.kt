@@ -46,14 +46,14 @@ object PacketNetwork {
         PayloadTypeRegistry.playC2S().register(LanternMainPacket.TYPE, LanternMainPacket.CODEC)
     }
 
-    fun sendKeyboardPacket(key: String, press: Boolean) {
+    fun sendKeyboardPacket(key: String, press: Boolean, inGui: Boolean = false) {
         if (ClientPlayNetworking.canSend(LanternMainPacket.TYPE)) {
-            val data = encodeMainC2SKeyboard(key, press)
+            val data = encodeMainC2SKeyboard(key, press, inGui)
             ClientPlayNetworking.send(LanternMainPacket(data))
             return
         }
         if (ClientPlayNetworking.canSend(KeyboardPacket.TYPE)) {
-            ClientPlayNetworking.send(KeyboardPacket(key, press))
+            ClientPlayNetworking.send(KeyboardPacket(key, press, inGui))
         }
     }
 
@@ -74,7 +74,7 @@ object PacketNetwork {
         }
     }
 
-    private fun encodeMainC2SKeyboard(key: String, press: Boolean): ByteArray {
+    private fun encodeMainC2SKeyboard(key: String, press: Boolean, inGui: Boolean = false): ByteArray {
         val output = ByteArrayOutputStream()
         DataOutputStream(output).use { data ->
             data.writeByte(1)
@@ -82,6 +82,7 @@ object PacketNetwork {
             data.writeInt(keyBytes.size)
             data.write(keyBytes)
             data.writeBoolean(press)
+            data.writeBoolean(inGui)
         }
         return output.toByteArray()
     }

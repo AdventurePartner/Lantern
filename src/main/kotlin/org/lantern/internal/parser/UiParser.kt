@@ -9,6 +9,7 @@ import org.lantern.uix.style.StyleSheet
 import org.lantern.uix.widget.IWidget
 import org.lantern.uix.widget.button.ButtonWidgetImpl
 import org.lantern.uix.widget.image.ImageWidgetImpl
+import org.lantern.uix.widget.input.InputWidgetImpl
 import org.lantern.uix.widget.panel.PanelWidgetImpl
 import org.lantern.uix.widget.text.TextWidgetImpl
 import org.lantern.uix.properties.impl.ImageProperties
@@ -51,6 +52,12 @@ object UiParser {
             "button" -> ButtonWidgetImpl(
                 text = node.get("text")?.asString ?: "",
                 action = node.get("action")?.asString ?: ""
+            )
+            "input" -> InputWidgetImpl(
+                value = node.get("value")?.asString ?: "",
+                placeholder = node.get("placeholder")?.asString ?: "",
+                maxLength = node.get("max-length")?.asInt ?: 256,
+                onChange = node.get("on-change")?.asString ?: ""
             )
             "image" -> ImageWidgetImpl(ImageProperties()).also { w ->
                 w.texture = node.get("texture")?.asString ?: ""

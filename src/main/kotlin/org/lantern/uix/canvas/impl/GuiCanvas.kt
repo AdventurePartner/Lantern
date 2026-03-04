@@ -5,6 +5,7 @@ import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import org.lantern.internal.action.UiActionHandler
 import org.lantern.internal.handler.HudClickDispatcher
+import org.lantern.uix.input.FocusManager
 import org.lantern.uix.renderer.WidgetRendererRegistry
 import org.lantern.uix.widget.IWidget
 
@@ -28,9 +29,25 @@ class GuiCanvas(
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (button == 0) {
+            FocusManager.blur()
             HudClickDispatcher.dispatchClick(rootWidget, mouseX.toInt(), mouseY.toInt())
         }
         return super.mouseClicked(mouseX, mouseY, button)
+    }
+
+    override fun charTyped(codePoint: Char, modifiers: Int): Boolean {
+        if (FocusManager.handleChar(codePoint)) return true
+        return super.charTyped(codePoint, modifiers)
+    }
+
+    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+        if (FocusManager.handleKey(keyCode)) return true
+        return super.keyPressed(keyCode, scanCode, modifiers)
+    }
+
+    override fun removed() {
+        FocusManager.blur()
+        super.removed()
     }
 
     override fun isPauseScreen(): Boolean = false

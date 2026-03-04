@@ -1,4 +1,5 @@
 O:
   press: true
+  in-gui: false   # 可选，默认 false；设为 true 时在 GUI（聊天栏等）中也会触发
   commands:
     - "console:say %player% KeyPress"

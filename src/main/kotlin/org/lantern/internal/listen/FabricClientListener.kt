@@ -42,6 +42,7 @@ object FabricClientListener {
     private fun handleKeyboardInput(client: Minecraft) {
         val window = client.window.window
         val keyboards = ResourceHandler.getKeyboards()
+        val inGui = client.screen != null
 
         keyboards.forEach { (spec, wrapper) ->
             val key = parsedKeys.computeIfAbsent(spec) { parseKeySpec(it) }
@@ -55,12 +56,12 @@ object FabricClientListener {
             if (isDown) {
                 pressedKeys.add(spec)
                 if (wrapper.press) {
-                    PacketNetwork.sendKeyboardPacket(spec, true)
+                    PacketNetwork.sendKeyboardPacket(spec, true, inGui)
                 }
             } else {
                 pressedKeys.remove(spec)
                 if (!wrapper.press) {
-                    PacketNetwork.sendKeyboardPacket(spec, false)
+                    PacketNetwork.sendKeyboardPacket(spec, false, inGui)
                 }
             }
         }

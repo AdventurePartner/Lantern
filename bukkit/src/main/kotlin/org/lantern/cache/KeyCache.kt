@@ -4,5 +4,6 @@ import org.bukkit.configuration.ConfigurationSection
 
 class KeyCache(section: ConfigurationSection) {
     val press = section.getBoolean("press")
+    val inGui = section.getBoolean("in-gui", false)
     val commands = section.getStringList("commands")
 }

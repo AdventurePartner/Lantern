@@ -58,6 +58,10 @@ object UiConfigurations {
         section.getString("action")?.let { node.addProperty("action", it) }
         section.getString("texture")?.let { node.addProperty("texture", it) }
         section.getString("style-ref")?.let { node.addProperty("style-ref", it) }
+        section.getString("value")?.let { node.addProperty("value", it) }
+        section.getString("placeholder")?.let { node.addProperty("placeholder", it) }
+        section.getString("on-change")?.let { node.addProperty("on-change", it) }
+        if (section.contains("max-length")) node.addProperty("max-length", section.getInt("max-length"))
 
         section.getConfigurationSection("style")?.let { node.add("style", parseStyleSection(it)) }
 
@@ -82,6 +86,10 @@ object UiConfigurations {
         map["action"]?.toString()?.let { node.addProperty("action", it) }
         map["texture"]?.toString()?.let { node.addProperty("texture", it) }
         map["style-ref"]?.toString()?.let { node.addProperty("style-ref", it) }
+        map["value"]?.toString()?.let { node.addProperty("value", it) }
+        map["placeholder"]?.toString()?.let { node.addProperty("placeholder", it) }
+        map["on-change"]?.toString()?.let { node.addProperty("on-change", it) }
+        (map["max-length"] as? Int)?.let { node.addProperty("max-length", it) }
 
         @Suppress("UNCHECKED_CAST")
         (map["style"] as? Map<*, *>)?.let { node.add("style", parseStyleFromMap(it)) }

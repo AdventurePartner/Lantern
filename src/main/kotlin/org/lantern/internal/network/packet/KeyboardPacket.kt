@@ -8,7 +8,8 @@ import org.lantern.Lantern
 
 data class KeyboardPacket(
     val key: String,
-    val press: Boolean
+    val press: Boolean,
+    val inGui: Boolean = false
 ) : CustomPacketPayload {
 
     override fun type(): CustomPacketPayload.Type<KeyboardPacket> = TYPE
@@ -26,12 +27,14 @@ data class KeyboardPacket(
         private fun decode(buffer: RegistryFriendlyByteBuf): KeyboardPacket {
             val key = buffer.readUtf()
             val press = buffer.readBoolean()
-            return KeyboardPacket(key, press)
+            val inGui = buffer.readBoolean()
+            return KeyboardPacket(key, press, inGui)
         }
 
         private fun encode(packet: KeyboardPacket, buffer: RegistryFriendlyByteBuf) {
             buffer.writeUtf(packet.key)
             buffer.writeBoolean(packet.press)
+            buffer.writeBoolean(packet.inGui)
         }
     }
 }
