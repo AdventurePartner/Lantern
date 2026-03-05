@@ -2,6 +2,7 @@ package org.lantern.uix.renderer.impl
 
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
+import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.renderer.IWidgetRenderer
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
@@ -18,8 +19,9 @@ object TextRenderer : IWidgetRenderer<TextWidgetImpl> {
         delta: Float
     ) {
         if (!style.getBoolean(StyleProperty.VISIBLE)) return
-        val x = style.getInt(StyleProperty.X)
-        val y = style.getInt(StyleProperty.Y)
+        val rect = LayoutCache.findRect(widget)
+        val x = rect?.x ?: style.getInt(StyleProperty.X)
+        val y = rect?.y ?: style.getInt(StyleProperty.Y)
         val colorHex = style.getString(StyleProperty.COLOR, "#ffffff")
         val color = parseColor(colorHex)
         val font = Minecraft.getInstance().font

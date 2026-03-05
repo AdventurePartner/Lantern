@@ -1,6 +1,7 @@
 package org.lantern.uix.renderer.impl
 
 import net.minecraft.client.gui.GuiGraphics
+import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.renderer.IWidgetRenderer
 import org.lantern.uix.renderer.WidgetRendererRegistry
 import org.lantern.uix.style.StyleProperty
@@ -18,10 +19,11 @@ object PanelRenderer : IWidgetRenderer<PanelWidgetImpl> {
         delta: Float
     ) {
         if (!style.getBoolean(StyleProperty.VISIBLE)) return
-        val x = style.getInt(StyleProperty.X)
-        val y = style.getInt(StyleProperty.Y)
-        val w = style.getInt(StyleProperty.WIDTH)
-        val h = style.getInt(StyleProperty.HEIGHT)
+        val rect = LayoutCache.findRect(widget)
+        val x = rect?.x ?: style.getInt(StyleProperty.X)
+        val y = rect?.y ?: style.getInt(StyleProperty.Y)
+        val w = rect?.width ?: style.getInt(StyleProperty.WIDTH)
+        val h = rect?.height ?: style.getInt(StyleProperty.HEIGHT)
 
         val bgHex = style.getString(StyleProperty.BACKGROUND, "")
         if (bgHex.isNotBlank()) {

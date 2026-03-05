@@ -4,6 +4,7 @@ import net.minecraft.client.gui.GuiGraphics
 import org.lantern.internal.storage.ScreenType
 import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.uix.canvas.BaseCanvas
+import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.renderer.WidgetRendererRegistry
 
 class HudCanvas : BaseCanvas() {
@@ -13,6 +14,7 @@ class HudCanvas : BaseCanvas() {
         height = arg.guiHeight()
 
         UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { rootWidget ->
+            LayoutCache.getOrCompute(rootWidget, width, height)
             WidgetRendererRegistry.render(rootWidget, arg, 0, 0, 0f)
         }
     }

@@ -6,6 +6,7 @@ import net.minecraft.network.chat.Component
 import org.lantern.internal.action.UiActionHandler
 import org.lantern.internal.handler.HudClickDispatcher
 import org.lantern.uix.input.FocusManager
+import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.renderer.WidgetRendererRegistry
 import org.lantern.uix.widget.IWidget
 
@@ -23,6 +24,7 @@ class GuiCanvas(
     override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         // Manual dim overlay — drawn directly without triggering blur hooks
         guiGraphics.fill(0, 0, width, height, 0x80000000.toInt())
+        LayoutCache.getOrCompute(rootWidget, width, height)
         WidgetRendererRegistry.render(rootWidget, guiGraphics, mouseX, mouseY, partialTick)
         // Intentionally not calling super.render() to avoid re-triggering renderBackground
     }

@@ -3,6 +3,7 @@ package org.lantern.uix.renderer.impl
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
+import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.renderer.IWidgetRenderer
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
@@ -21,10 +22,11 @@ object InputRenderer : IWidgetRenderer<InputWidgetImpl> {
         delta: Float
     ) {
         if (!style.getBoolean(StyleProperty.VISIBLE)) return
-        val x = style.getInt(StyleProperty.X)
-        val y = style.getInt(StyleProperty.Y)
-        val w = style.getInt(StyleProperty.WIDTH, 120)
-        val h = style.getInt(StyleProperty.HEIGHT, 20)
+        val rect = LayoutCache.findRect(widget)
+        val x = rect?.x ?: style.getInt(StyleProperty.X)
+        val y = rect?.y ?: style.getInt(StyleProperty.Y)
+        val w = rect?.width ?: style.getInt(StyleProperty.WIDTH, 120)
+        val h = rect?.height ?: style.getInt(StyleProperty.HEIGHT, 20)
 
         // Background
         val bgHex = style.getString(StyleProperty.BACKGROUND, "#1a1a1a")

@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import org.lantern.internal.storage.ScreenType
 import org.lantern.internal.storage.UiScreenStorage
+import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.style.StyleSheet
 import org.lantern.uix.widget.IWidget
@@ -21,6 +22,7 @@ import org.lantern.uix.properties.impl.ImageProperties
 object UiParser {
 
     fun parseScreens(screensArray: JsonArray) {
+        LayoutCache.clear()
         UiScreenStorage.clear()
         screensArray.map { it as JsonObject }.forEach { screenObj ->
             val id = screenObj.get("id")?.asString ?: return@forEach
