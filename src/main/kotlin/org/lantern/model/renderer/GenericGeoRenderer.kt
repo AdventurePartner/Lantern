@@ -7,6 +7,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import org.lantern.internal.handler.CycleHandler
+import org.lantern.internal.handler.TextureHandler
 import org.lantern.model.entity.GenericReplacedEntity
 import org.lantern.model.geo.GenericGeoModel
 import org.lantern.model.wrapper.CustomModelWrapper
@@ -85,6 +86,7 @@ class GenericGeoRenderer<T : Entity>(
     }
 
     override fun getTextureLocation(entity: Entity): ResourceLocation {
-        return wrapper.textureLocation
+        val url = wrapper.textureUrl
+        return if (url != null) TextureHandler.getTexture(url) else wrapper.textureLocation
     }
 }

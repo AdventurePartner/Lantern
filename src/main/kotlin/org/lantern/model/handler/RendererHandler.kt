@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.EntityType
 import org.lantern.Lantern
+import org.lantern.internal.handler.TextureHandler
 import org.lantern.model.renderer.GenericGeoRenderer
 import org.lantern.model.wrapper.AnimationStateMapping
 import org.lantern.model.wrapper.CustomModelWrapper
@@ -25,17 +26,27 @@ object RendererHandler {
         // 一次提取路径，复用变量
         val geoPath = obj.get("geo").asString
         val texturePath = obj.get("texture").asString
+        val isHttpTexture = TextureHandler.isHttpUrl(texturePath)
 
         val geo = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, geoPath)
-        val texture = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, texturePath)
 
         if (rsm.getResource(geo).isEmpty) {
             Lantern.logger.warn("Failed to register model: $geoPath")
             return
         }
-        if (rsm.getResource(texture).isEmpty) {
-            Lantern.logger.warn("Failed to register texture: $texturePath")
-            return
+
+        val texture: ResourceLocation
+        val textureUrl: String?
+        if (isHttpTexture) {
+            texture = TextureHandler.getTexture(texturePath)
+            textureUrl = texturePath
+        } else {
+            texture = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, texturePath)
+            textureUrl = null
+            if (rsm.getResource(texture).isEmpty) {
+                Lantern.logger.warn("Failed to register texture: $texturePath")
+                return
+            }
         }
 
         // 解析动画配置（支持新旧格式）
@@ -93,7 +104,8 @@ object RendererHandler {
             obj.get("width").asDouble,
             obj.get("hidden").asBoolean,
             obj.get("offset-y").asFloat,
-            animationStates
+            animationStates,
+            textureUrl
         )
         val normalizedName = normalizeName(name)
 

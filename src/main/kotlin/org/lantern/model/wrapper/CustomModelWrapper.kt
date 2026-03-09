@@ -11,5 +11,6 @@ class CustomModelWrapper(
     val width: Double = 1.0,
     val hiddenName: Boolean = false,
     val nameTagOffsetY: Float = 0.0F,
-    val animationStates: AnimationStateMapping = AnimationStateMapping.default()
+    val animationStates: AnimationStateMapping = AnimationStateMapping.default(),
+    val textureUrl: String? = null
 )

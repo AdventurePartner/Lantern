@@ -16,6 +16,7 @@ import net.minecraft.server.packs.PackType
 import net.minecraft.server.packs.resources.ResourceManager
 import org.lantern.internal.handler.CycleHandler
 import org.lantern.internal.handler.ResourceHandler
+import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.listen.FabricClientListener
 import org.lantern.internal.network.PacketNetwork
 import org.lantern.uix.renderer.CanvasRenderer
@@ -67,6 +68,7 @@ class LanternFabric : ClientModInitializer {
                     client.font
                 )
             }
+            TextureHandler.tick()
         }
     }
 
