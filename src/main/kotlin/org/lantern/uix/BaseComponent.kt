@@ -2,6 +2,7 @@ package org.lantern.uix
 
 import net.minecraft.client.gui.GuiGraphics
 import org.lantern.uix.enums.MountPoint
+import org.lantern.uix.event.MouseEvent
 
 abstract class BaseComponent : IComponent {
     // 当前挂载点坐标, 注意此处非实时
@@ -12,6 +13,12 @@ abstract class BaseComponent : IComponent {
     private var _y = 0
     private var lastWidth = 0
     private var lastHeight = 0
+
+    override var hovered: Boolean = false
+
+    private val clickHandlers = mutableListOf<(MouseEvent) -> Unit>()
+    private val enterHandlers = mutableListOf<(MouseEvent) -> Unit>()
+    private val leaveHandlers = mutableListOf<(MouseEvent) -> Unit>()
 
     override var x: Int
         get() = _x
@@ -34,6 +41,40 @@ abstract class BaseComponent : IComponent {
             _height = value
         }
 
+    override fun onClick(handler: (MouseEvent) -> Unit) {
+        clickHandlers.add(handler)
+    }
+
+    override fun onMouseEnter(handler: (MouseEvent) -> Unit) {
+        enterHandlers.add(handler)
+    }
+
+    override fun onMouseLeave(handler: (MouseEvent) -> Unit) {
+        leaveHandlers.add(handler)
+    }
+
+    override fun dispatchClick(event: MouseEvent) {
+        for (handler in clickHandlers) {
+            handler(event)
+            if (event.consumed) return
+        }
+    }
+
+    override fun dispatchMouseEnter(event: MouseEvent) {
+        hovered = true
+        for (handler in enterHandlers) {
+            handler(event)
+            if (event.consumed) return
+        }
+    }
+
+    override fun dispatchMouseLeave(event: MouseEvent) {
+        hovered = false
+        for (handler in leaveHandlers) {
+            handler(event)
+            if (event.consumed) return
+        }
+    }
 
     override fun getMount(point: MountPoint): IntArray {
         return mount[point.index]

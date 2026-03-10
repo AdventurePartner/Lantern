@@ -2,10 +2,13 @@ package org.lantern.internal.listen
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.minecraft.client.Minecraft
-import org.lantern.internal.handler.HudClickDispatcher
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.network.PacketNetwork
+import org.lantern.internal.storage.ScreenType
+import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.uix.canvas.impl.GuiCanvas
+import org.lantern.uix.event.EventDispatcher
+import org.lantern.uix.input.FocusManager
 import org.lwjgl.glfw.GLFW
 
 object FabricClientListener {
@@ -29,14 +32,23 @@ object FabricClientListener {
 
     private fun handleMouseInput(client: Minecraft) {
         val window = client.window.window
+        val scale = client.window.guiScale
+        val mx = (client.mouseHandler.xpos() / scale).toInt()
+        val my = (client.mouseHandler.ypos() / scale).toInt()
+
         val leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
         if (leftDown && !wasMouseDown) {
-            val scale = client.window.guiScale
-            val mx = (client.mouseHandler.xpos() / scale).toInt()
-            val my = (client.mouseHandler.ypos() / scale).toInt()
-            HudClickDispatcher.dispatch(mx, my)
+            FocusManager.blur()
+            UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { root ->
+                EventDispatcher.dispatchClick(root, mx, my)
+            }
         }
         wasMouseDown = leftDown
+
+        // Update hover state for HUD widgets each tick
+        UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { root ->
+            EventDispatcher.updateHover(root, mx, my)
+        }
     }
 
     private fun handleKeyboardInput(client: Minecraft) {

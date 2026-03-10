@@ -1,6 +1,7 @@
 package org.lantern.uix.widget.input
 
 import net.minecraft.client.gui.GuiGraphics
+import org.lantern.uix.input.FocusManager
 import org.lantern.uix.widget.BaseWidget
 
 class InputWidgetImpl(
@@ -15,6 +16,13 @@ class InputWidgetImpl(
     var focused: Boolean = false
     var cursorPos: Int = 0
     var viewStart: Int = 0
+
+    init {
+        onClick { event ->
+            FocusManager.focus(this)
+            event.consume()
+        }
+    }
 
     fun insertChar(c: Char) {
         if (value.length >= maxLength) return
