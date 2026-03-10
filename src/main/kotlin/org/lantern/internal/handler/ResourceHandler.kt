@@ -23,6 +23,9 @@ object ResourceHandler {
     // 动态资源缓存集(key[identifier], value[IResourceWrapper])
     private val dynamicResources = ConcurrentHashMap<String, IResourceWrapper>()
 
+    // 加密资源包加载的资源（便于清除重载）
+    private val encryptedPackResources: MutableSet<ResourceLocation> = ConcurrentHashMap.newKeySet()
+
     // 自定义图标缓存(key[customModelData], value[identifier])
     private val itemCustomIcons = ConcurrentHashMap<Int, String>()
     private val characterWrappers = ConcurrentHashMap<Char, CharacterWrapper>()
@@ -35,8 +38,7 @@ object ResourceHandler {
      * @param path 资源路径
      */
     fun listDynamicResources(namespace: String, path: String): Map<ResourceLocation, IResourceWrapper> {
-        if (namespace != "lantern") return emptyMap()
-        return dynamicResourceLinked.filter { (k, v) -> k.namespace == namespace && k.path.startsWith(path) }
+        return dynamicResourceLinked.filter { (k, _) -> k.namespace == namespace && k.path.startsWith(path) }
     }
 
     fun getResource(rl: ResourceLocation): IResourceWrapper? {
@@ -82,6 +84,18 @@ object ResourceHandler {
      */
     fun getDynamicTextures(): Set<String> {
         return clientStorage.itemIcons.values.map { (_, texturePath) -> texturePath }.toSet()
+    }
+
+    fun addEncryptedPackResource(rl: ResourceLocation, wrapper: IResourceWrapper) {
+        dynamicResourceLinked[rl] = wrapper
+        encryptedPackResources.add(rl)
+    }
+
+    fun clearEncryptedPackResources() {
+        encryptedPackResources.forEach { rl ->
+            dynamicResourceLinked.remove(rl)
+        }
+        encryptedPackResources.clear()
     }
 
     fun addItemIcon(customModeLData: Int, identifier: String, res: ItemIconResourceWrapperImpl) {

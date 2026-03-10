@@ -106,13 +106,9 @@ public abstract class FallbackResourceManagerMixin {
 
     @Inject(method = "listResources", at = @At("RETURN"), cancellable = true)
     private void lantern$listResources(String path, Predicate<ResourceLocation> predicate, CallbackInfoReturnable<Map<ResourceLocation, Resource>> cir) {
-        if (!"lantern".equals(namespace)) {
-            return;
-        }
-
         Map<ResourceLocation, Resource> merged = new HashMap<>(cir.getReturnValue());
 
-        // 动态注册资源（如 model JSON，保留兼容）
+        // 动态注册资源（对所有命名空间生效，包括加密包资源）
         Map<ResourceLocation, ? extends IResourceWrapper> dynamicResources = ResourceHandler.INSTANCE.listDynamicResources(namespace, path);
         dynamicResources.forEach((location, wrapper) -> {
             if (predicate.test(location)) {
@@ -128,38 +124,40 @@ public abstract class FallbackResourceManagerMixin {
             }
         });
 
-        // 遍历 LanternPackLocal 本地文件夹，将其中的资源（主要是纹理 PNG）暴露给图集缝合器
+        // 遍历 LanternPackLocal 本地文件夹（仅 lantern 命名空间）
         // 当 vanilla 的 atlases/blocks.json 中 DirectoryLister 调用 listResources("textures/item",...) 时，
         // 此处会将 LanternPackLocal/assets/lantern/textures/item/*.png 加入返回列表，从而进入图集
-        try {
-            Path localNsPath = FabricLoader.getInstance().getGameDir()
-                .resolve("resourcePacks")
-                .resolve("LanternPackLocal")
-                .resolve("assets")
-                .resolve("lantern");
-            Path searchPath = localNsPath.resolve(path);
-        if (Files.exists(searchPath)) {
-                Files.walk(searchPath)
-                    .filter(Files::isRegularFile)
-                    .forEach(file -> {
-                        // 逐文件捕获异常：含空格、括号等非法字符的文件名会导致
-                        // ResourceLocation 创建失败，跳过该文件而不中断整个遍历
-                        try {
-                            String rel = localNsPath.relativize(file).toString().replace('\\', '/');
-                            ResourceLocation rl = ResourceLocation.fromNamespaceAndPath("lantern", rel);
-                            if (predicate.test(rl)) {
-                                merged.putIfAbsent(rl, new Resource(
-                                    LanternVirtualPackResources.INSTANCE,
-                                    () -> Files.newInputStream(file)
-                                ));
+        if ("lantern".equals(namespace)) {
+            try {
+                Path localNsPath = FabricLoader.getInstance().getGameDir()
+                    .resolve("resourcePacks")
+                    .resolve("LanternPackLocal")
+                    .resolve("assets")
+                    .resolve("lantern");
+                Path searchPath = localNsPath.resolve(path);
+                if (Files.exists(searchPath)) {
+                    Files.walk(searchPath)
+                        .filter(Files::isRegularFile)
+                        .forEach(file -> {
+                            // 逐文件捕获异常：含空格、括号等非法字符的文件名会导致
+                            // ResourceLocation 创建失败，跳过该文件而不中断整个遍历
+                            try {
+                                String rel = localNsPath.relativize(file).toString().replace('\\', '/');
+                                ResourceLocation rl = ResourceLocation.fromNamespaceAndPath("lantern", rel);
+                                if (predicate.test(rl)) {
+                                    merged.putIfAbsent(rl, new Resource(
+                                        LanternVirtualPackResources.INSTANCE,
+                                        () -> Files.newInputStream(file)
+                                    ));
+                                }
+                            } catch (Exception fileEx) {
+                                Lantern.logger.debug("[Lantern] Skipping invalid resource file (illegal chars in name): {}", file.getFileName());
                             }
-                        } catch (Exception fileEx) {
-                            Lantern.logger.debug("[Lantern] Skipping invalid resource file (illegal chars in name): {}", file.getFileName());
-                        }
-                    });
+                        });
+                }
+            } catch (Exception e) {
+                Lantern.logger.warn("[Lantern] Failed to list LanternPackLocal/{}: {}", path, e.getMessage());
             }
-        } catch (Exception e) {
-            Lantern.logger.warn("[Lantern] Failed to list LanternPackLocal/{}: {}", path, e.getMessage());
         }
 
         cir.setReturnValue(merged);

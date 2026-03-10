@@ -27,6 +27,7 @@ sourceSets {
 }
 
 repositories {
+    mavenCentral()
     maven {
         name = "GeckoLib"
         url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
@@ -48,6 +49,10 @@ dependencies {
 
     // GeckoLib for Fabric
     modImplementation("software.bernie.geckolib:geckolib-fabric-$minecraftVersion:${property("geckolib_version")}")
+
+    // zip4j for encrypted ZIP resource packs
+    implementation("net.lingala.zip4j:zip4j:2.11.5")
+    include("net.lingala.zip4j:zip4j:2.11.5")
 }
 
 tasks {

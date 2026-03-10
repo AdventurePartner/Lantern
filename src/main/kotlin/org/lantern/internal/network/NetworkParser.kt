@@ -3,6 +3,7 @@ package org.lantern.internal.network
 import com.google.gson.JsonObject
 import net.minecraft.client.Minecraft
 import org.lantern.Lantern
+import org.lantern.internal.handler.EncryptedPackLoader
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.parser.UiParser
 import org.lantern.internal.wrapper.key.CharacterWrapper
@@ -20,6 +21,7 @@ object NetworkParser {
             4 -> parseCustomItemIcon(obj)
             5 -> parseUiScreens(obj)
             6 -> openGuiScreen(obj)
+            7 -> handleResourcePackKey(obj)
             99 -> reloadResourcePack()
         }
     }
@@ -101,6 +103,13 @@ object NetworkParser {
             val res = ItemIconResourceWrapperImpl(identifier, texture)
             ResourceHandler.addItemIcon(customModelData, identifier, res)
         }
+    }
+
+    private fun handleResourcePackKey(obj: JsonObject) {
+        val key = obj.get("key")?.asString ?: return
+        if (key.isBlank()) return
+        Lantern.logger.info("[Lantern] Received resource pack key, loading encrypted packs...")
+        EncryptedPackLoader.loadEncryptedPacks(key)
     }
 
     private fun reloadResourcePack() {

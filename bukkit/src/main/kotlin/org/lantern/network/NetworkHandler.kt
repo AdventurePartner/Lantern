@@ -26,6 +26,7 @@ object NetworkHandler {
         sendKeyboards(player, CacheHandler.keys)
         sendItemIcons(player, CacheHandler.itemIcons)
         sendUiScreens(player, UiConfigurations.getScreens())
+        sendResourcePackKey(player)
 
         // 延迟一秒发送重载资源数据包
         val relaodRunnable = Runnable { sendReloadResourceManagerPacket(player) }
@@ -136,6 +137,14 @@ object NetworkHandler {
         val packet = JsonObject()
         packet.add("icons", array)
         sendPacket(player, 4, packet)
+    }
+
+    fun sendResourcePackKey(player: Player) {
+        val key = LanternPlugin.instance.config.getString("resource-pack-key") ?: return
+        if (key.isBlank()) return
+        val packet = JsonObject()
+        packet.addProperty("key", key)
+        sendPacket(player, 7, packet)
     }
 
     fun sendReloadResourceManagerPacket(player: Player) {
