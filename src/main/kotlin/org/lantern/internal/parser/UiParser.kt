@@ -12,6 +12,7 @@ import org.lantern.uix.widget.button.ButtonWidgetImpl
 import org.lantern.uix.widget.image.ImageWidgetImpl
 import org.lantern.uix.widget.input.InputWidgetImpl
 import org.lantern.uix.widget.panel.PanelWidgetImpl
+import org.lantern.uix.widget.slot.SlotWidgetImpl
 import org.lantern.uix.widget.text.TextWidgetImpl
 import org.lantern.uix.properties.impl.ImageProperties
 
@@ -28,13 +29,15 @@ object UiParser {
             val id = screenObj.get("id")?.asString ?: return@forEach
             val screenType = when (screenObj.get("screen-type")?.asString) {
                 "gui" -> ScreenType.GUI
+                "overlay" -> ScreenType.OVERLAY
                 else -> ScreenType.HUD
             }
+            val matchTitle = screenObj.get("match-title")?.asString
             val styleSheet = screenObj.getAsJsonObject("styles")
                 ?.let { StyleSheet.fromJson(it) } ?: StyleSheet.EMPTY
             val rootObj = screenObj.getAsJsonObject("root") ?: return@forEach
             val rootWidget = parseNode(rootObj, styleSheet)
-            UiScreenStorage.put(id, rootWidget, screenType)
+            UiScreenStorage.put(id, rootWidget, screenType, matchTitle)
         }
     }
 
@@ -64,10 +67,14 @@ object UiParser {
             "image" -> ImageWidgetImpl(ImageProperties()).also { w ->
                 w.texture = node.get("texture")?.asString ?: ""
             }
+            "slot" -> SlotWidgetImpl(
+                source = node.get("source")?.asString
+            )
             else -> PanelWidgetImpl()
         }
 
         widget.style = resolvedStyle
+        widget.tooltip = node.get("tooltip")?.asString ?: ""
 
         if (widget is PanelWidgetImpl) {
             node.getAsJsonArray("children")?.map { it as JsonObject }?.forEach { childObj ->

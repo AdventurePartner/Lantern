@@ -10,6 +10,7 @@ import org.lantern.uix.event.EventDispatcher
 import org.lantern.uix.event.MouseEvent
 import org.lantern.uix.input.FocusManager
 import org.lantern.uix.layout.LayoutCache
+import org.lantern.uix.renderer.TooltipRenderer
 import org.lantern.uix.renderer.WidgetRendererRegistry
 import org.lantern.uix.widget.IWidget
 
@@ -66,6 +67,7 @@ class GuiCanvas(
         LayoutCache.getOrCompute(rootWidget, screenWidth, screenHeight)
         WidgetRendererRegistry.render(rootWidget, guiGraphics, mouseX, mouseY, partialTick)
         EventDispatcher.updateHover(this, mouseX, mouseY)
+        TooltipRenderer.renderTooltipPass(rootWidget, guiGraphics, mouseX, mouseY)
         // Intentionally not calling super.render() to avoid re-triggering renderBackground
     }
 

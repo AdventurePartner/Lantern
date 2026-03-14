@@ -18,5 +18,7 @@ abstract class BaseWidget : BaseComponent(), IWidget {
         get() = _style
         set(value) { _style = value }
 
+    override var tooltip: String = ""
+
     override fun getPosition(): Position = position
 }

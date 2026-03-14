@@ -6,6 +6,8 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents
+import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener
 import org.lantern.item.plugin.LanternModelPlugin
@@ -20,6 +22,7 @@ import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.listen.FabricClientListener
 import org.lantern.internal.network.PacketNetwork
 import org.lantern.uix.renderer.CanvasRenderer
+import org.lantern.uix.renderer.OverlayRenderer
 import org.slf4j.LoggerFactory
 
 class LanternFabric : ClientModInitializer {
@@ -39,6 +42,13 @@ class LanternFabric : ClientModInitializer {
         // 注册 HUD 渲染回调
         HudRenderCallback.EVENT.register { graphics, tickDeltaManager ->
             CanvasRenderer.hudCanvas.render(graphics, 0, 0, tickDeltaManager.getGameTimeDeltaPartialTick(false))
+        }
+
+        // 注册 Overlay Screen 鼠标事件
+        ScreenEvents.BEFORE_INIT.register { _, screen, _, _ ->
+            ScreenMouseEvents.allowMouseClick(screen).register { scr, mouseX, mouseY, button ->
+                !OverlayRenderer.handleClick(scr, mouseX, mouseY, button)
+            }
         }
 
         // 注册网络包

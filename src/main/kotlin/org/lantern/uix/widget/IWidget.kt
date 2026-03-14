@@ -10,6 +10,8 @@ interface IWidget : IComponent {
 
     var style: StyleRule
 
+    var tooltip: String
+
     /** Widget type identifier, matches the "type" field in config JSON. */
     val widgetType: String
 

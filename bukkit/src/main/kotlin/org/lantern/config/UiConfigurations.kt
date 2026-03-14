@@ -35,6 +35,7 @@ object UiConfigurations {
         val screen = JsonObject()
         screen.addProperty("id", config.getString("id") ?: "unknown")
         screen.addProperty("screen-type", config.getString("screen-type") ?: "hud")
+        config.getString("match-title")?.let { screen.addProperty("match-title", it) }
 
         // parse named styles
         val stylesObj = JsonObject()
@@ -61,6 +62,8 @@ object UiConfigurations {
         section.getString("value")?.let { node.addProperty("value", it) }
         section.getString("placeholder")?.let { node.addProperty("placeholder", it) }
         section.getString("on-change")?.let { node.addProperty("on-change", it) }
+        section.getString("tooltip")?.let { node.addProperty("tooltip", it) }
+        section.getString("source")?.let { node.addProperty("source", it) }
         if (section.contains("max-length")) node.addProperty("max-length", section.getInt("max-length"))
 
         section.getConfigurationSection("style")?.let { node.add("style", parseStyleSection(it)) }
@@ -89,6 +92,8 @@ object UiConfigurations {
         map["value"]?.toString()?.let { node.addProperty("value", it) }
         map["placeholder"]?.toString()?.let { node.addProperty("placeholder", it) }
         map["on-change"]?.toString()?.let { node.addProperty("on-change", it) }
+        map["tooltip"]?.toString()?.let { node.addProperty("tooltip", it) }
+        map["source"]?.toString()?.let { node.addProperty("source", it) }
         (map["max-length"] as? Int)?.let { node.addProperty("max-length", it) }
 
         @Suppress("UNCHECKED_CAST")
