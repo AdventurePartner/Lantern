@@ -100,7 +100,8 @@ object NetworkParser {
             }
             Lantern.logger.debug("[Lantern] Parsing icon: data={}, identifier={}, texture={}",
                 customModelData, identifier, texture)
-            val res = ItemIconResourceWrapperImpl(identifier, texture)
+            val type = it.get("type")?.asString ?: "generated"
+            val res = ItemIconResourceWrapperImpl(identifier, texture, type)
             ResourceHandler.addItemIcon(customModelData, identifier, res)
         }
     }

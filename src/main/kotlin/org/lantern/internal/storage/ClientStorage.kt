@@ -7,6 +7,6 @@ import java.util.concurrent.ConcurrentHashMap
 class ClientStorage {
     val characters = ConcurrentHashMap<Char, CharacterWrapper>()
     val keyboards = mutableMapOf<String, KeyWrapper>()
-    // 存储 itemIcons: customModelData -> (identifier, texturePath)
-    val itemIcons = ConcurrentHashMap<Int, Pair<String, String>>()
+    // 存储 itemIcons: customModelData -> (identifier, texturePath, type)
+    val itemIcons = ConcurrentHashMap<Int, Triple<String, String, String>>()
 }

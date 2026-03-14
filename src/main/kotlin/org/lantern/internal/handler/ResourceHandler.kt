@@ -74,7 +74,7 @@ object ResourceHandler {
     fun getTextureByModelPath(modelPath: String): String? {
         val name = if (modelPath.startsWith("item/")) modelPath.removePrefix("item/") else modelPath
         return clientStorage.itemIcons.values
-            .firstOrNull { (identifier, _) -> identifier == name }
+            .firstOrNull { (identifier, _, _) -> identifier == name }
             ?.second
     }
 
@@ -83,7 +83,7 @@ object ResourceHandler {
      * 用于在纹理图集构建时注册精灵
      */
     fun getDynamicTextures(): Set<String> {
-        return clientStorage.itemIcons.values.map { (_, texturePath) -> texturePath }.toSet()
+        return clientStorage.itemIcons.values.map { (_, texturePath, _) -> texturePath }.toSet()
     }
 
     fun addEncryptedPackResource(rl: ResourceLocation, wrapper: IResourceWrapper) {
@@ -106,7 +106,7 @@ object ResourceHandler {
         // 注册备用路径 (models/)
         dynamicResourceLinked[res.getSecondaryResourceLocation()] = res
         // 保存到 clientStorage 以便 rebuild 时恢复
-        clientStorage.itemIcons[customModeLData] = identifier to res.getTexturePath()
+        clientStorage.itemIcons[customModeLData] = Triple(identifier, res.getTexturePath(), res.getType())
         Lantern.logger.info("[Lantern] Registered item icon: customModelData={}, identifier={}", customModeLData, identifier)
     }
 
@@ -152,9 +152,9 @@ object ResourceHandler {
         characterWrappers.putAll(clientStorage.characters)
         keyboards.putAll(clientStorage.keyboards)
         // 恢复 item icons
-        clientStorage.itemIcons.forEach { (customModelData, pair) ->
-            val (identifier, texturePath) = pair
-            val res = ItemIconResourceWrapperImpl(identifier, texturePath)
+        clientStorage.itemIcons.forEach { (customModelData, triple) ->
+            val (identifier, texturePath, type) = triple
+            val res = ItemIconResourceWrapperImpl(identifier, texturePath, type)
             itemCustomIcons[customModelData] = identifier
             dynamicResources["customIcons_$identifier"] = res
             dynamicResourceLinked[res.getResourceLocation()] = res

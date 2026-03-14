@@ -5,7 +5,7 @@ import org.lantern.Lantern
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 
-class ItemIconResourceWrapperImpl(rawIdentifier: String, private val texturePath: String) : IResourceWrapper {
+class ItemIconResourceWrapperImpl(rawIdentifier: String, private val texturePath: String, private val type: String = "generated") : IResourceWrapper {
     // 清理 identifier，移除可能的 namespace 前缀
     private val identifier: String = if (rawIdentifier.contains(":")) {
         rawIdentifier.substringAfter(":")
@@ -27,10 +27,16 @@ class ItemIconResourceWrapperImpl(rawIdentifier: String, private val texturePath
 
     fun getTexturePath(): String = texturePath
 
+    fun getType(): String = type
+
     override fun getResource(): InputStream {
+        val parent = when (type) {
+            "handheld" -> "minecraft:item/handheld"
+            else -> "minecraft:item/generated"
+        }
         val modelJson = """
             {
-              "parent": "minecraft:item/generated",
+              "parent": "$parent",
               "textures": {
                 "layer0": "$texturePath"
               }

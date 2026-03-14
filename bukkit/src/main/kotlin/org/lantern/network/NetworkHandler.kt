@@ -132,6 +132,7 @@ object NetworkHandler {
             obj.addProperty("data", k)
             obj.addProperty("identifier", v.identifier)
             obj.addProperty("texture", v.texture)
+            obj.addProperty("type", v.type)
             array.add(obj)
         }
         val packet = JsonObject()
