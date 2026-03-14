@@ -18,6 +18,12 @@ object LayoutEngine {
 
     fun layout(root: IWidget, availableWidth: Int, availableHeight: Int): LayoutResult {
         val result = LayoutResult()
+        // 将根 widget 放入布局结果，使渲染器能查到它的坐标
+        if (root is PanelWidgetImpl) {
+            val rootW = root.style.getInt(StyleProperty.WIDTH).let { if (it == 0) availableWidth else it }
+            val rootH = root.style.getInt(StyleProperty.HEIGHT).let { if (it == 0) availableHeight else it }
+            result.put(root, LayoutRect(0, 0, rootW, rootH))
+        }
         layoutWidget(root, 0, 0, availableWidth, availableHeight, result)
         return result
     }
@@ -54,9 +60,9 @@ object LayoutEngine {
             return
         }
 
-        // 解析容器自身尺寸
-        val containerW = style.getInt(StyleProperty.WIDTH, availableWidth)
-        val containerH = style.getInt(StyleProperty.HEIGHT, availableHeight)
+        // 解析容器自身尺寸（0 或未设置时使用可用空间）
+        val containerW = style.getInt(StyleProperty.WIDTH).let { if (it == 0) availableWidth else it }
+        val containerH = style.getInt(StyleProperty.HEIGHT).let { if (it == 0) availableHeight else it }
 
         // 解析 padding
         val padding = Edges.parsePadding(style)
