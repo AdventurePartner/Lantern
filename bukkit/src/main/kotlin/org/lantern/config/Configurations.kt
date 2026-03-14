@@ -3,6 +3,7 @@ package org.lantern.config
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import org.lantern.LanternPlugin
+import org.lantern.cache.CostumeCache
 import org.lantern.cache.ItemIconCache
 import org.lantern.cache.KeyCache
 import org.lantern.handler.CacheHandler
@@ -12,6 +13,7 @@ object Configurations {
 
     lateinit var characters: FileConfiguration
     lateinit var models: FileConfiguration
+    lateinit var costumes: FileConfiguration
 
     fun load() {
         plugin.saveDefaultConfig()
@@ -37,6 +39,14 @@ object Configurations {
             data.getKeys(false).forEach { i ->
                 val section = data.getConfigurationSection(i) ?: return@forEach
                 CacheHandler.itemIcons[i.toInt()] = ItemIconCache(section)
+            }
+        }
+        LanternPlugin.instance.saveResource("costumes.yml", "costumes.yml", false) {
+            CacheHandler.costumes.clear()
+            val data = YamlConfiguration.loadConfiguration(it)
+            data.getKeys(false).forEach { key ->
+                val section = data.getConfigurationSection(key) ?: return@forEach
+                CacheHandler.costumes[key] = CostumeCache(section)
             }
         }
         UiConfigurations.load()

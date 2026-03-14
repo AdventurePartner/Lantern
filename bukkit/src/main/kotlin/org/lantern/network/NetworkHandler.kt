@@ -6,16 +6,19 @@ import org.bukkit.Bukkit
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.entity.Player
 import org.lantern.LanternPlugin
+import org.lantern.cache.CostumeCache
 import org.lantern.cache.ItemIconCache
 import org.lantern.cache.KeyCache
 import org.lantern.config.Configurations
 import org.lantern.config.UiConfigurations
 import org.lantern.handler.CacheHandler
+import org.lantern.handler.CostumeAssignmentHandler
 import org.lantern.util.JsonUtil
 import org.lantern.util.TextUtil.colorify
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.IOException
+import java.util.UUID
 
 
 object NetworkHandler {
@@ -26,6 +29,8 @@ object NetworkHandler {
         sendKeyboards(player, CacheHandler.keys)
         sendItemIcons(player, CacheHandler.itemIcons)
         sendUiScreens(player, UiConfigurations.getScreens())
+        sendCostumesPacket(player, CacheHandler.costumes)
+        sendCostumeAssignment(player, CostumeAssignmentHandler.getAll())
         sendResourcePackKey(player)
 
         // 延迟一秒发送重载资源数据包
@@ -146,6 +151,58 @@ object NetworkHandler {
         val packet = JsonObject()
         packet.addProperty("key", key)
         sendPacket(player, 7, packet)
+    }
+
+    fun sendCostumesPacket(player: Player, costumes: Map<String, CostumeCache>) {
+        val array = JsonArray()
+        costumes.forEach { (id, cache) ->
+            val obj = JsonObject()
+            obj.addProperty("id", id)
+            obj.addProperty("display-name", cache.displayName)
+            obj.addProperty("geo", cache.geo)
+            obj.addProperty("texture", cache.texture)
+
+            if (cache.animationFile.isNotBlank()) {
+                val animationsObj = JsonObject()
+                animationsObj.addProperty("file", cache.animationFile)
+                val statesObj = JsonObject()
+                cache.animationStates.forEach { (state, anim) ->
+                    statesObj.addProperty(state, anim)
+                }
+                animationsObj.add("states", statesObj)
+                obj.add("animations", animationsObj)
+            }
+
+            obj.addProperty("scale", cache.scale)
+            val offsetObj = JsonObject()
+            offsetObj.addProperty("x", cache.offsetX)
+            offsetObj.addProperty("y", cache.offsetY)
+            offsetObj.addProperty("z", cache.offsetZ)
+            obj.add("offset", offsetObj)
+
+            array.add(obj)
+        }
+        val packet = JsonObject()
+        packet.add("costumes", array)
+        sendPacket(player, 8, packet)
+    }
+
+    fun sendCostumeAssignment(player: Player, assignments: Map<UUID, String>, removals: List<UUID> = emptyList()) {
+        val packet = JsonObject()
+        val assignArray = JsonArray()
+        assignments.forEach { (uuid, costumeId) ->
+            val obj = JsonObject()
+            obj.addProperty("uuid", uuid.toString())
+            obj.addProperty("costume", costumeId)
+            assignArray.add(obj)
+        }
+        packet.add("assignments", assignArray)
+
+        val removeArray = JsonArray()
+        removals.forEach { removeArray.add(it.toString()) }
+        packet.add("removals", removeArray)
+
+        sendPacket(player, 9, packet)
     }
 
     fun sendReloadResourceManagerPacket(player: Player) {

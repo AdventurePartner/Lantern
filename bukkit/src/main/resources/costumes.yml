@@ -1,0 +1,17 @@
+# Lantern Costume Configuration
+# Each entry defines a costume that can be assigned to players
+#
+# angel_wings:
+#   display-name: "Angel Wings"
+#   geo: "geo/costume/angel_wings.geo.json"
+#   texture: "textures/costume/angel_wings.png"
+#   animations:
+#     file: "animations/costume/angel_wings.animation.json"
+#     states:
+#       idle: "animation.angel_wings.idle"
+#       walk: "animation.angel_wings.walk"
+#   scale: 1.0
+#   offset:
+#     x: 0.0
+#     y: 0.0
+#     z: 0.0

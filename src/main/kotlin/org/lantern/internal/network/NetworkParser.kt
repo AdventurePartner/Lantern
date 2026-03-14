@@ -9,7 +9,13 @@ import org.lantern.internal.parser.UiParser
 import org.lantern.internal.wrapper.key.CharacterWrapper
 import org.lantern.internal.wrapper.key.KeyWrapper
 import org.lantern.internal.wrapper.resource.ItemIconResourceWrapperImpl
+import org.lantern.costume.handler.CostumeHandler
+import org.lantern.costume.wrapper.CostumeModelWrapper
+import org.lantern.internal.handler.TextureHandler
 import org.lantern.model.handler.RendererHandler
+import org.lantern.model.wrapper.AnimationStateMapping
+import net.minecraft.resources.ResourceLocation
+import java.util.UUID
 
 object NetworkParser {
 
@@ -22,6 +28,8 @@ object NetworkParser {
             5 -> parseUiScreens(obj)
             6 -> openGuiScreen(obj)
             7 -> handleResourcePackKey(obj)
+            8 -> parseCostumes(obj)
+            9 -> parseCostumeAssignments(obj)
             99 -> reloadResourcePack()
         }
     }
@@ -111,6 +119,90 @@ object NetworkParser {
         if (key.isBlank()) return
         Lantern.logger.info("[Lantern] Received resource pack key, loading encrypted packs...")
         EncryptedPackLoader.loadEncryptedPacks(key)
+    }
+
+    private fun parseCostumes(obj: JsonObject) {
+        val costumes = obj.getAsJsonArray("costumes") ?: return
+        costumes.map { it as JsonObject }.forEach {
+            val id = it.get("id").asString
+            val displayName = it.get("display-name")?.asString ?: id
+            val geoPath = it.get("geo").asString
+            val texturePath = it.get("texture").asString
+
+            val isHttpTexture = TextureHandler.isHttpUrl(texturePath)
+            val geo = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, geoPath)
+
+            val texture: ResourceLocation
+            val textureUrl: String?
+            if (isHttpTexture) {
+                texture = TextureHandler.getTexture(texturePath)
+                textureUrl = texturePath
+            } else {
+                texture = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, texturePath)
+                textureUrl = null
+            }
+
+            val animationLocation: ResourceLocation
+            val animationStates: AnimationStateMapping
+
+            if (it.has("animations") && it.get("animations").isJsonObject) {
+                val animationsObj = it.getAsJsonObject("animations")
+                val animPath = animationsObj.get("file").asString
+                animationLocation = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, animPath)
+
+                val statesObj = animationsObj.getAsJsonObject("states")
+                animationStates = AnimationStateMapping(
+                    idle = statesObj?.get("idle")?.asString ?: "idle",
+                    walk = statesObj?.get("walk")?.asString ?: "walk",
+                    attack = statesObj?.get("attack")?.asString,
+                    hurt = statesObj?.get("hurt")?.asString,
+                    death = statesObj?.get("death")?.asString
+                )
+            } else {
+                animationLocation = ResourceLocation.fromNamespaceAndPath(
+                    Lantern.MOD_ID, "animations/costume/default.animation.json"
+                )
+                animationStates = AnimationStateMapping.default()
+            }
+
+            val scale = it.get("scale")?.asFloat ?: 1.0f
+            val offsetObj = it.getAsJsonObject("offset")
+            val offsetX = offsetObj?.get("x")?.asFloat ?: 0.0f
+            val offsetY = offsetObj?.get("y")?.asFloat ?: 0.0f
+            val offsetZ = offsetObj?.get("z")?.asFloat ?: 0.0f
+
+            val wrapper = CostumeModelWrapper(
+                id = id,
+                displayName = displayName,
+                modelLocation = geo,
+                textureLocation = texture,
+                animationLocation = animationLocation,
+                scale = scale,
+                offsetX = offsetX,
+                offsetY = offsetY,
+                offsetZ = offsetZ,
+                animationStates = animationStates,
+                textureUrl = textureUrl
+            )
+
+            CostumeHandler.addCostume(id, wrapper)
+        }
+        Lantern.logger.info("[Lantern] Received {} costume definitions", costumes.size())
+    }
+
+    private fun parseCostumeAssignments(obj: JsonObject) {
+        val assignments = obj.getAsJsonArray("assignments")
+        assignments?.map { it as JsonObject }?.forEach {
+            val uuid = UUID.fromString(it.get("uuid").asString)
+            val costumeId = it.get("costume").asString
+            CostumeHandler.assignCostume(uuid, costumeId)
+        }
+
+        val removals = obj.getAsJsonArray("removals")
+        removals?.forEach {
+            val uuid = UUID.fromString(it.asString)
+            CostumeHandler.removeCostume(uuid)
+        }
     }
 
     private fun reloadResourcePack() {
