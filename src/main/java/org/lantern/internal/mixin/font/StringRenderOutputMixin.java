@@ -65,5 +65,6 @@ public abstract class StringRenderOutputMixin implements FormattedCharSink {
         buffer.addVertex(this.pose, x + width, y, 0).setUv(1, 0);
         buffer.addVertex(this.pose, x, y, 0).setUv(0, 0);
         BufferUploader.drawWithShader(buffer.buildOrThrow());
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
     }
 }
