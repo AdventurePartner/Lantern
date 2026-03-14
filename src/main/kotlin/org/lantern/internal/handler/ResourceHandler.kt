@@ -1,6 +1,8 @@
 package org.lantern.internal.handler
 
+import net.minecraft.client.gui.Font
 import net.minecraft.client.resources.model.ModelResourceLocation
+import net.minecraft.network.chat.FormattedText
 import net.minecraft.resources.ResourceLocation
 import org.lantern.Lantern
 import org.lantern.internal.storage.ClientStorage
@@ -117,6 +119,24 @@ object ResourceHandler {
     fun addCharacterWrapper(char: Char, wrapper: CharacterWrapper) {
         characterWrappers[char] = wrapper
         clientStorage.characters[char] = wrapper
+    }
+
+    /**
+     * 计算包含自定义图标字符的文本真实渲染宽度。
+     * Font.width() 不知道 CharacterWrapper 的 wide 值，这里补上差值。
+     */
+    fun getAdjustedWidth(font: Font, text: FormattedText): Int {
+        val width = font.width(text)
+        val plain = text.getString()
+        var extra = 0
+        for (c in plain) {
+            val wrapper = characterWrappers[c]
+            if (wrapper != null) {
+                val glyphWidth = font.width(c.toString())
+                extra += wrapper.wide - glyphWidth
+            }
+        }
+        return width + extra
     }
 
     fun getKeyboard(key: String): KeyWrapper? {
