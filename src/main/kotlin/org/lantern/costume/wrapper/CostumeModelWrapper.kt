@@ -1,6 +1,8 @@
 package org.lantern.costume.wrapper
 
 import net.minecraft.resources.ResourceLocation
+import org.lantern.costume.bone.BoneMapping
+import org.lantern.costume.slot.CostumeSlot
 import org.lantern.model.wrapper.AnimationStateMapping
 
 class CostumeModelWrapper(
@@ -14,5 +16,8 @@ class CostumeModelWrapper(
     val offsetY: Float = 0.0F,
     val offsetZ: Float = 0.0F,
     val animationStates: AnimationStateMapping = AnimationStateMapping.default(),
-    val textureUrl: String? = null
+    val textureUrl: String? = null,
+    val slot: CostumeSlot = CostumeSlot.FULL_BODY,
+    val boneSyncEnabled: Boolean = true,
+    val boneMapping: BoneMapping = BoneMapping()
 )

@@ -10,11 +10,21 @@ import software.bernie.geckolib.animation.AnimatableManager
 import software.bernie.geckolib.animation.AnimationController
 import software.bernie.geckolib.animation.PlayState
 import software.bernie.geckolib.animation.RawAnimation
+import java.util.concurrent.ConcurrentHashMap
 import software.bernie.geckolib.util.GeckoLibUtil
 import software.bernie.geckolib.util.RenderUtil
 
 class CostumeAnimatable : GeoAnimatable {
     private val cache = GeckoLibUtil.createInstanceCache(this)
+
+    private val loopCache = ConcurrentHashMap<String, RawAnimation>()
+    private val playCache = ConcurrentHashMap<String, RawAnimation>()
+
+    private fun cachedLoop(name: String): RawAnimation =
+        loopCache.getOrPut(name) { RawAnimation.begin().thenLoop(name) }
+
+    private fun cachedPlay(name: String): RawAnimation =
+        playCache.getOrPut(name) { RawAnimation.begin().thenPlay(name) }
 
     var currentEntity: Entity? = null
     var currentAnimationStates: AnimationStateMapping? = null
@@ -29,30 +39,30 @@ class CostumeAnimatable : GeoAnimatable {
             when (currentState) {
                 EntityAnimationState.DEATH -> {
                     animStates.death?.let { deathAnim ->
-                        state.controller.setAnimation(RawAnimation.begin().thenPlay(deathAnim))
+                        state.controller.setAnimation(cachedPlay(deathAnim))
                         return@AnimationController PlayState.CONTINUE
                     }
-                    state.controller.setAnimation(RawAnimation.begin().thenLoop(animStates.idle))
+                    state.controller.setAnimation(cachedLoop(animStates.idle))
                 }
                 EntityAnimationState.HURT -> {
                     animStates.hurt?.let { hurtAnim ->
-                        state.controller.setAnimation(RawAnimation.begin().thenPlay(hurtAnim))
+                        state.controller.setAnimation(cachedPlay(hurtAnim))
                         return@AnimationController PlayState.CONTINUE
                     }
-                    state.controller.setAnimation(RawAnimation.begin().thenLoop(animStates.idle))
+                    state.controller.setAnimation(cachedLoop(animStates.idle))
                 }
                 EntityAnimationState.ATTACK -> {
                     animStates.attack?.let { attackAnim ->
-                        state.controller.setAnimation(RawAnimation.begin().thenLoop(attackAnim))
+                        state.controller.setAnimation(cachedLoop(attackAnim))
                         return@AnimationController PlayState.CONTINUE
                     }
-                    state.controller.setAnimation(RawAnimation.begin().thenLoop(animStates.idle))
+                    state.controller.setAnimation(cachedLoop(animStates.idle))
                 }
                 EntityAnimationState.WALK -> {
-                    state.controller.setAnimation(RawAnimation.begin().thenLoop(animStates.walk))
+                    state.controller.setAnimation(cachedLoop(animStates.walk))
                 }
                 EntityAnimationState.IDLE -> {
-                    state.controller.setAnimation(RawAnimation.begin().thenLoop(animStates.idle))
+                    state.controller.setAnimation(cachedLoop(animStates.idle))
                 }
             }
 

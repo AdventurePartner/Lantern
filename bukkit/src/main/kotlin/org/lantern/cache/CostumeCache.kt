@@ -19,4 +19,12 @@ class CostumeCache(section: ConfigurationSection) {
     val offsetX: Double = section.getDouble("offset.x", 0.0)
     val offsetY: Double = section.getDouble("offset.y", 0.0)
     val offsetZ: Double = section.getDouble("offset.z", 0.0)
+    val slot: String = section.getString("slot") ?: "full_body"
+    val boneSync: Boolean = section.getBoolean("bone-sync", true)
+    val boneMappingHead: String = section.getString("bone-mapping.head") ?: "head"
+    val boneMappingBody: String = section.getString("bone-mapping.body") ?: "body"
+    val boneMappingLeftArm: String = section.getString("bone-mapping.left_arm") ?: "left_arm"
+    val boneMappingRightArm: String = section.getString("bone-mapping.right_arm") ?: "right_arm"
+    val boneMappingLeftLeg: String = section.getString("bone-mapping.left_leg") ?: "left_leg"
+    val boneMappingRightLeg: String = section.getString("bone-mapping.right_leg") ?: "right_leg"
 }

@@ -4,12 +4,24 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 object CostumeAssignmentHandler {
-    // Player UUID -> Costume ID
-    private val assignments = ConcurrentHashMap<UUID, String>()
+    // Player UUID -> (slot -> costumeId)
+    private val assignments = ConcurrentHashMap<UUID, ConcurrentHashMap<String, String>>()
 
-    fun assign(playerUUID: UUID, costumeId: String) { assignments[playerUUID] = costumeId }
-    fun remove(playerUUID: UUID) { assignments.remove(playerUUID) }
-    fun get(playerUUID: UUID): String? = assignments[playerUUID]
-    fun getAll(): Map<UUID, String> = assignments.toMap()
+    fun assign(playerUUID: UUID, slot: String, costumeId: String) {
+        assignments.computeIfAbsent(playerUUID) { ConcurrentHashMap() }[slot] = costumeId
+    }
+
+    fun remove(playerUUID: UUID, slot: String? = null) {
+        if (slot == null) {
+            assignments.remove(playerUUID)
+        } else {
+            assignments[playerUUID]?.remove(slot)
+        }
+    }
+
+    fun get(playerUUID: UUID): Map<String, String>? = assignments[playerUUID]?.toMap()
+
+    fun getAll(): Map<UUID, Map<String, String>> = assignments.mapValues { it.value.toMap() }
+
     fun clear() { assignments.clear() }
 }
