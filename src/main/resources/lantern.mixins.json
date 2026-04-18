@@ -14,7 +14,13 @@
     "costume.PlayerRendererMixin",
     "costume.ItemInHandRendererMixin",
     "hud.PlayerTabOverlayMixin",
-    "uix.ScreenRenderMixin"
+    "uix.ScreenRenderMixin",
+    "block.LevelRendererMixin",
+    "block.ParticleEngineMixin",
+    "block.BlockRenderDispatcherMixin",
+    "block.BlockItemMixin",
+    "block.BarrelBlockMixin",
+    "model.BarrelModelMixin"
   ],
   "mixins": [
   ],

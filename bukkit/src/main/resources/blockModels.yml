@@ -1,0 +1,46 @@
+# 自定义方块模型配置（GeckoLib 渲染）
+# 使用木桶（barrel）作为载体
+# custom_variation: 方块唯一标识 ID（正整数，不再受 BlockState 限制）
+# 服务端通过位置映射追踪自定义方块，客户端通过位置查找 variation
+#
+# custom_model_data: 物品形态的 CustomModelData 值，用于手持/物品栏渲染
+#   服务端给木桶物品设置此值，客户端自动替换物品模型
+#
+# GeckoLib 模型配置:
+#   geo: Blockbench 导出的 .geo.json 模型路径（相对于 assets/lantern/）
+#   texture: 纹理路径（相对于 assets/lantern/）
+#   animation: 动画文件路径（相对于 assets/lantern/）
+#   scale: 模型缩放（默认 1.0）
+#   idle-animation: 待机循环动画名称（默认 "idle"）
+#
+# 示例:
+# ruby_ore:
+#   custom_variation: 1
+#   custom_model_data: 10001
+#   display-name: "&cRuby Ore"
+#   geo: "geo/block/ruby_ore.geo.json"
+#   texture: "textures/block/ruby_ore.png"
+#   animation: "animations/block/ruby_ore.animation.json"
+#   scale: 1.0
+#   idle-animation: "idle"
+#   block-scale: 1.0          # 放置后 in-world 渲染缩放（默认 1.0）
+#   item-offset-x: 0.0        # 物品槽位图标 X 偏移
+#   item-offset-y: 0.0        # 物品槽位图标 Y 偏移
+#   item-offset-z: 0.0        # 物品槽位图标 Z 偏移
+#   hardness: 1.5             # 挖掘硬度，越大越慢（石头=1.5，铁=5.0，黑曜石=50.0，<0 不可破坏）
+#   tool-type: "pickaxe"      # 加速挖掘工具（pickaxe/axe/shovel，空=无加速）
+#   break-sound: "block.stone.break"  # 破坏音效（MC sound event ID，空=默认木桶音效）
+#
+# jade_pillar:
+#   custom_variation: 2
+#   custom_model_data: 10002
+#   display-name: "&aJade Pillar"
+#   geo: "geo/block/jade_pillar.geo.json"
+#   texture: "textures/block/jade_pillar.png"
+#   animation: "animations/block/jade_pillar.animation.json"
+#   scale: 1.0
+#   idle-animation: "idle"
+#   block-scale: 1.5
+#   hardness: 5.0
+#   tool-type: "pickaxe"
+#   break-sound: "block.stone.break"
