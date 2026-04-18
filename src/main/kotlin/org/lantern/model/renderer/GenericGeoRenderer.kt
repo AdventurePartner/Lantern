@@ -11,8 +11,9 @@ import org.lantern.internal.handler.TextureHandler
 import org.lantern.model.entity.GenericReplacedEntity
 import org.lantern.model.geo.GenericGeoModel
 import org.lantern.model.wrapper.CustomModelWrapper
+import software.bernie.geckolib.cache.GeckoLibCache
 import software.bernie.geckolib.renderer.GeoReplacedEntityRenderer
-
+import org.lantern.Lantern
 class GenericGeoRenderer<T : Entity>(
     entityType: EntityType<T>,
     private val wrapper: CustomModelWrapper
@@ -21,6 +22,10 @@ class GenericGeoRenderer<T : Entity>(
     GenericGeoModel(wrapper),
     GenericReplacedEntity(entityType)
 ) {
+    companion object {
+        private val warnedModels = HashSet<ResourceLocation>()
+    }
+
     // 用于防止重复渲染名字（渲染在主线程执行，无需 @Volatile）
     private var isRenderingNameTag = false
 
@@ -46,7 +51,17 @@ class GenericGeoRenderer<T : Entity>(
             replacedEntity.currentRenderedEntity = entity
         }
 
-        // 调用父类渲染（包括模型和名字）
+        // GeckoLib 的 getBakedModel() 在缓存中找不到模型时直接抛 RuntimeException，
+        // 且异常发生在 defaultRender() 内部 pushPose() 之后，导致矩阵栈泄漏（"Pose stack not empty"）。
+        // 在进入 GeckoLib 渲染流程前先检查缓存，模型不可用时直接跳过。
+        // pkt 99 触发资源重载后 GeckoLib 缓存填充，后续帧恢复正常渲染。
+        if (GeckoLibCache.getBakedModels()[wrapper.modelLocation] == null) {
+            if (warnedModels.add(wrapper.modelLocation)) {
+                Lantern.logger.warn("[Lantern] Entity model not yet cached, deferring render: {}", wrapper.modelLocation)
+            }
+            return
+        }
+
         super.render(entity, entityYaw, partialTick, poseStack, bufferSource, packedLight)
     }
 

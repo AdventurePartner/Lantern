@@ -7,6 +7,7 @@ import org.lantern.uix.renderer.WidgetRendererRegistry
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.widget.panel.PanelWidgetImpl
+import org.lantern.uix.util.ColorUtil
 
 object PanelRenderer : IWidgetRenderer<PanelWidgetImpl> {
 
@@ -27,7 +28,7 @@ object PanelRenderer : IWidgetRenderer<PanelWidgetImpl> {
 
         val bgHex = style.getString(StyleProperty.BACKGROUND, "")
         if (bgHex.isNotBlank()) {
-            val bg = parseColor(bgHex, 0x80000000.toInt())
+            val bg = ColorUtil.parseColor(bgHex, 0x80000000.toInt())
             graphics.fill(x, y, x + w, y + h, bg)
         }
 
@@ -39,14 +40,5 @@ object PanelRenderer : IWidgetRenderer<PanelWidgetImpl> {
             WidgetRendererRegistry.render(child, graphics, mouseX - x, mouseY - y, delta)
         }
         graphics.pose().popPose()
-    }
-
-    private fun parseColor(hex: String, fallback: Int): Int {
-        return try {
-            val clean = hex.trimStart('#')
-            if (clean.length == 6) (0xFF shl 24) or clean.toInt(16) else clean.toInt(16)
-        } catch (_: NumberFormatException) {
-            fallback
-        }
     }
 }

@@ -4,9 +4,9 @@ import com.google.gson.JsonObject
 
 class CharacterWrapper(
     val resource: String,
-    val width: Int,
-    val height: Int,
-    val wide: Int
+    val width: Float,
+    val height: Float,
+    val wide: Float
 ) {
     companion object {
 
@@ -14,9 +14,9 @@ class CharacterWrapper(
             val texture = obj.get("texture").asString
             val wrapper = CharacterWrapper(
                 texture,
-                obj.get("width").asInt,
-                obj.get("height").asInt,
-                obj.get("wide").asInt
+                obj.get("width").asFloat,
+                obj.get("height").asFloat,
+                obj.get("wide").asFloat
             )
             return wrapper
         }

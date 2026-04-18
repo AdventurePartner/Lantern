@@ -1,5 +1,14 @@
 id: example_hud
 
+# PlaceholderAPI 变量（需安装 PlaceholderAPI 插件）
+# 声明本 screen 用到的占位符，服务端将定期解析并推送给客户端
+placeholders:
+  - "%player_name%"
+  - "%player_health%"
+
+# 推送间隔（毫秒），默认 2000ms
+update-interval: 2000
+
 styles:
   btn-primary:
     background: "#4a90d9"
@@ -17,12 +26,20 @@ root:
     height: 100
   children:
     - type: text
-      text: "Hello World"
+      text: "HP: %player_health%"
       style:
         color: "#ffffff"
         font-size: 12
         x: 5
         y: 5
+
+    - type: text
+      text: "Player: %player_name%"
+      style:
+        color: "#aaaaaa"
+        font-size: 10
+        x: 5
+        y: 20
 
     - type: button
       text: "Confirm"

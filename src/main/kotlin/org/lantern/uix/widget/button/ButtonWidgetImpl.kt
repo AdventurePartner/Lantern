@@ -3,11 +3,12 @@ package org.lantern.uix.widget.button
 import net.minecraft.client.gui.GuiGraphics
 import org.lantern.internal.action.UiActionHandler
 import org.lantern.uix.widget.BaseWidget
+import org.lantern.uix.widget.ITextHolder
 
 class ButtonWidgetImpl(
-    var text: String = "",
+    override var text: String = "",
     var action: String = ""
-) : BaseWidget() {
+) : BaseWidget(), ITextHolder {
 
     override val widgetType: String = "button"
 

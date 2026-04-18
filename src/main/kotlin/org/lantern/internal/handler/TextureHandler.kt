@@ -48,6 +48,8 @@ object TextureHandler {
             try {
                 val url = URL(path)
                 val conn = url.openConnection()
+                conn.connectTimeout = 5000
+                conn.readTimeout = 10000
                 val bytes = conn.getInputStream().use { it.readAllBytes() }
 
                 if (isGif(bytes)) {

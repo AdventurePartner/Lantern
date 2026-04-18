@@ -10,9 +10,11 @@ import java.util.IdentityHashMap
  */
 object LayoutCache {
 
-    private data class CacheKey(val width: Int, val height: Int)
+    // Pack width+height into a Long for zero-allocation cache key
+    private fun packKey(width: Int, height: Int): Long =
+        (width.toLong() shl 32) or (height.toLong() and 0xFFFFFFFFL)
 
-    private val cache = IdentityHashMap<IWidget, Pair<CacheKey, LayoutResult>>()
+    private val cache = IdentityHashMap<IWidget, Pair<Long, LayoutResult>>()
     private val flatIndex = IdentityHashMap<IWidget, LayoutRect>()
 
     /**
@@ -20,7 +22,7 @@ object LayoutCache {
      * 仅在尺寸变化或缓存失效时重新计算。
      */
     fun getOrCompute(root: IWidget, width: Int, height: Int): LayoutResult {
-        val key = CacheKey(width, height)
+        val key = packKey(width, height)
         val existing = cache[root]
         if (existing != null && existing.first == key) {
             return existing.second

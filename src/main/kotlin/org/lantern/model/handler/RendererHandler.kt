@@ -1,7 +1,6 @@
 package org.lantern.model.handler
 
 import com.google.gson.JsonObject
-import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.EntityType
 import org.lantern.Lantern
@@ -21,19 +20,12 @@ object RendererHandler {
     }
 
     fun addEntityModel(name: String, obj: JsonObject) {
-        val rsm = Minecraft.getInstance().resourceManager
-
         // 一次提取路径，复用变量
         val geoPath = obj.get("geo").asString
         val texturePath = obj.get("texture").asString
         val isHttpTexture = TextureHandler.isHttpUrl(texturePath)
 
         val geo = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, geoPath)
-
-        if (rsm.getResource(geo).isEmpty) {
-            Lantern.logger.warn("Failed to register model: $geoPath")
-            return
-        }
 
         val texture: ResourceLocation
         val textureUrl: String?
@@ -43,10 +35,6 @@ object RendererHandler {
         } else {
             texture = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, texturePath)
             textureUrl = null
-            if (rsm.getResource(texture).isEmpty) {
-                Lantern.logger.warn("Failed to register texture: $texturePath")
-                return
-            }
         }
 
         // 解析动画配置（支持新旧格式）
@@ -58,11 +46,6 @@ object RendererHandler {
             val animationsObj = obj.getAsJsonObject("animations")
             val animationPath = animationsObj.get("file").asString
             animationLocation = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, animationPath)
-
-            if (rsm.getResource(animationLocation).isEmpty) {
-                Lantern.logger.warn("Failed to register animation: $animationPath")
-                return
-            }
 
             // 解析状态映射
             val statesObj = if (animationsObj.has("states") && animationsObj.get("states").isJsonObject) {
@@ -82,11 +65,6 @@ object RendererHandler {
             // 旧格式：单一 animation 字段
             val animationPath = obj.get("animation").asString
             animationLocation = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, animationPath)
-
-            if (rsm.getResource(animationLocation).isEmpty) {
-                Lantern.logger.warn("Failed to register animation: $animationPath")
-                return
-            }
 
             // 使用默认动画状态映射
             animationStates = AnimationStateMapping.default("idle")
@@ -133,6 +111,7 @@ object RendererHandler {
     }
 
     private fun normalizeName(name: String): String {
+        if (name.indexOf('§') < 0) return name
         return formatCodeRegex.replace(name, "")
     }
 }

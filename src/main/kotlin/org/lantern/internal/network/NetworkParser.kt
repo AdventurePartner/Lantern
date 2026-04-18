@@ -6,10 +6,16 @@ import org.lantern.Lantern
 import org.lantern.internal.handler.EncryptedPackLoader
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.parser.UiParser
+import org.lantern.internal.placeholder.PlaceholderStore
+import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.internal.wrapper.key.CharacterWrapper
 import org.lantern.internal.wrapper.key.KeyWrapper
 import org.lantern.internal.wrapper.resource.ItemIconResourceWrapperImpl
+import org.lantern.model.handler.BlockRendererHandler
+import org.lantern.model.wrapper.BlockModelWrapper
+import org.lantern.costume.bone.BoneMapping
 import org.lantern.costume.handler.CostumeHandler
+import org.lantern.costume.slot.CostumeSlot
 import org.lantern.costume.wrapper.CostumeModelWrapper
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.model.handler.RendererHandler
@@ -30,8 +36,23 @@ object NetworkParser {
             7 -> handleResourcePackKey(obj)
             8 -> parseCostumes(obj)
             9 -> parseCostumeAssignments(obj)
+            10 -> parseBlockModels(obj)
+            11 -> parseBlockPositions(obj)
+            12 -> parseBlockPositionUpdate(obj)
+            13 -> parsePlaceholderUpdate(obj)
             99 -> reloadResourcePack()
         }
+    }
+
+    private fun parsePlaceholderUpdate(obj: JsonObject) {
+        val screenId = obj.get("screen-id")?.asString ?: return
+        val valuesObj = obj.getAsJsonObject("values") ?: return
+        val values = mutableMapOf<String, String>()
+        for ((k, v) in valuesObj.entrySet()) {
+            values[k] = v.asString
+        }
+        val entry = UiScreenStorage.get(screenId) ?: return
+        PlaceholderStore.update(screenId, entry.rootWidget, values)
     }
 
     private fun parseUiScreens(obj: JsonObject) {
@@ -51,10 +72,13 @@ object NetworkParser {
     }
 
     private fun parseEntityModels(obj: JsonObject) {
+        RendererHandler.reload()
+        ResourceHandler.clearEntityModels()
         val models = obj.getAsJsonArray("models")
         models.map { it as JsonObject }.forEach {
             val name = it.get("name").asString
             RendererHandler.addEntityModel(name, it)
+            ResourceHandler.addEntityModelEntry(name, it)
         }
     }
 
@@ -75,6 +99,7 @@ object NetworkParser {
     }
 
     private fun parseCustomItemIcon(obj: JsonObject) {
+        ResourceHandler.clearItemIcons()
         val icons = obj.getAsJsonArray("icons").map { it as JsonObject }
         Lantern.logger.info("[Lantern] Received {} custom item icons", icons.size)
         icons.forEach {
@@ -171,6 +196,19 @@ object NetworkParser {
             val offsetY = offsetObj?.get("y")?.asFloat ?: 0.0f
             val offsetZ = offsetObj?.get("z")?.asFloat ?: 0.0f
 
+            val slot = CostumeSlot.fromString(it.get("slot")?.asString ?: "full_body")
+            val boneSyncEnabled = it.get("bone-sync")?.asBoolean ?: true
+            val boneMapping = it.getAsJsonObject("bone-mapping")?.let { bm ->
+                BoneMapping(
+                    head = bm.get("head")?.asString ?: "head",
+                    body = bm.get("body")?.asString ?: "body",
+                    leftArm = bm.get("left_arm")?.asString ?: "left_arm",
+                    rightArm = bm.get("right_arm")?.asString ?: "right_arm",
+                    leftLeg = bm.get("left_leg")?.asString ?: "left_leg",
+                    rightLeg = bm.get("right_leg")?.asString ?: "right_leg"
+                )
+            } ?: BoneMapping()
+
             val wrapper = CostumeModelWrapper(
                 id = id,
                 displayName = displayName,
@@ -182,7 +220,10 @@ object NetworkParser {
                 offsetY = offsetY,
                 offsetZ = offsetZ,
                 animationStates = animationStates,
-                textureUrl = textureUrl
+                textureUrl = textureUrl,
+                slot = slot,
+                boneSyncEnabled = boneSyncEnabled,
+                boneMapping = boneMapping
             )
 
             CostumeHandler.addCostume(id, wrapper)
@@ -192,16 +233,117 @@ object NetworkParser {
 
     private fun parseCostumeAssignments(obj: JsonObject) {
         val assignments = obj.getAsJsonArray("assignments")
-        assignments?.map { it as JsonObject }?.forEach {
-            val uuid = UUID.fromString(it.get("uuid").asString)
-            val costumeId = it.get("costume").asString
-            CostumeHandler.assignCostume(uuid, costumeId)
+        assignments?.map { it as JsonObject }?.forEach { entry ->
+            val uuid = UUID.fromString(entry.get("uuid").asString)
+            if (entry.has("costumes") && entry.get("costumes").isJsonArray) {
+                // New multi-slot format: { "uuid": "...", "costumes": [{ "slot": "...", "costume": "..." }] }
+                entry.getAsJsonArray("costumes").map { it as JsonObject }.forEach { slotEntry ->
+                    val costumeId = slotEntry.get("costume").asString
+                    CostumeHandler.assignCostume(uuid, costumeId)
+                }
+            } else {
+                // Legacy format: { "uuid": "...", "costume": "..." } — treat as FULL_BODY
+                val costumeId = entry.get("costume").asString
+                CostumeHandler.assignCostume(uuid, costumeId)
+            }
         }
 
         val removals = obj.getAsJsonArray("removals")
-        removals?.forEach {
-            val uuid = UUID.fromString(it.asString)
-            CostumeHandler.removeCostume(uuid)
+        removals?.forEach { element ->
+            if (element.isJsonPrimitive) {
+                // Legacy format: array of UUID strings — remove all slots
+                CostumeHandler.removeCostume(UUID.fromString(element.asString))
+            } else {
+                // New format: { "uuid": "...", "slot": "..." } — remove specific slot (or all if no slot)
+                val removalObj = element.asJsonObject
+                val uuid = UUID.fromString(removalObj.get("uuid").asString)
+                val slotStr = removalObj.get("slot")?.asString
+                if (slotStr != null) {
+                    CostumeHandler.removeCostume(uuid, CostumeSlot.fromString(slotStr))
+                } else {
+                    CostumeHandler.removeCostume(uuid)
+                }
+            }
+        }
+    }
+
+    private fun parseBlockModels(obj: JsonObject) {
+        BlockRendererHandler.clear()
+        ResourceHandler.clearBlockModels()
+        val blocks = obj.getAsJsonArray("blocks")?.map { it as JsonObject } ?: return
+        Lantern.logger.info("[Lantern] Received {} custom block models", blocks.size)
+        blocks.forEach {
+            val id = it.get("id").asString
+            val variation = it.get("custom_variation").asInt
+
+            // GeckoLib 模型资源
+            val geoPath = it.get("geo")?.asString ?: return@forEach
+            val texturePath = it.get("texture")?.asString ?: return@forEach
+            val animationPath = it.get("animation")?.asString?.takeIf { a -> a.isNotBlank() }
+            val scale = it.get("scale")?.asFloat ?: 1.0f
+            val idleAnimation = it.get("idle_animation")?.asString ?: "idle"
+            val blockScale = it.get("block_scale")?.asFloat ?: 1.0f
+            val itemOffsetX = it.get("item_offset_x")?.asFloat ?: 0.0f
+            val itemOffsetY = it.get("item_offset_y")?.asFloat ?: 0.0f
+            val itemOffsetZ = it.get("item_offset_z")?.asFloat ?: 0.0f
+            val hardness = it.get("hardness")?.asFloat ?: 1.5f
+            val preferredTool = it.get("preferred_tool")?.asString
+            val breakSound = it.get("break_sound")?.asString
+
+            val isHttpTexture = TextureHandler.isHttpUrl(texturePath)
+            val geo = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, geoPath)
+            val texture: ResourceLocation
+            val textureUrl: String?
+            if (isHttpTexture) {
+                texture = TextureHandler.getTexture(texturePath)
+                textureUrl = texturePath
+            } else {
+                texture = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, texturePath)
+                textureUrl = null
+            }
+            val animation = animationPath?.let { p -> ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, p) }
+
+            val wrapper = BlockModelWrapper(
+                geo, texture, animation, scale, idleAnimation, textureUrl,
+                blockScale, itemOffsetX, itemOffsetY, itemOffsetZ,
+                hardness, preferredTool, breakSound
+            )
+            val customModelData = it.get("custom_model_data")?.asInt ?: -1
+            BlockRendererHandler.register(variation, id, wrapper, customModelData)
+
+            // 存储到 clientStorage 以便资源重载时恢复
+            ResourceHandler.addBlockModelEntry(
+                variation, id, geoPath, texturePath, animationPath, scale, idleAnimation, textureUrl, customModelData,
+                blockScale, itemOffsetX, itemOffsetY, itemOffsetZ, hardness, preferredTool, breakSound
+            )
+        }
+    }
+
+    private fun parseBlockPositions(obj: JsonObject) {
+        BlockRendererHandler.clearPositions()
+        val positions = obj.getAsJsonArray("positions") ?: return
+        positions.map { it as JsonObject }.forEach {
+            val pos = net.minecraft.core.BlockPos(it["x"].asInt, it["y"].asInt, it["z"].asInt)
+            val variation = it["v"].asInt
+            BlockRendererHandler.addBlockPosition(pos, variation)
+        }
+        Lantern.logger.info("[Lantern] Received {} block positions", positions.size())
+        // 直接标脏，不延迟——已在主线程（context.client().execute 内）
+        BlockRendererHandler.markSectionsDirty()
+    }
+
+    private fun parseBlockPositionUpdate(obj: JsonObject) {
+        val action = obj["action"].asString
+        val pos = net.minecraft.core.BlockPos(obj["x"].asInt, obj["y"].asInt, obj["z"].asInt)
+        when (action) {
+            "add" -> {
+                BlockRendererHandler.addBlockPosition(pos, obj["v"].asInt)
+                BlockRendererHandler.markSectionDirtyAt(pos)
+            }
+            "remove" -> {
+                BlockRendererHandler.removeBlockPosition(pos)
+                BlockRendererHandler.markSectionDirtyAt(pos)
+            }
         }
     }
 

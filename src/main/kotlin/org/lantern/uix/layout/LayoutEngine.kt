@@ -5,6 +5,7 @@ import org.lantern.uix.enums.Anchor
 import org.lantern.uix.enums.FlexDirection
 import org.lantern.uix.enums.JustifyContent
 import org.lantern.uix.style.StyleProperty
+import org.lantern.uix.style.StyleRule
 import org.lantern.uix.widget.IWidget
 import org.lantern.uix.widget.panel.PanelWidgetImpl
 
@@ -20,9 +21,24 @@ object LayoutEngine {
         val result = LayoutResult()
         // 将根 widget 放入布局结果，使渲染器能查到它的坐标
         if (root is PanelWidgetImpl) {
-            val rootW = root.style.getInt(StyleProperty.WIDTH).let { if (it == 0) availableWidth else it }
-            val rootH = root.style.getInt(StyleProperty.HEIGHT).let { if (it == 0) availableHeight else it }
-            result.put(root, LayoutRect(0, 0, rootW, rootH))
+            val rootStyle = root.style
+            val rootW = rootStyle.getInt(StyleProperty.WIDTH).let { if (it == 0) availableWidth else it }
+            val rootH = rootStyle.getInt(StyleProperty.HEIGHT).let { if (it == 0) availableHeight else it }
+            val isAbsolute = rootStyle.getString(StyleProperty.POSITION, "") == "absolute"
+            val rootRect = if (isAbsolute) {
+                val (rootX, rootY) = resolveAnchoredPosition(rootStyle, availableWidth, availableHeight, rootW, rootH)
+                LayoutRect(rootX, rootY, rootW, rootH)
+            } else {
+                LayoutRect(
+                    rootStyle.getInt(StyleProperty.X),
+                    rootStyle.getInt(StyleProperty.Y),
+                    rootW,
+                    rootH
+                )
+            }
+            result.put(root, rootRect)
+            layoutWidget(root, 0, 0, rootW, rootH, result)
+            return result
         }
         layoutWidget(root, 0, 0, availableWidth, availableHeight, result)
         return result
@@ -211,6 +227,30 @@ object LayoutEngine {
         }
     }
 
+    private fun resolveAnchoredPosition(
+        style: StyleRule,
+        containerW: Int,
+        containerH: Int,
+        widgetW: Int,
+        widgetH: Int
+    ): Pair<Int, Int> {
+        val margin = Edges.parseMargin(style)
+        val anchorStr = style.getString(StyleProperty.ANCHOR, "top-left")
+        val anchor = Anchor.fromKey(anchorStr) ?: Anchor.TOP_LEFT
+
+        return when (anchor) {
+            Anchor.TOP_LEFT -> margin.left to margin.top
+            Anchor.TOP_CENTER -> (containerW - widgetW) / 2 to margin.top
+            Anchor.TOP_RIGHT -> (containerW - widgetW - margin.right) to margin.top
+            Anchor.CENTER_LEFT -> margin.left to (containerH - widgetH) / 2
+            Anchor.CENTER -> (containerW - widgetW) / 2 to (containerH - widgetH) / 2
+            Anchor.CENTER_RIGHT -> (containerW - widgetW - margin.right) to (containerH - widgetH) / 2
+            Anchor.BOTTOM_LEFT -> margin.left to (containerH - widgetH - margin.bottom)
+            Anchor.BOTTOM_CENTER -> (containerW - widgetW) / 2 to (containerH - widgetH - margin.bottom)
+            Anchor.BOTTOM_RIGHT -> (containerW - widgetW - margin.right) to (containerH - widgetH - margin.bottom)
+        }
+    }
+
     private fun layoutAbsoluteChild(
         child: IWidget,
         containerW: Int,
@@ -218,56 +258,9 @@ object LayoutEngine {
         result: LayoutResult
     ) {
         val style = child.style
-        val margin = Edges.parseMargin(style)
         val w = style.getInt(StyleProperty.WIDTH)
         val h = style.getInt(StyleProperty.HEIGHT)
-
-        val anchorStr = style.getString(StyleProperty.ANCHOR, "top-left")
-        val anchor = Anchor.fromKey(anchorStr) ?: Anchor.TOP_LEFT
-
-        // 根据 anchor 的 3×3 网格计算锚点坐标
-        val anchorX: Int
-        val anchorY: Int
-
-        when (anchor) {
-            Anchor.TOP_LEFT -> {
-                anchorX = margin.left
-                anchorY = margin.top
-            }
-            Anchor.TOP_CENTER -> {
-                anchorX = (containerW - w) / 2
-                anchorY = margin.top
-            }
-            Anchor.TOP_RIGHT -> {
-                anchorX = containerW - w - margin.right
-                anchorY = margin.top
-            }
-            Anchor.CENTER_LEFT -> {
-                anchorX = margin.left
-                anchorY = (containerH - h) / 2
-            }
-            Anchor.CENTER -> {
-                anchorX = (containerW - w) / 2
-                anchorY = (containerH - h) / 2
-            }
-            Anchor.CENTER_RIGHT -> {
-                anchorX = containerW - w - margin.right
-                anchorY = (containerH - h) / 2
-            }
-            Anchor.BOTTOM_LEFT -> {
-                anchorX = margin.left
-                anchorY = containerH - h - margin.bottom
-            }
-            Anchor.BOTTOM_CENTER -> {
-                anchorX = (containerW - w) / 2
-                anchorY = containerH - h - margin.bottom
-            }
-            Anchor.BOTTOM_RIGHT -> {
-                anchorX = containerW - w - margin.right
-                anchorY = containerH - h - margin.bottom
-            }
-        }
-
-        result.put(child, LayoutRect(anchorX, anchorY, w, h))
+        val (x, y) = resolveAnchoredPosition(style, containerW, containerH, w, h)
+        result.put(child, LayoutRect(x, y, w, h))
     }
 }

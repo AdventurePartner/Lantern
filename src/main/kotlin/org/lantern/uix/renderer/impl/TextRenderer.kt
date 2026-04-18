@@ -7,6 +7,7 @@ import org.lantern.uix.renderer.IWidgetRenderer
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.widget.text.TextWidgetImpl
+import org.lantern.uix.util.ColorUtil
 
 object TextRenderer : IWidgetRenderer<TextWidgetImpl> {
 
@@ -23,17 +24,8 @@ object TextRenderer : IWidgetRenderer<TextWidgetImpl> {
         val x = rect?.x ?: style.getInt(StyleProperty.X)
         val y = rect?.y ?: style.getInt(StyleProperty.Y)
         val colorHex = style.getString(StyleProperty.COLOR, "#ffffff")
-        val color = parseColor(colorHex)
+        val color = ColorUtil.parseColor(colorHex)
         val font = Minecraft.getInstance().font
         graphics.drawString(font, widget.text, x, y, color, false)
-    }
-
-    private fun parseColor(hex: String): Int {
-        return try {
-            val clean = hex.trimStart('#')
-            if (clean.length == 6) (0xFF shl 24) or clean.toInt(16) else clean.toInt(16)
-        } catch (_: NumberFormatException) {
-            0xFFFFFFFF.toInt()
-        }
     }
 }

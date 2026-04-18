@@ -11,11 +11,21 @@ import software.bernie.geckolib.animation.AnimatableManager
 import software.bernie.geckolib.animation.AnimationController
 import software.bernie.geckolib.animation.PlayState
 import software.bernie.geckolib.animation.RawAnimation
+import java.util.concurrent.ConcurrentHashMap
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache
 import software.bernie.geckolib.util.GeckoLibUtil
 
 class GenericReplacedEntity<T : Entity>(private val entityType: EntityType<T>) : GeoReplacedEntity {
     private val cache = GeckoLibUtil.createInstanceCache(this)
+
+    private val loopCache = ConcurrentHashMap<String, RawAnimation>()
+    private val playCache = ConcurrentHashMap<String, RawAnimation>()
+
+    private fun cachedLoop(name: String): RawAnimation =
+        loopCache.getOrPut(name) { RawAnimation.begin().thenLoop(name) }
+
+    private fun cachedPlay(name: String): RawAnimation =
+        playCache.getOrPut(name) { RawAnimation.begin().thenPlay(name) }
 
     // 当前使用的动画状态映射（由渲染器设置）
     var currentAnimationStates: AnimationStateMapping? = null
@@ -37,14 +47,14 @@ class GenericReplacedEntity<T : Entity>(private val entityType: EntityType<T>) :
             // 根据状态设置动画
             when (currentState) {
                 EntityAnimationState.WALK -> {
-                    state.controller.setAnimation(RawAnimation.begin().thenLoop(animStates.walk))
+                    state.controller.setAnimation(cachedLoop(animStates.walk))
                 }
                 EntityAnimationState.IDLE -> {
-                    state.controller.setAnimation(RawAnimation.begin().thenLoop(animStates.idle))
+                    state.controller.setAnimation(cachedLoop(animStates.idle))
                 }
                 else -> {
                     // 对于其他状态（DEATH, HURT, ATTACK），使用 idle 作为基础
-                    state.controller.setAnimation(RawAnimation.begin().thenLoop(animStates.idle))
+                    state.controller.setAnimation(cachedLoop(animStates.idle))
                 }
             }
 
@@ -62,19 +72,19 @@ class GenericReplacedEntity<T : Entity>(private val entityType: EntityType<T>) :
             when (currentState) {
                 EntityAnimationState.DEATH -> {
                     animStates.death?.let { deathAnim ->
-                        state.controller.setAnimation(RawAnimation.begin().thenPlay(deathAnim))
+                        state.controller.setAnimation(cachedPlay(deathAnim))
                         return@AnimationController PlayState.CONTINUE
                     }
                 }
                 EntityAnimationState.HURT -> {
                     animStates.hurt?.let { hurtAnim ->
-                        state.controller.setAnimation(RawAnimation.begin().thenPlay(hurtAnim))
+                        state.controller.setAnimation(cachedPlay(hurtAnim))
                         return@AnimationController PlayState.CONTINUE
                     }
                 }
                 EntityAnimationState.ATTACK -> {
                     animStates.attack?.let { attackAnim ->
-                        state.controller.setAnimation(RawAnimation.begin().thenLoop(attackAnim))
+                        state.controller.setAnimation(cachedLoop(attackAnim))
                         return@AnimationController PlayState.CONTINUE
                     }
                 }

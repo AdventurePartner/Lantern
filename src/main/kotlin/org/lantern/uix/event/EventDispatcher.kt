@@ -12,6 +12,11 @@ object EventDispatcher {
     private val hoveredComponents: MutableSet<IComponent> =
         Collections.newSetFromMap(java.util.IdentityHashMap())
 
+    fun hasHoveredComponents(): Boolean = hoveredComponents.isNotEmpty()
+    // Reusable scratch set, swapped each frame to avoid per-frame allocation
+    private val scratchSet: MutableSet<IComponent> =
+        Collections.newSetFromMap(java.util.IdentityHashMap())
+
     fun dispatchClick(root: IComponent, mouseX: Int, mouseY: Int, button: Int = 0) {
         dispatchClickRecursive(root, mouseX, mouseY, button)
     }
@@ -50,22 +55,21 @@ object EventDispatcher {
     }
 
     fun updateHover(root: IComponent, mouseX: Int, mouseY: Int) {
-        val currentHovered: MutableSet<IComponent> =
-            Collections.newSetFromMap(java.util.IdentityHashMap())
-        collectHovered(root, mouseX, mouseY, currentHovered)
+        scratchSet.clear()
+        collectHovered(root, mouseX, mouseY, scratchSet)
 
         // Components that were hovered but no longer are -> leave
         val iterator = hoveredComponents.iterator()
         while (iterator.hasNext()) {
             val comp = iterator.next()
-            if (comp !in currentHovered) {
+            if (comp !in scratchSet) {
                 iterator.remove()
                 comp.dispatchMouseLeave(MouseEvent(mouseX, mouseY))
             }
         }
 
         // Components that are now hovered but weren't before -> enter
-        for (comp in currentHovered) {
+        for (comp in scratchSet) {
             if (comp !in hoveredComponents) {
                 hoveredComponents.add(comp)
                 comp.dispatchMouseEnter(MouseEvent(mouseX, mouseY))

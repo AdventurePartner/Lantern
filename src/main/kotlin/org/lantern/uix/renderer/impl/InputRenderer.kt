@@ -8,6 +8,7 @@ import org.lantern.uix.renderer.IWidgetRenderer
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.widget.input.InputWidgetImpl
+import org.lantern.uix.util.ColorUtil
 
 object InputRenderer : IWidgetRenderer<InputWidgetImpl> {
 
@@ -30,12 +31,12 @@ object InputRenderer : IWidgetRenderer<InputWidgetImpl> {
 
         // Background
         val bgHex = style.getString(StyleProperty.BACKGROUND, "#1a1a1a")
-        graphics.fill(x, y, x + w, y + h, parseColor(bgHex, 0xFF1a1a1a.toInt()))
+        graphics.fill(x, y, x + w, y + h, ColorUtil.parseColor(bgHex, 0xFF1a1a1a.toInt()))
 
         // Border — brighter blue when focused
         val borderDefault = if (widget.focused) "#5588ff" else "#555555"
         val borderHex = style.getString(StyleProperty.BORDER_COLOR, borderDefault)
-        val borderColor = parseColor(borderHex, if (widget.focused) 0xFF5588ff.toInt() else 0xFF555555.toInt())
+        val borderColor = ColorUtil.parseColor(borderHex, if (widget.focused) 0xFF5588ff.toInt() else 0xFF555555.toInt())
         graphics.fill(x,         y,         x + w,     y + 1,     borderColor)
         graphics.fill(x,         y + h - 1, x + w,     y + h,     borderColor)
         graphics.fill(x,         y,         x + 1,     y + h,     borderColor)
@@ -47,7 +48,7 @@ object InputRenderer : IWidgetRenderer<InputWidgetImpl> {
 
         if (widget.value.isEmpty() && !widget.focused) {
             val phHex = style.getString(StyleProperty.PLACEHOLDER_COLOR, "#888888")
-            val phColor = parseColor(phHex, 0xFF888888.toInt())
+            val phColor = ColorUtil.parseColor(phHex, 0xFF888888.toInt())
             val ph = font.plainSubstrByWidth(widget.placeholder, maxTextWidth)
             graphics.drawString(font, ph, x + PADDING, textY, phColor, false)
         } else {
@@ -55,7 +56,7 @@ object InputRenderer : IWidgetRenderer<InputWidgetImpl> {
 
             val displayText = font.plainSubstrByWidth(widget.value.substring(widget.viewStart), maxTextWidth)
             val colorHex = style.getString(StyleProperty.COLOR, "#ffffff")
-            val color = parseColor(colorHex, 0xFFFFFFFF.toInt())
+            val color = ColorUtil.parseColor(colorHex, 0xFFFFFFFF.toInt())
             graphics.drawString(font, displayText, x + PADDING, textY, color, false)
 
             // Blinking cursor when focused
@@ -78,15 +79,6 @@ object InputRenderer : IWidgetRenderer<InputWidgetImpl> {
             val visible = font.plainSubstrByWidth(widget.value.substring(widget.viewStart), maxWidth)
             if (widget.cursorPos <= widget.viewStart + visible.length) break
             widget.viewStart++
-        }
-    }
-
-    private fun parseColor(hex: String, fallback: Int): Int {
-        return try {
-            val clean = hex.trimStart('#')
-            if (clean.length == 6) (0xFF shl 24) or clean.toInt(16) else clean.toInt(16)
-        } catch (_: NumberFormatException) {
-            fallback
         }
     }
 }

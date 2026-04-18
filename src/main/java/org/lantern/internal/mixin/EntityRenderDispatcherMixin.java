@@ -5,7 +5,6 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.world.entity.Entity;
 import org.lantern.model.handler.RendererHandler;
 import org.lantern.model.renderer.GenericGeoRenderer;
-import org.lantern.model.wrapper.CustomModelWrapper;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -20,10 +19,6 @@ public abstract class EntityRenderDispatcherMixin {
             return;
         }
         String customName = entity.getCustomName().getString();
-        CustomModelWrapper wrapper = RendererHandler.INSTANCE.getCustomModelWrapper(customName);
-        if (wrapper == null) {
-            return;
-        }
         GenericGeoRenderer<?> renderer = RendererHandler.INSTANCE.getRenderer(entity.getType(), customName);
         if (renderer == null) {
             return;

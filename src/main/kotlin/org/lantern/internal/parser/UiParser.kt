@@ -7,6 +7,7 @@ import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.style.StyleSheet
+import org.lantern.internal.placeholder.PlaceholderStore
 import org.lantern.uix.widget.IWidget
 import org.lantern.uix.widget.button.ButtonWidgetImpl
 import org.lantern.uix.widget.image.ImageWidgetImpl
@@ -23,6 +24,7 @@ import org.lantern.uix.properties.impl.ImageProperties
 object UiParser {
 
     fun parseScreens(screensArray: JsonArray) {
+        PlaceholderStore.clear()
         LayoutCache.clear()
         UiScreenStorage.clear()
         screensArray.map { it as JsonObject }.forEach { screenObj ->

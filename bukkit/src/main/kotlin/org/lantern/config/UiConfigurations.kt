@@ -5,15 +5,20 @@ import com.google.gson.JsonObject
 import org.bukkit.configuration.file.YamlConfiguration
 import org.lantern.LanternPlugin
 import java.io.File
+import org.lantern.placeholder.ScreenPlaceholderConfig
 
 object UiConfigurations {
 
     private val screens = mutableListOf<JsonObject>()
+    private val placeholderConfigs = mutableListOf<ScreenPlaceholderConfig>()
 
     fun getScreens(): List<JsonObject> = screens
 
+    fun getPlaceholderConfigs(): List<ScreenPlaceholderConfig> = placeholderConfigs
+
     fun load() {
         screens.clear()
+        placeholderConfigs.clear()
         loadDir("huds", defaultResources = listOf("huds/example.yml"))
         loadDir("screens", defaultResources = listOf("screens/example.yml"))
     }
@@ -25,9 +30,21 @@ object UiConfigurations {
             defaultResources.forEach { runCatching { LanternPlugin.instance.saveResource(it, false) } }
         }
         dir.listFiles { f -> f.extension == "yml" }?.forEach { file ->
-            runCatching { parseScreen(YamlConfiguration.loadConfiguration(file)) }
-                .onSuccess { screens.add(it) }
-                .onFailure { LanternPlugin.instance.logger.warning("Failed to load UI ${file.name}: ${it.message}") }
+            runCatching {
+                val config = YamlConfiguration.loadConfiguration(file)
+                val screenJson = parseScreen(config)
+                screens.add(screenJson)
+                // Extract placeholder config if the screen declares any
+                val screenId = config.getString("id") ?: return@runCatching
+                val placeholders = config.getStringList("placeholders")
+                if (placeholders.isNotEmpty()) {
+                    val intervalMs = config.getLong("update-interval", 2000L)
+                    val intervalTicks = (intervalMs / 50L).coerceAtLeast(1L)
+                    placeholderConfigs.add(ScreenPlaceholderConfig(screenId, placeholders, intervalTicks))
+                }
+            }.onFailure {
+                LanternPlugin.instance.logger.warning("Failed to load UI ${file.name}: ${it.message}")
+            }
         }
     }
 

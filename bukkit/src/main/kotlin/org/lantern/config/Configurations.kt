@@ -3,6 +3,7 @@ package org.lantern.config
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import org.lantern.LanternPlugin
+import org.lantern.cache.BlockModelCache
 import org.lantern.cache.CostumeCache
 import org.lantern.cache.ItemIconCache
 import org.lantern.cache.KeyCache
@@ -48,6 +49,15 @@ object Configurations {
                 val section = data.getConfigurationSection(key) ?: return@forEach
                 CacheHandler.costumes[key] = CostumeCache(section)
             }
+        }
+        LanternPlugin.instance.saveResource("blockModels.yml", "blockModels.yml", false) {
+            CacheHandler.blockModels.clear()
+            val data = YamlConfiguration.loadConfiguration(it)
+            data.getKeys(false).forEach { key ->
+                val section = data.getConfigurationSection(key) ?: return@forEach
+                CacheHandler.blockModels[key] = BlockModelCache(section)
+            }
+            CacheHandler.rebuildBlockModelIndices()
         }
         UiConfigurations.load()
     }

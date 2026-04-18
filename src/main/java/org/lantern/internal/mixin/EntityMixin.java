@@ -13,6 +13,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(Entity.class)
 public abstract class EntityMixin {
 
+    @Unique private net.minecraft.network.chat.Component lantern$lastNameComponent;
+    @Unique private CustomModelWrapper lantern$cachedWrapper;
+
     @Inject(method = "getBoundingBox", at = @At("HEAD"), cancellable = true)
     private void onGetBoundingBoxHead(CallbackInfoReturnable<AABB> cir) {
         CustomModelWrapper wrapper = this.lantern$getCustomWrapper();
@@ -27,8 +30,13 @@ public abstract class EntityMixin {
         Entity self = (Entity) (Object) this;
 
         if (!self.hasCustomName()) return null;
-        String customName = self.getCustomName().getString();
-        return RendererHandler.INSTANCE.getCustomModelWrapper(customName);
+
+        net.minecraft.network.chat.Component currentName = self.getCustomName();
+        if (currentName == lantern$lastNameComponent) return lantern$cachedWrapper;
+
+        lantern$lastNameComponent = currentName;
+        lantern$cachedWrapper = RendererHandler.INSTANCE.getCustomModelWrapper(currentName.getString());
+        return lantern$cachedWrapper;
     }
 
     @Unique

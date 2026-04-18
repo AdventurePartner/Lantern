@@ -5,7 +5,11 @@ import org.bukkit.Bukkit
 import org.lantern.channel.LanternChannelMessageListener
 import org.lantern.command.LanternCommand
 import org.lantern.config.Configurations
+import org.lantern.handler.CustomBlockTracker
+import org.lantern.listen.BlockListener
 import org.lantern.listen.PlayerListener
+import org.lantern.config.UiConfigurations
+import org.lantern.placeholder.PlaceholderService
 
 class LanternPlugin : AyPlugin() {
 
@@ -13,19 +17,34 @@ class LanternPlugin : AyPlugin() {
         lateinit var instance: LanternPlugin
     }
 
+    lateinit var channelListener: LanternChannelMessageListener
+        private set
+
     override fun onEnable() {
         instance = this
         Configurations.load()
+        CustomBlockTracker.load()
+        CustomBlockTracker.startAutoSave(this)
         // 注册监听器
         Bukkit.getPluginManager().registerEvents(PlayerListener(), this)
+        Bukkit.getPluginManager().registerEvents(BlockListener(), this)
         // 注册消息通道
         Bukkit.getMessenger().registerOutgoingPluginChannel(this, "lantern:main")
-        Bukkit.getMessenger().registerIncomingPluginChannel(this, "lantern:main", LanternChannelMessageListener())
+        channelListener = LanternChannelMessageListener()
+        Bukkit.getMessenger().registerIncomingPluginChannel(this, "lantern:main", channelListener)
         // 注册命令
         getCommand("lantern")?.let {
             val cmd = LanternCommand()
             it.setExecutor(cmd)
             it.tabCompleter = cmd
         }
+        // 启动 PlaceholderAPI 变量推送（依赖 UiConfigurations 已加载）
+        PlaceholderService.load(UiConfigurations.getPlaceholderConfigs())
+    }
+
+    override fun onDisable() {
+        PlaceholderService.stopAll()
+        CustomBlockTracker.stopAutoSave()
+        CustomBlockTracker.save()
     }
 }

@@ -8,8 +8,11 @@ import org.lantern.uix.renderer.IWidgetRenderer
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.widget.image.ImageWidgetImpl
+import java.util.concurrent.ConcurrentHashMap
 
 object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
+    private val rlCache = ConcurrentHashMap<String, ResourceLocation?>()
+
 
     override fun render(
         widget: ImageWidgetImpl,
@@ -30,7 +33,9 @@ object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
         val loc = if (TextureHandler.isHttpUrl(widget.texture)) {
             TextureHandler.getTexture(widget.texture)
         } else {
-            runCatching { ResourceLocation.parse(widget.texture) }.getOrNull() ?: return
+            rlCache.getOrPut(widget.texture) {
+                try { ResourceLocation.parse(widget.texture) } catch (_: Exception) { null }
+            } ?: return
         }
         graphics.blit(loc, x, y, w, h, 0f, 0f, w, h, w, h)
     }

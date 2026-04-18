@@ -2,8 +2,9 @@ package org.lantern.uix.widget.text
 
 import net.minecraft.client.gui.GuiGraphics
 import org.lantern.uix.widget.BaseWidget
+import org.lantern.uix.widget.ITextHolder
 
-class TextWidgetImpl(var text: String = "") : BaseWidget() {
+class TextWidgetImpl(override var text: String = "") : BaseWidget(), ITextHolder {
 
     override val widgetType: String = "text"
 

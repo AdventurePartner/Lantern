@@ -136,6 +136,8 @@ public abstract class FallbackResourceManagerMixin {
                     .resolve("lantern");
                 Path searchPath = localNsPath.resolve(path);
                 if (Files.exists(searchPath)) {
+                    // Files.walk only runs during resource atlas building (not per-frame).
+                    // The directory is small (LanternPackLocal local files), so no caching needed.
                     Files.walk(searchPath)
                         .filter(Files::isRegularFile)
                         .forEach(file -> {

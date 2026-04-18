@@ -9,7 +9,17 @@ import org.lantern.internal.wrapper.resource.ByteArrayResourceWrapper
 
 object EncryptedPackLoader {
 
+    private var lastPassword: String? = null
+
+    fun reloadEncryptedPacks() {
+        val pwd = lastPassword
+        if (pwd != null && pwd.isNotBlank()) {
+            loadEncryptedPacks(pwd)
+        }
+    }
+
     fun loadEncryptedPacks(password: String) {
+        lastPassword = password
         if (password.isBlank()) {
             Lantern.logger.warn("[Lantern] Encrypted pack password is empty, skipping")
             return
