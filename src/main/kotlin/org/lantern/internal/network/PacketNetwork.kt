@@ -2,24 +2,22 @@
 
 package org.lantern.internal.network
 
-import com.google.gson.JsonObject
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import org.lantern.Lantern
+import org.lantern.core.protocol.LanternProtocol
 import org.lantern.internal.network.packet.KeyboardPacket
 import org.lantern.internal.network.packet.LanternDataPacket
 import org.lantern.internal.network.packet.LanternMainPacket
 import org.lantern.internal.util.JsonUtils
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
 
 object PacketNetwork {
-    val LANTERN_DATA_ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "data")
-    val KEYBOARD_ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "keyboard")
-    val LANTERN_MAIN_ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "main")
+    val LANTERN_DATA_ID: ResourceLocation = IdentifierBridge.of(Lantern.MOD_ID, "data")
+    val KEYBOARD_ID: ResourceLocation = IdentifierBridge.of(Lantern.MOD_ID, "keyboard")
+    val LANTERN_MAIN_ID: ResourceLocation = IdentifierBridge.of(Lantern.MOD_ID, "main")
 
     fun registerPackets() {
         // 注册 S2C (Server to Client) 数据包
@@ -35,8 +33,8 @@ object PacketNetwork {
         ClientPlayNetworking.registerGlobalReceiver(LanternMainPacket.TYPE) { payload, context ->
             val data = payload.data
             context.client().execute {
-                decodeMainS2C(data)?.let { (packetId, obj) ->
-                    NetworkParser.parse(packetId, obj)
+                LanternProtocol.decodeMainS2C(data)?.let { packet ->
+                    NetworkParser.parse(packet.packetId, JsonUtils.fromString(packet.json))
                 }
             }
         }
@@ -48,7 +46,7 @@ object PacketNetwork {
 
     fun sendKeyboardPacket(key: String, press: Boolean, inGui: Boolean = false) {
         if (ClientPlayNetworking.canSend(LanternMainPacket.TYPE)) {
-            val data = encodeMainC2SKeyboard(key, press, inGui)
+            val data = LanternProtocol.encodeKeyboardC2S(key, press, inGui)
             ClientPlayNetworking.send(LanternMainPacket(data))
             return
         }
@@ -57,33 +55,4 @@ object PacketNetwork {
         }
     }
 
-    private fun decodeMainS2C(data: ByteArray): Pair<Int, JsonObject>? {
-        return try {
-            DataInputStream(ByteArrayInputStream(data)).use { input ->
-                val packetType = input.readByte().toInt()
-                if (packetType != 0) {
-                    return null
-                }
-                val packetId = input.readInt()
-                val raw = input.readAllBytes()
-                val obj = JsonUtils.fromString(String(raw, Charsets.UTF_8))
-                packetId to obj
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun encodeMainC2SKeyboard(key: String, press: Boolean, inGui: Boolean = false): ByteArray {
-        val output = ByteArrayOutputStream()
-        DataOutputStream(output).use { data ->
-            data.writeByte(1)
-            val keyBytes = key.toByteArray(Charsets.UTF_8)
-            data.writeInt(keyBytes.size)
-            data.write(keyBytes)
-            data.writeBoolean(press)
-            data.writeBoolean(inGui)
-        }
-        return output.toByteArray()
-    }
 }

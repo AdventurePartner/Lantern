@@ -1,6 +1,7 @@
 package org.lantern.internal.wrapper.resource
 
 import net.minecraft.resources.ResourceLocation
+import org.lantern.platform.IdentifierBridge
 import org.lantern.Lantern
 import java.io.ByteArrayInputStream
 import java.io.InputStream
@@ -15,11 +16,11 @@ class ItemIconResourceWrapperImpl(rawIdentifier: String, private val texturePath
 
     // 主资源路径：loadItemModelAndDependencies 查找 models/item/{identifier}.json
     private val primaryLocation: ResourceLocation =
-        ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "models/item/$identifier.json")
+        IdentifierBridge.of(Lantern.MOD_ID, "models/item/$identifier.json")
 
     // 备用资源路径：某些情况下可能查找 models/{identifier}.json
     private val secondaryLocation: ResourceLocation =
-        ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "models/$identifier.json")
+        IdentifierBridge.of(Lantern.MOD_ID, "models/$identifier.json")
 
     override fun getResourceLocation(): ResourceLocation = primaryLocation
 

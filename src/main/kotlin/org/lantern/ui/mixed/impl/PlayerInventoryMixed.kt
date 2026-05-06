@@ -3,6 +3,8 @@ package org.lantern.ui.mixed.impl
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.inventory.InventoryScreen
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import net.minecraft.world.entity.player.Player
 import org.lantern.ui.layer.ILayer
 import org.lantern.ui.layer.gui.InventoryLayerImpl
@@ -11,7 +13,7 @@ import org.lantern.ui.misc.impl.GuiMisc
 
 class PlayerInventoryMixed(private val layer: InventoryLayerImpl, player: Player) : IMixed, InventoryScreen(player) {
     private val params = layer.getMisc() as GuiMisc
-    private val resource = params.background?.let { ResourceLocation.parse(it) }
+    private val resource = params.background?.let { IdentifierBridge.parse(it) }
     private var tempMouseX = 0
     private var tempMouseY = 0
 

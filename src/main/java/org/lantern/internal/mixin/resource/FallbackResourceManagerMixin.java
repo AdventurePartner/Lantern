@@ -1,19 +1,19 @@
 package org.lantern.internal.mixin.resource;
 
 import net.minecraft.resources.ResourceLocation;
+import org.lantern.platform.IdentifierBridge;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.FallbackResourceManager;
 import org.lantern.Lantern;
 import org.lantern.internal.handler.ResourceHandler;
 import org.lantern.internal.pack.LanternVirtualPackResources;
 import org.lantern.internal.wrapper.resource.IResourceWrapper;
+import org.lantern.platform.ClientPathBridge;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-
-import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -87,7 +87,7 @@ public abstract class FallbackResourceManagerMixin {
 
         // 从 LanternPackLocal 本地文件夹读取（主要用于纹理 PNG）
         try {
-            Path localFile = FabricLoader.getInstance().getGameDir()
+            Path localFile = ClientPathBridge.gameDir()
                 .resolve("resourcePacks")
                 .resolve("LanternPackLocal")
                 .resolve("assets")
@@ -129,7 +129,7 @@ public abstract class FallbackResourceManagerMixin {
         // 此处会将 LanternPackLocal/assets/lantern/textures/item/*.png 加入返回列表，从而进入图集
         if ("lantern".equals(namespace)) {
             try {
-                Path localNsPath = FabricLoader.getInstance().getGameDir()
+                Path localNsPath = ClientPathBridge.gameDir()
                     .resolve("resourcePacks")
                     .resolve("LanternPackLocal")
                     .resolve("assets")
@@ -145,7 +145,7 @@ public abstract class FallbackResourceManagerMixin {
                             // ResourceLocation 创建失败，跳过该文件而不中断整个遍历
                             try {
                                 String rel = localNsPath.relativize(file).toString().replace('\\', '/');
-                                ResourceLocation rl = ResourceLocation.fromNamespaceAndPath("lantern", rel);
+                                ResourceLocation rl = IdentifierBridge.of("lantern", rel);
                                 if (predicate.test(rl)) {
                                     merged.putIfAbsent(rl, new Resource(
                                         LanternVirtualPackResources.INSTANCE,

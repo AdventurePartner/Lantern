@@ -3,8 +3,12 @@ package org.lantern.internal.handler
 import net.minecraft.client.gui.Font
 import net.minecraft.client.Minecraft
 import net.minecraft.client.resources.model.ModelResourceLocation
+
+import org.lantern.platform.ModelLocationBridge
 import net.minecraft.network.chat.FormattedText
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import org.lantern.Lantern
 import org.lantern.internal.storage.ClientStorage
 import org.lantern.internal.wrapper.key.CharacterWrapper
@@ -68,7 +72,7 @@ object ResourceHandler {
             } else {
                 identifier
             }
-            ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, normalizedPath))
+            ModelLocationBridge.inventory(IdentifierBridge.of(Lantern.MOD_ID, normalizedPath))
         }
         Lantern.logger.debug("[Lantern] getItemCustomIcons returning {} entries", result.size)
         return result
@@ -131,7 +135,7 @@ object ResourceHandler {
 
     fun getBlockCustomModels(): Map<Int, ModelResourceLocation> {
         return blockCustomModels.mapValues { (_, identifier) ->
-            ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "block/$identifier"))
+            ModelLocationBridge.inventory(IdentifierBridge.of(Lantern.MOD_ID, "block/$identifier"))
         }
     }
 
@@ -247,11 +251,11 @@ object ResourceHandler {
         clientStorage.blockModels.forEach { (variation, entry) ->
             blockCustomModels[variation] = entry.identifier
             val isHttpTexture = TextureHandler.isHttpUrl(entry.texture)
-            val geo = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, entry.geo)
+            val geo = IdentifierBridge.of(Lantern.MOD_ID, entry.geo)
             val texture = if (isHttpTexture) TextureHandler.getTexture(entry.texture)
-                else ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, entry.texture)
+                else IdentifierBridge.of(Lantern.MOD_ID, entry.texture)
             val animation = entry.animation?.takeIf { it.isNotBlank() }?.let {
-                ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, it)
+                IdentifierBridge.of(Lantern.MOD_ID, it)
             }
             val wrapper = BlockModelWrapper(
                 geo, texture, animation, entry.scale, entry.idleAnimation, entry.textureUrl,
@@ -268,7 +272,7 @@ object ResourceHandler {
         BlockRendererHandler.resetDiagnosticFlags()
         // 验证加密包资源可达性：取第一个 block model 的 geo 路径检查
         clientStorage.blockModels.entries.firstOrNull()?.let { (_, entry) ->
-            val testRl = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, entry.geo)
+            val testRl = IdentifierBridge.of(Lantern.MOD_ID, entry.geo)
             val found = dynamicResourceLinked.containsKey(testRl)
             Lantern.logger.info(
                 "[Lantern] rebuild: resource check geo={} found={}, dynamicResourceLinked.size={}, blockPositions={}",

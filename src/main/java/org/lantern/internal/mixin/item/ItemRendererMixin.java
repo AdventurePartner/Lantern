@@ -10,10 +10,12 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelManager;
 import net.minecraft.client.resources.model.ModelResourceLocation;
+import org.lantern.platform.ModelLocationBridge;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
+import org.lantern.platform.IdentifierBridge;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
@@ -161,7 +163,7 @@ public abstract class ItemRendererMixin {
     @Unique
     private BakedModel lantern$resolveModel(ModelManager modelManager, String identifier) {
         String normalized = identifier.startsWith("item/") ? identifier.substring("item/".length()) : identifier;
-        ResourceLocation resourceId = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, normalized);
+        ResourceLocation resourceId = IdentifierBridge.of(Lantern.MOD_ID, normalized);
 
         // 優先通過 FabricBakedModelManager 獲取 fabric_resource 變體（由 ctx.addModels 正確烘焙）
         BakedModel fabricModel = ((FabricBakedModelManager) modelManager).getModel(resourceId);
@@ -172,7 +174,7 @@ public abstract class ItemRendererMixin {
         }
 
         // 降級：嘗試 inventory 變體
-        ModelResourceLocation inventoryLoc = ModelResourceLocation.inventory(resourceId);
+        ModelResourceLocation inventoryLoc = ModelLocationBridge.inventory(resourceId);
         BakedModel inventoryModel = modelManager.getModel(inventoryLoc);
         if (inventoryModel != null && inventoryModel != modelManager.getMissingModel()) {
             if (!inventoryModel.getParticleIcon().contents().name().equals(MissingTextureAtlasSprite.getLocation())) {

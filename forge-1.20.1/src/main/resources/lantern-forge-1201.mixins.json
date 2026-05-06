@@ -1,0 +1,30 @@
+{
+  "required": true,
+  "package": "org.lantern.internal.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "minVersion": "0.8",
+  "client": [
+    "EntityMixin",
+    "EntityRenderDispatcherMixin",
+    "font.StringRenderOutput1201Mixin",
+    "item.ForgeItemRendererMixin",
+    "model.ModelBakery1201Mixin",
+    "renderer.EntityRenderer1201Mixin",
+    "resource.FallbackResourceManager1201Mixin",
+    "costume.PlayerRendererMixin",
+    "costume.ItemInHandRenderer1201Mixin",
+    "hud.GuiHudRender1201Mixin",
+    "hud.PlayerTabOverlayMixin",
+    "uix.ScreenRenderMixin",
+    "block.LevelRendererMixin",
+    "block.ParticleEngineMixin",
+    "block.BlockRenderDispatcherMixin",
+    "block.BlockItem1201Mixin",
+    "block.BarrelBlock1201Mixin",
+    "model.BarrelModelMixin"
+  ],
+  "mixins": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

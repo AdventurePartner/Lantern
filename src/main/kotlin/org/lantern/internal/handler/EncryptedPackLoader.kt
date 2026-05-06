@@ -1,11 +1,13 @@
 package org.lantern.internal.handler
 
-import net.fabricmc.loader.api.FabricLoader
 import net.lingala.zip4j.ZipFile
 import net.lingala.zip4j.exception.ZipException
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import org.lantern.Lantern
 import org.lantern.internal.wrapper.resource.ByteArrayResourceWrapper
+import org.lantern.platform.ClientPathBridge
 
 object EncryptedPackLoader {
 
@@ -28,7 +30,7 @@ object EncryptedPackLoader {
         // 清除之前加载的加密包资源
         ResourceHandler.clearEncryptedPackResources()
 
-        val resourcePacksDir = FabricLoader.getInstance().gameDir
+        val resourcePacksDir = ClientPathBridge.gameDir()
             .resolve("resourcePacks")
             .toFile()
 
@@ -80,7 +82,7 @@ object EncryptedPackLoader {
                         val data = inputStream.readAllBytes()
                         inputStream.close()
 
-                        val rl = ResourceLocation.fromNamespaceAndPath(namespace, path)
+                        val rl = IdentifierBridge.of(namespace, path)
                         val wrapper = ByteArrayResourceWrapper(rl, data)
                         ResourceHandler.addEncryptedPackResource(rl, wrapper)
                         loadedCount++

@@ -4,6 +4,7 @@ import net.minecraft.client.resources.model.ModelBakery;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.client.resources.model.UnbakedModel;
 import net.minecraft.resources.ResourceLocation;
+import org.lantern.platform.IdentifierBridge;
 import org.lantern.internal.handler.ResourceHandler;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -48,7 +49,7 @@ public abstract class ModelBakeryMixin {
     @Unique
     private void lantern$loadAndRegister(ModelResourceLocation modelLoc, String prefix) {
         ResourceLocation modelId = modelLoc.id();
-        ResourceLocation cacheKey = ResourceLocation.fromNamespaceAndPath(
+        ResourceLocation cacheKey = IdentifierBridge.of(
             modelId.getNamespace(), prefix + modelId.getPath()
         );
         if (topLevelModels.containsKey(modelLoc)) {

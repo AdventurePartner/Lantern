@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "org.lantern.internal.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "client": [
+    "item.ForgeItemRendererMixin"
+  ],
+  "mixins": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

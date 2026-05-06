@@ -9,6 +9,7 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import org.lantern.platform.IdentifierBridge;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -159,7 +160,7 @@ public abstract class ParticleEngineMixin {
         if (stripped.endsWith(".png")) {
             stripped = stripped.substring(0, stripped.length() - ".png".length());
         }
-        return ResourceLocation.fromNamespaceAndPath(textureLoc.getNamespace(), stripped);
+        return IdentifierBridge.of(textureLoc.getNamespace(), stripped);
     }
 
     @Unique

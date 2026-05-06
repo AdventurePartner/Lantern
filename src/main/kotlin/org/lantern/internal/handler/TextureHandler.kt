@@ -5,6 +5,8 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.texture.DynamicTexture
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import org.lantern.Lantern
 import java.awt.AlphaComposite
 import java.awt.image.BufferedImage
@@ -32,7 +34,7 @@ object TextureHandler {
                 return@let def
             }
 
-            val res = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, path)
+            val res = IdentifierBridge.of(Lantern.MOD_ID, path)
             if (Minecraft.getInstance().resourceManager.getResource(res).isPresent) {
                 textures[path] = res
                 return@let res
@@ -57,7 +59,7 @@ object TextureHandler {
                     val (frames, delays) = result
                     val texture = AnimatedGifTexture(frames, delays)
                     Minecraft.getInstance().execute {
-                        val loc = ResourceLocation.fromNamespaceAndPath(
+                        val loc = IdentifierBridge.of(
                             Lantern.MOD_ID, "dynamic/gif_${idCounter.getAndIncrement()}"
                         )
                         Minecraft.getInstance().textureManager.register(loc, texture)

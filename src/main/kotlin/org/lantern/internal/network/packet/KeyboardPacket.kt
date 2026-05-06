@@ -4,6 +4,8 @@ import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import org.lantern.Lantern
 
 data class KeyboardPacket(
@@ -16,7 +18,7 @@ data class KeyboardPacket(
 
     companion object {
         val TYPE: CustomPacketPayload.Type<KeyboardPacket> = CustomPacketPayload.Type(
-            ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "keyboard")
+            IdentifierBridge.of(Lantern.MOD_ID, "keyboard")
         )
 
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, KeyboardPacket> = StreamCodec.of(

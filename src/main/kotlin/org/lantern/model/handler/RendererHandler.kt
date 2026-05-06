@@ -2,6 +2,8 @@ package org.lantern.model.handler
 
 import com.google.gson.JsonObject
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import net.minecraft.world.entity.EntityType
 import org.lantern.Lantern
 import org.lantern.internal.handler.TextureHandler
@@ -25,7 +27,7 @@ object RendererHandler {
         val texturePath = obj.get("texture").asString
         val isHttpTexture = TextureHandler.isHttpUrl(texturePath)
 
-        val geo = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, geoPath)
+        val geo = IdentifierBridge.of(Lantern.MOD_ID, geoPath)
 
         val texture: ResourceLocation
         val textureUrl: String?
@@ -33,7 +35,7 @@ object RendererHandler {
             texture = TextureHandler.getTexture(texturePath)
             textureUrl = texturePath
         } else {
-            texture = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, texturePath)
+            texture = IdentifierBridge.of(Lantern.MOD_ID, texturePath)
             textureUrl = null
         }
 
@@ -45,7 +47,7 @@ object RendererHandler {
             // 新格式：animations 对象包含 file 和 states
             val animationsObj = obj.getAsJsonObject("animations")
             val animationPath = animationsObj.get("file").asString
-            animationLocation = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, animationPath)
+            animationLocation = IdentifierBridge.of(Lantern.MOD_ID, animationPath)
 
             // 解析状态映射
             val statesObj = if (animationsObj.has("states") && animationsObj.get("states").isJsonObject) {
@@ -64,7 +66,7 @@ object RendererHandler {
         } else if (obj.has("animation")) {
             // 旧格式：单一 animation 字段
             val animationPath = obj.get("animation").asString
-            animationLocation = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, animationPath)
+            animationLocation = IdentifierBridge.of(Lantern.MOD_ID, animationPath)
 
             // 使用默认动画状态映射
             animationStates = AnimationStateMapping.default("idle")
