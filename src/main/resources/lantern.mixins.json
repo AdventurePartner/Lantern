@@ -13,6 +13,7 @@
     "resource.FallbackResourceManagerMixin",
     "costume.PlayerRendererMixin",
     "costume.ItemInHandRendererMixin",
+    "hud.GuiHudRenderMixin",
     "hud.PlayerTabOverlayMixin",
     "uix.ScreenRenderMixin",
     "block.LevelRendererMixin",

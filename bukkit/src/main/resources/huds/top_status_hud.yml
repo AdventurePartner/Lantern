@@ -1,0 +1,91 @@
+id: top_status_hud
+screen-type: hud
+
+# 声明本 HUD 会使用到的 PlaceholderAPI 变量。
+# 服务端会按 update-interval 定期解析并通过网络包推送到客户端。
+placeholders:
+  - "%player_health%"
+  - "%player_max_health%"
+  - "%player_food_level%"
+  - "%player_level%"
+
+# 单位毫秒，1000 表示每 1 秒刷新一次
+update-interval: 1000
+
+styles:
+  hud-root:
+    position: absolute
+    anchor: top-center
+    margin-top: 8
+    width: 420
+    height: 32
+    display: flex
+    flex-direction: row
+    justify-content: center
+    align-items: center
+    gap: 8
+
+  stat-box:
+    width: 96
+    height: 24
+    background: "#80000000"
+    display: flex
+    flex-direction: row
+    justify-content: center
+    align-items: center
+    gap: 4
+    padding-left: 6
+    padding-right: 6
+
+  stat-icon:
+    width: 10
+    height: 10
+
+  stat-text:
+    color: "#ffffff"
+    height: 9
+    margin-top: -1
+
+root:
+  type: panel
+  style-ref: hud-root
+  children:
+    - type: panel
+      style-ref: stat-box
+      children:
+        - type: image
+          texture: "https://image.mc9y.com/i/2026/04/21/69e75b3f6cb86.png"
+          style-ref: stat-icon
+        - type: text
+          text: "体力 %player_health%/%player_max_health%"
+          style-ref: stat-text
+
+    - type: panel
+      style-ref: stat-box
+      children:
+        - type: image
+          texture: "https://image.mc9y.com/i/2026/04/21/69e75b3f6cb86.png"
+          style-ref: stat-icon
+        - type: text
+          text: "饥饿 %player_food_level%"
+          style-ref: stat-text
+
+    - type: panel
+      style-ref: stat-box
+      children:
+        - type: image
+          texture: "https://image.mc9y.com/i/2026/04/21/69e75b3f6cb86.png"
+          style-ref: stat-icon
+        - type: text
+          text: "等级 %player_level%"
+          style-ref: stat-text
+
+    - type: panel
+      style-ref: stat-box
+      children:
+        - type: image
+          texture: "https://image.mc9y.com/i/2026/04/21/69e75b3f6cb86.png"
+          style-ref: stat-icon
+        - type: text
+          text: "生命上限 %player_max_health%"
+          style-ref: stat-text

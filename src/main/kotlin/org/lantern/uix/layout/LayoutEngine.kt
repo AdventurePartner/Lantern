@@ -1,5 +1,6 @@
 package org.lantern.uix.layout
 
+import net.minecraft.client.Minecraft
 import org.lantern.uix.enums.AlignItems
 import org.lantern.uix.enums.Anchor
 import org.lantern.uix.enums.FlexDirection
@@ -7,7 +8,12 @@ import org.lantern.uix.enums.JustifyContent
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.widget.IWidget
+import org.lantern.uix.widget.button.ButtonWidgetImpl
+import org.lantern.uix.widget.image.ImageWidgetImpl
+import org.lantern.uix.widget.input.InputWidgetImpl
 import org.lantern.uix.widget.panel.PanelWidgetImpl
+import org.lantern.uix.widget.slot.SlotWidgetImpl
+import org.lantern.uix.widget.text.TextWidgetImpl
 
 /**
  * 无状态布局引擎核心。
@@ -16,6 +22,13 @@ import org.lantern.uix.widget.panel.PanelWidgetImpl
  * 未使用布局属性的 Panel 跳过计算，保持向后兼容。
  */
 object LayoutEngine {
+
+    private const val DEFAULT_IMAGE_SIZE = 16
+    private const val DEFAULT_BUTTON_WIDTH = 80
+    private const val DEFAULT_BUTTON_HEIGHT = 20
+    private const val DEFAULT_INPUT_WIDTH = 120
+    private const val DEFAULT_INPUT_HEIGHT = 20
+    private const val DEFAULT_SLOT_SIZE = 18
 
     fun layout(root: IWidget, availableWidth: Int, availableHeight: Int): LayoutResult {
         val result = LayoutResult()
@@ -151,8 +164,9 @@ object LayoutEngine {
         data class ChildSize(val main: Int, val cross: Int, val w: Int, val h: Int)
 
         val sizes = children.map { child ->
-            val cw = child.style.getInt(StyleProperty.WIDTH)
-            val ch = child.style.getInt(StyleProperty.HEIGHT)
+            val measured = measureWidget(child)
+            val cw = measured.width
+            val ch = measured.height
             if (isRow) ChildSize(cw, ch, cw, ch) else ChildSize(ch, cw, cw, ch)
         }
 
@@ -258,9 +272,125 @@ object LayoutEngine {
         result: LayoutResult
     ) {
         val style = child.style
-        val w = style.getInt(StyleProperty.WIDTH)
-        val h = style.getInt(StyleProperty.HEIGHT)
+        val measured = measureWidget(child)
+        val w = measured.width
+        val h = measured.height
         val (x, y) = resolveAnchoredPosition(style, containerW, containerH, w, h)
         result.put(child, LayoutRect(x, y, w, h))
+    }
+
+    private data class MeasuredSize(val width: Int, val height: Int)
+
+    private fun measureWidget(widget: IWidget): MeasuredSize {
+        val style = widget.style
+        val explicitWidth = style.getInt(StyleProperty.WIDTH)
+        val explicitHeight = style.getInt(StyleProperty.HEIGHT)
+
+        return when (widget) {
+            is TextWidgetImpl -> {
+                val font = Minecraft.getInstance().font
+                MeasuredSize(
+                    width = explicitWidth.takeIf { it > 0 } ?: font.width(widget.text),
+                    height = explicitHeight.takeIf { it > 0 } ?: font.lineHeight
+                )
+            }
+
+            is ImageWidgetImpl -> MeasuredSize(
+                width = explicitWidth.takeIf { it > 0 } ?: DEFAULT_IMAGE_SIZE,
+                height = explicitHeight.takeIf { it > 0 } ?: DEFAULT_IMAGE_SIZE
+            )
+
+            is ButtonWidgetImpl -> MeasuredSize(
+                width = explicitWidth.takeIf { it > 0 } ?: DEFAULT_BUTTON_WIDTH,
+                height = explicitHeight.takeIf { it > 0 } ?: DEFAULT_BUTTON_HEIGHT
+            )
+
+            is InputWidgetImpl -> MeasuredSize(
+                width = explicitWidth.takeIf { it > 0 } ?: DEFAULT_INPUT_WIDTH,
+                height = explicitHeight.takeIf { it > 0 } ?: DEFAULT_INPUT_HEIGHT
+            )
+
+            is SlotWidgetImpl -> MeasuredSize(
+                width = explicitWidth.takeIf { it > 0 } ?: DEFAULT_SLOT_SIZE,
+                height = explicitHeight.takeIf { it > 0 } ?: DEFAULT_SLOT_SIZE
+            )
+
+            is PanelWidgetImpl -> measurePanel(widget, explicitWidth, explicitHeight)
+            else -> MeasuredSize(explicitWidth, explicitHeight)
+        }
+    }
+
+    private fun measurePanel(widget: PanelWidgetImpl, explicitWidth: Int, explicitHeight: Int): MeasuredSize {
+        if (explicitWidth > 0 && explicitHeight > 0) {
+            return MeasuredSize(explicitWidth, explicitHeight)
+        }
+
+        val style = widget.style
+        val padding = Edges.parsePadding(style)
+        val hasLayoutProps = style.get(StyleProperty.DISPLAY) != null ||
+                style.get(StyleProperty.FLEX_DIRECTION) != null ||
+                style.get(StyleProperty.JUSTIFY_CONTENT) != null ||
+                style.get(StyleProperty.ALIGN_ITEMS) != null
+
+        val measuredContent = if (hasLayoutProps) {
+            measureFlexContent(widget)
+        } else {
+            measureFreeformContent(widget)
+        }
+
+        return MeasuredSize(
+            width = explicitWidth.takeIf { it > 0 } ?: measuredContent.width + padding.horizontal,
+            height = explicitHeight.takeIf { it > 0 } ?: measuredContent.height + padding.vertical
+        )
+    }
+
+    private fun measureFlexContent(widget: PanelWidgetImpl): MeasuredSize {
+        val style = widget.style
+        val direction = style.getString(StyleProperty.FLEX_DIRECTION, "column")
+            .let { FlexDirection.fromKey(it) } ?: FlexDirection.COLUMN
+        val gap = style.getInt(StyleProperty.GAP)
+        val isRow = direction == FlexDirection.ROW
+
+        var main = 0
+        var cross = 0
+        var count = 0
+
+        widget.children.forEach { child ->
+            if (child.style.getString(StyleProperty.POSITION, "") == "absolute") {
+                return@forEach
+            }
+
+            val childSize = measureWidget(child)
+            val margin = Edges.parseMargin(child.style)
+            val childMain = if (isRow) childSize.width + margin.horizontal else childSize.height + margin.vertical
+            val childCross = if (isRow) childSize.height + margin.vertical else childSize.width + margin.horizontal
+
+            main += childMain
+            cross = maxOf(cross, childCross)
+            count++
+        }
+
+        if (count > 1) {
+            main += gap * (count - 1)
+        }
+
+        return if (isRow) MeasuredSize(main, cross) else MeasuredSize(cross, main)
+    }
+
+    private fun measureFreeformContent(widget: PanelWidgetImpl): MeasuredSize {
+        var width = 0
+        var height = 0
+
+        widget.children.forEach { child ->
+            val childSize = measureWidget(child)
+            val x = child.style.getInt(StyleProperty.X)
+            val y = child.style.getInt(StyleProperty.Y)
+            val margin = Edges.parseMargin(child.style)
+
+            width = maxOf(width, x + childSize.width + margin.horizontal)
+            height = maxOf(height, y + childSize.height + margin.vertical)
+        }
+
+        return MeasuredSize(width, height)
     }
 }

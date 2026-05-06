@@ -5,7 +5,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents
@@ -69,11 +68,6 @@ class LanternFabric : ClientModInitializer {
             BlockRendererHandler.clearPositions()
             BlockRendererHandler.resetDiagnosticFlags()
             RendererHandler.reload()
-        }
-
-        // 注册 HUD 渲染回调
-        HudRenderCallback.EVENT.register { graphics, tickDeltaManager ->
-            CanvasRenderer.hudCanvas.render(graphics, 0, 0, tickDeltaManager.getGameTimeDeltaPartialTick(false))
         }
 
         // 注册 Overlay Screen 鼠标事件
