@@ -84,6 +84,7 @@ dependencies {
 
     modImplementation(geckolibDependency)
     shade(geckolibDependency)
+    shade("com.eliotlash.mclib:mclib:20")
     implementation("net.lingala.zip4j:zip4j:2.11.5")
     forgeRuntimeLibrary(kotlin("stdlib"))
     forgeRuntimeLibrary("net.lingala.zip4j:zip4j:2.11.5")
@@ -100,11 +101,13 @@ tasks {
         configurations = listOf(shade)
         archiveClassifier.set("dev-shadow")
         relocate("software.bernie.geckolib", "org.lantern.shadow.geckolib")
+        relocate("com.eliotlash.mclib", "org.lantern.shadow.mclib")
         exclude("geckolib.mixins.json")
         exclude("geckolib.refmap.json")
         exclude("software/bernie/geckolib/mixin/**")
         exclude("software/bernie/example/**")
         exclude("assets/geckolib/**")
+        exclude("META-INF/jarjar/**")
     }
 
     named("remapJar") {
