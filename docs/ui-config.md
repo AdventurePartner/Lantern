@@ -1,303 +1,353 @@
-# Lantern UI 配置说明
+# 界面配置
 
-本文档说明如何通过 YAML 配置文件为 Lantern 插件定义 HUD 和 GUI 界面。
+界面文件放在服务器的 `plugins/Lantern/` 里：
 
----
-
-## 目录结构
-
-```
-plugins/Lantern/
-├── huds/          # 常驻 HUD 配置（叠加在游戏画面上，始终可见）
-│   └── example.yml
-└── screens/       # GUI Screen 配置（通过命令打开，类似弹窗）
-    └── example.yml
-```
-
-- `huds/` 中的配置在玩家连接时自动加载并渲染，无需手动触发。
-- `screens/` 中的配置在服务端主动调用 `/lantern open <id>` 时才打开。
-
-执行 `/lantern reload` 可重载所有配置并推送给在线玩家。
-
----
-
-## 顶层字段
-
-| 字段 | 必填 | 说明 |
-|---|---|---|
-| `id` | 是 | 界面唯一标识符，用于命令引用 |
-| `screen-type` | 否 | `hud`（默认）或 `gui` |
-| `styles` | 否 | 命名样式集合（见下文） |
-| `root` | 是 | 根组件节点 |
-
-```yaml
-id: my_hud
-screen-type: hud   # 或 gui
-styles:
-  my-style:
-    color: "#ffffff"
-root:
-  type: panel
-  ...
-```
-
----
-
-## 组件类型（type）
-
-### panel
-
-容器组件，可嵌套子组件。子组件的 `x`/`y` 坐标相对于本 panel 的左上角。
-
-| 字段 | 说明 |
+| 文件夹 | 适合放什么 |
 |---|---|
-| `type` | `panel` |
-| `style` | 位置、尺寸、背景色（见样式属性） |
-| `children` | 子组件列表 |
+| `huds/` | 常驻提示，例如血量条、状态栏、图标提示 |
+| `screens/` | 弹出界面，例如菜单、确认框、背包旁的小面板 |
 
-```yaml
-type: panel
-style:
-  x: 10
-  y: 10
-  width: 200
-  height: 100
-  background: "#1a1a2e"
-children:
-  - type: text
-    text: "Hello"
-    style: { x: 5, y: 5 }
-```
+保存后执行 `/lantern reload`，在线玩家会收到新的界面。
 
----
+## 一个界面文件的基本样子
 
-### text
-
-显示一段文本。
-
-| 字段 | 说明 |
-|---|---|
-| `type` | `text` |
-| `text` | 显示内容 |
-| `style` | 位置、颜色、字体大小 |
-
-```yaml
-type: text
-text: "玩家信息"
-style:
-  x: 10
-  y: 5
-  color: "#ffffff"
-  font-size: 12
-```
-
----
-
-### button
-
-可点击的按钮，点击时触发 `action`。
-
-| 字段 | 说明 |
-|---|---|
-| `type` | `button` |
-| `text` | 按钮文字 |
-| `action` | 点击动作（见动作格式） |
-| `style` | 位置、尺寸、颜色、背景色 |
-
-```yaml
-type: button
-text: "确认"
-action: "command:my_command"
-style:
-  x: 50
-  y: 80
-  width: 80
-  height: 20
-  background: "#4a90d9"
-  color: "#ffffff"
-```
-
----
-
-### image
-
-显示一张纹理图片。
-
-| 字段 | 说明 |
-|---|---|
-| `type` | `image` |
-| `texture` | 资源路径，格式 `namespace:path/to/image.png` |
-| `style` | 位置、宽高 |
-
-```yaml
-type: image
-texture: "lantern:textures/example/logo.png"
-style:
-  x: 0
-  y: 0
-  width: 64
-  height: 64
-```
-
----
-
-## 样式属性（style）
-
-所有样式属性写在组件的 `style` 块内，或通过 `style-ref` 引用命名样式。
-
-| 属性 | 类型 | 说明 |
-|---|---|---|
-| `x` | 整数 | 横向位置（相对于父容器左上角） |
-| `y` | 整数 | 纵向位置（相对于父容器左上角） |
-| `width` | 整数 | 宽度（px） |
-| `height` | 整数 | 高度（px） |
-| `color` | 十六进制颜色 | 文字颜色，如 `"#ffffff"` |
-| `background` | 十六进制颜色 | 背景填充色，如 `"#1a1a2e"` |
-| `font-size` | 整数 | 字体大小（目前作为参考，实际由 MC 字体决定） |
-| `border-radius` | 整数 | 圆角半径（预留，CSS 样式扩展用） |
-| `opacity` | 小数 | 透明度 0.0 ~ 1.0（预留） |
-| `visible` | 布尔 | 是否可见，`true`（默认）或 `false` |
-
-> 颜色格式支持 `#RRGGBB`（自动补全 FF alpha）和 `#AARRGGBB`。
-
----
-
-## 命名样式（styles + style-ref）
-
-在顶层 `styles` 块中定义可复用的样式规则，在组件上用 `style-ref` 引用。  
-`style-ref` 作为基础，组件自身的 `style` 块会覆盖其中的同名属性。
-
-```yaml
-styles:
-  btn-primary:
-    background: "#4a90d9"
-    color: "#ffffff"
-    width: 80
-    height: 20
-
-root:
-  type: panel
-  children:
-    - type: button
-      text: "提交"
-      style-ref: btn-primary     # 应用命名样式
-      style:
-        x: 10                    # 仅覆盖位置
-        y: 50
-```
-
----
-
-## 动作字符串（action）
-
-`button` 的 `action` 字段支持以下格式：
-
-| 格式 | 效果 |
-|---|---|
-| `close` | 关闭当前 GUI screen |
-| `command:<cmd>` | 关闭 screen 后以玩家身份执行指令（不需要 `/`） |
-| `open:<screen-id>` | 打开另一个已加载的 GUI screen |
-
-```yaml
-action: "close"
-action: "command:spawn"
-action: "open:confirm_dialog"
-```
-
----
-
-## 服务端命令
-
-| 命令 | 说明 |
-|---|---|
-| `/lantern reload` | 重载所有配置，推送给所有在线玩家 |
-| `/lantern open <screen-id>` | 向执行者打开指定 GUI screen |
-| `/lantern open <screen-id> <player>` | 向指定玩家打开 GUI screen |
-
-Tab 补全：第二参数自动补全已加载的 screen id，第三参数补全在线玩家名。
-
----
-
-## 完整示例
-
-### HUD（`huds/status.yml`）
-
-```yaml
-id: status_hud
+```yml
+id: top_status
 screen-type: hud
 
 root:
   type: panel
   style:
-    x: 5
-    y: 5
-    width: 120
+    x: 10
+    y: 10
+    width: 180
     height: 40
-    background: "#aa000000"
+    background: "#80000000"
   children:
     - type: text
-      text: "状态: 在线"
+      text: "欢迎回来"
       style:
-        x: 5
-        y: 5
-        color: "#00ff00"
-    - type: button
-      text: "菜单"
-      action: "open:main_menu"
-      style:
-        x: 30
-        y: 18
-        width: 60
-        height: 16
-        background: "#334455"
+        x: 8
+        y: 8
         color: "#ffffff"
 ```
 
-### GUI Screen（`screens/main_menu.yml`）
+| 设置名 | 怎么填 |
+|---|---|
+| `id` | 这个界面的名字，指令和按钮会用到 |
+| `screen-type` | `hud` 常驻提示，`gui` 弹出界面，`overlay` 贴在已有界面上 |
+| `match-title` | 只给 `overlay` 用，填写要贴上的原界面标题，必须完全一样 |
+| `placeholders` | 要使用的变量插件文字，例如 `%player_name%` |
+| `update-interval` | 变量刷新间隔，单位是毫秒；不填时是 2000 |
+| `styles` | 复用外观，避免一段颜色和尺寸反复写 |
+| `root` | 最外层内容 |
 
-```yaml
-id: main_menu
-screen-type: gui
+## 三种界面
 
-styles:
-  dialog:
-    background: "#1a1a2e"
-    width: 200
-    height: 120
-  btn-red:
-    background: "#c0392b"
-    color: "#ffffff"
-    width: 80
-    height: 20
+### 常驻提示 `hud`
 
+玩家没有打开聊天栏、背包或菜单时显示。适合血量、等级、服务器状态等轻量内容。
+
+```yml
+id: status_hud
+screen-type: hud
 root:
   type: panel
-  style-ref: dialog
   style:
-    x: 60
-    y: 50
+    position: absolute
+    anchor: top-center
+    margin-top: 8
+    width: 260
+    height: 26
+    background: "#80000000"
   children:
     - type: text
-      text: "主菜单"
+      text: "等级 %player_level%"
       style:
-        x: 80
-        y: 10
+        x: 90
+        y: 8
         color: "#ffffff"
+```
+
+### 弹出界面 `gui`
+
+用 `/lantern open <界面名>` 打开，也可以由按钮打开。适合菜单、确认框、操作面板。
+
+```yml
+id: main_menu
+screen-type: gui
+root:
+  type: panel
+  style:
+    x: 80
+    y: 60
+    width: 220
+    height: 120
+    background: "#1a1a2e"
+  children:
     - type: button
       text: "回到出生点"
       action: "command:spawn"
       style:
-        x: 10
-        y: 50
-        width: 80
-        height: 20
-        background: "#27ae60"
+        x: 55
+        y: 70
+        width: 110
+        height: 22
+        background: "#4a90d9"
         color: "#ffffff"
-    - type: button
-      text: "关闭"
-      action: "close"
-      style-ref: btn-red
-      style:
-        x: 110
-        y: 50
 ```
+
+### 贴在已有界面上 `overlay`
+
+只在指定标题的界面上显示，例如某个箱子、菜单或背包界面。
+
+提示：`overlay` 上的点击不会拦住原来的界面，按钮不要放在容易误点原界面格子的位置。
+
+```yml
+id: chest_hint
+screen-type: overlay
+match-title: "Large Chest"
+root:
+  type: panel
+  style:
+    position: absolute
+    anchor: top-right
+    margin-top: 10
+    margin-right: 10
+    width: 120
+    height: 34
+    background: "#80000000"
+  children:
+    - type: text
+      text: "这里可以放任务物品"
+      style:
+        x: 8
+        y: 12
+        color: "#ffffff"
+```
+
+## 可用内容
+
+### 面板 `panel`
+
+用来装其它内容，也可以显示背景色。
+
+```yml
+- type: panel
+  style:
+    x: 10
+    y: 10
+    width: 200
+    height: 80
+    background: "#80000000"
+  children:
+    - type: text
+      text: "面板里的文字"
+      style:
+        x: 8
+        y: 8
+```
+
+### 文字 `text`
+
+显示一段文字，可直接写变量插件文字。
+
+```yml
+- type: text
+  text: "玩家：%player_name%"
+  tooltip: "鼠标放上来时显示"
+  style:
+    x: 8
+    y: 8
+    color: "#ffffff"
+```
+
+### 按钮 `button`
+
+玩家点击后执行一个动作。
+
+```yml
+- type: button
+  text: "打开菜单"
+  action: "open:main_menu"
+  style:
+    x: 20
+    y: 40
+    width: 90
+    height: 22
+    background: "#4a90d9"
+    color: "#ffffff"
+```
+
+按钮动作：
+
+| 写法 | 效果 |
+|---|---|
+| `close` | 关闭当前弹出界面 |
+| `command:spawn` | 让玩家执行 `spawn` 指令，前面不用写 `/` |
+| `open:main_menu` | 打开另一个弹出界面 |
+
+### 图片 `image`
+
+显示资源包里的图片，也可以填写网址图片。
+
+```yml
+- type: image
+  texture: "lantern:textures/example/logo.png"
+  style:
+    x: 8
+    y: 8
+    width: 32
+    height: 32
+```
+
+网址示例：
+
+```yml
+texture: "https://example.com/icon.png"
+```
+
+### 输入框 `input`
+
+适合放在弹出界面里。玩家点进去后可以输入文字，按回车会执行 `on-change`。
+
+```yml
+- type: input
+  value: ""
+  placeholder: "输入名字"
+  max-length: 16
+  on-change: "command:say 已提交"
+  style:
+    x: 20
+    y: 40
+    width: 140
+    height: 20
+    background: "#1a1a1a"
+    color: "#ffffff"
+    placeholder-color: "#888888"
+    border-color: "#555555"
+```
+
+### 物品格 `slot`
+
+适合贴在已有容器界面上，显示原界面里的一个物品格。`slot_0` 表示第一个格子，`slot_1` 表示第二个格子。
+
+```yml
+- type: slot
+  source: "slot_0"
+  style:
+    x: 20
+    y: 20
+    width: 18
+    height: 18
+```
+
+## 外观写法
+
+常用设置：
+
+| 设置名 | 说明 |
+|---|---|
+| `x`、`y` | 离左上角的距离 |
+| `width`、`height` | 宽和高 |
+| `color` | 文字颜色 |
+| `background` | 背景颜色 |
+| `border-color` | 输入框边框颜色 |
+| `placeholder-color` | 输入框提示文字颜色 |
+| `visible` | 是否显示，`true` 或 `false` |
+| `tooltip` | 鼠标放上去时显示的提示文字 |
+
+颜色可以写成 `#ffffff`，也可以写成带透明度的 `#80ffffff`。
+
+## 贴到屏幕边缘
+
+把 `position` 写成 `absolute`，再用 `anchor` 选择位置。
+
+```yml
+style:
+  position: absolute
+  anchor: bottom-right
+  margin-right: 10
+  margin-bottom: 10
+  width: 140
+  height: 30
+```
+
+可选位置：
+
+`top-left`、`top-center`、`top-right`、`center-left`、`center`、`center-right`、`bottom-left`、`bottom-center`、`bottom-right`
+
+## 自动排列
+
+当一个面板里有多个内容时，可以让它们自动横排或竖排。
+
+```yml
+style:
+  display: flex
+  flex-direction: row
+  justify-content: center
+  align-items: center
+  gap: 8
+  padding-left: 6
+  padding-right: 6
+```
+
+| 设置名 | 可选值 |
+|---|---|
+| `flex-direction` | `row` 横排，`column` 竖排 |
+| `justify-content` | `start`、`center`、`end`、`space-between`、`space-evenly` |
+| `align-items` | `start`、`center`、`end`、`stretch` |
+| `gap` | 内容之间的间距 |
+| `padding`、`padding-left` 等 | 内容离面板边缘的距离 |
+| `margin`、`margin-top` 等 | 自己离外面内容的距离 |
+
+## 复用外观
+
+如果多个按钮或文字长得一样，可以先在 `styles` 里写一次，再用 `style-ref` 引用。
+
+```yml
+styles:
+  blue-button:
+    width: 90
+    height: 22
+    background: "#4a90d9"
+    color: "#ffffff"
+
+root:
+  type: panel
+  children:
+    - type: button
+      text: "确认"
+      style-ref: blue-button
+      style:
+        x: 20
+        y: 80
+      action: "close"
+```
+
+同一个设置同时出现在 `style-ref` 和 `style` 里时，以 `style` 里的为准。
+
+## 变量文字
+
+安装 PlaceholderAPI 后，可以在文字里写变量。先在界面顶部声明要用哪些变量：
+
+```yml
+id: status_hud
+screen-type: hud
+placeholders:
+  - "%player_name%"
+  - "%player_health%"
+update-interval: 1000
+
+root:
+  type: panel
+  children:
+    - type: text
+      text: "%player_name% 当前体力 %player_health%"
+      style:
+        x: 8
+        y: 8
+        color: "#ffffff"
+```
+
+如果没有安装 PlaceholderAPI，变量文字不会自动变成真实数值。
