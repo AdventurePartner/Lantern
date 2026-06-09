@@ -148,6 +148,7 @@ object NetworkParser {
 
     private fun parseCostumes(obj: JsonObject) {
         val costumes = obj.getAsJsonArray("costumes") ?: return
+        val definitions = LinkedHashMap<String, CostumeModelWrapper>()
         costumes.map { it as JsonObject }.forEach {
             val id = it.get("id").asString
             val displayName = it.get("display-name")?.asString ?: id
@@ -226,8 +227,9 @@ object NetworkParser {
                 boneMapping = boneMapping
             )
 
-            CostumeHandler.addCostume(id, wrapper)
+            definitions[id] = wrapper
         }
+        CostumeHandler.replaceDefinitions(definitions)
         Lantern.logger.info("[Lantern] Received {} costume definitions", costumes.size())
     }
 

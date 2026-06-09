@@ -2,7 +2,6 @@ package org.lantern.model.entity
 
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
-import net.minecraft.world.entity.LivingEntity
 import org.lantern.model.enums.EntityAnimationState
 import org.lantern.model.util.EntityStateUtil
 import org.lantern.model.wrapper.AnimationStateMapping
@@ -35,6 +34,19 @@ class GenericReplacedEntity<T : Entity>(private val entityType: EntityType<T>) :
 
     // 用于跟踪上一帧的动画状态，避免频繁切换
     private var lastState: EntityAnimationState = EntityAnimationState.IDLE
+    private var cachedEntityId = Int.MIN_VALUE
+    private var cachedTick = Int.MIN_VALUE
+    private var cachedState: EntityAnimationState = EntityAnimationState.IDLE
+
+    private fun detectState(entity: Entity): EntityAnimationState {
+        if (cachedEntityId == entity.id && cachedTick == entity.tickCount) {
+            return cachedState
+        }
+        cachedEntityId = entity.id
+        cachedTick = entity.tickCount
+        cachedState = EntityStateUtil.detectAnimationState(entity)
+        return cachedState
+    }
 
     override fun registerControllers(controllers: AnimatableManager.ControllerRegistrar) {
         // 主移动画控制器（idle/walk） - 低优先级
@@ -42,7 +54,7 @@ class GenericReplacedEntity<T : Entity>(private val entityType: EntityType<T>) :
             val animStates = currentAnimationStates ?: return@AnimationController PlayState.CONTINUE
             val entity = currentRenderedEntity ?: return@AnimationController PlayState.CONTINUE
 
-            val currentState = EntityStateUtil.detectAnimationState(entity)
+            val currentState = detectState(entity)
 
             // 根据状态设置动画
             when (currentState) {
@@ -67,7 +79,7 @@ class GenericReplacedEntity<T : Entity>(private val entityType: EntityType<T>) :
             val animStates = currentAnimationStates ?: return@AnimationController PlayState.STOP
             val entity = currentRenderedEntity ?: return@AnimationController PlayState.STOP
 
-            val currentState = EntityStateUtil.detectAnimationState(entity)
+            val currentState = detectState(entity)
 
             when (currentState) {
                 EntityAnimationState.DEATH -> {

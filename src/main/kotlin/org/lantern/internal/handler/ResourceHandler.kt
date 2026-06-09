@@ -16,6 +16,7 @@ import org.lantern.model.wrapper.BlockModelWrapper
 import org.lantern.internal.storage.BlockModelEntry
 import java.util.concurrent.ConcurrentHashMap
 import com.google.gson.JsonObject
+import org.lantern.costume.handler.CostumeHandler
 import org.lantern.model.handler.RendererHandler
 
 /*
@@ -280,6 +281,7 @@ object ResourceHandler {
         clientStorage.entityModels.forEach { (name, data) ->
             RendererHandler.addEntityModel(name, data)
         }
+        CostumeHandler.refreshRenderers()
         Lantern.logger.debug("[Lantern] rebuild: restored {} entity models", clientStorage.entityModels.size)
         Lantern.logger.debug("[Lantern] rebuild: END - itemCustomIcons={}, blockCustomModels={}", itemCustomIcons.size, blockCustomModels.size)
     }

@@ -84,20 +84,21 @@ class GenericGeoRenderer<T : Entity>(
         poseStack: PoseStack,
         bufferSource: MultiBufferSource,
         packedLight: Int,
-        originalOffsetY: Float
+        partialTick: Float
     ) {
         if (wrapper.hiddenName) {
             return
         }
 
-        // 使用配置的偏移量，如果为 0 则使用原始值
-        val offsetY = if (wrapper.nameTagOffsetY != 0.0F) wrapper.nameTagOffsetY else originalOffsetY
-
-        // 应用 Y 轴偏移：在渲染前平移矩阵
         poseStack.pushPose()
-        poseStack.translate(0.0, offsetY.toDouble(), 0.0)
-        super.renderNameTag(entity, component, poseStack, bufferSource, packedLight, offsetY)
-        poseStack.popPose()
+        try {
+            if (wrapper.nameTagOffsetY != 0.0F) {
+                poseStack.translate(0.0, wrapper.nameTagOffsetY.toDouble(), 0.0)
+            }
+            super.renderNameTag(entity, component, poseStack, bufferSource, packedLight, partialTick)
+        } finally {
+            poseStack.popPose()
+        }
     }
 
     override fun getTextureLocation(entity: Entity): ResourceLocation {

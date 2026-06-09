@@ -13,10 +13,13 @@ object RendererHandler {
     private val customModelWrappers = mutableMapOf<String, CustomModelWrapper>()
     private val renderers = mutableMapOf<EntityType<*>, MutableMap<String, GenericGeoRenderer<*>>>()
     private val formatCodeRegex = Regex("\u00A7.")
+    var version: Int = 0
+        private set
 
     fun reload() {
         customModelWrappers.clear()
         renderers.clear()
+        version++
     }
 
     fun addEntityModel(name: String, obj: JsonObject) {
@@ -98,6 +101,7 @@ object RendererHandler {
         if (name != normalizedName) {
             customModelWrappers[normalizedName] = wrapper
         }
+        version++
     }
 
     fun getRenderer(entityType: EntityType<*>, customName: String): GenericGeoRenderer<*>? {

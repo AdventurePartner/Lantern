@@ -15,6 +15,7 @@ public abstract class EntityMixin {
 
     @Unique private net.minecraft.network.chat.Component lantern$lastNameComponent;
     @Unique private CustomModelWrapper lantern$cachedWrapper;
+    @Unique private int lantern$lastRendererVersion = -1;
 
     @Inject(method = "getBoundingBox", at = @At("HEAD"), cancellable = true)
     private void onGetBoundingBoxHead(CallbackInfoReturnable<AABB> cir) {
@@ -32,9 +33,11 @@ public abstract class EntityMixin {
         if (!self.hasCustomName()) return null;
 
         net.minecraft.network.chat.Component currentName = self.getCustomName();
-        if (currentName == lantern$lastNameComponent) return lantern$cachedWrapper;
+        int currentVersion = RendererHandler.INSTANCE.getVersion();
+        if (currentName == lantern$lastNameComponent && currentVersion == lantern$lastRendererVersion) return lantern$cachedWrapper;
 
         lantern$lastNameComponent = currentName;
+        lantern$lastRendererVersion = currentVersion;
         lantern$cachedWrapper = RendererHandler.INSTANCE.getCustomModelWrapper(currentName.getString());
         return lantern$cachedWrapper;
     }

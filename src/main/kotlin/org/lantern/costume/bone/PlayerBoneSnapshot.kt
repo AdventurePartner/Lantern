@@ -1,6 +1,7 @@
 package org.lantern.costume.bone
 
 import net.minecraft.client.model.PlayerModel
+import net.minecraft.client.model.geom.ModelPart
 
 class MutableBoneRotation(var rotX: Float = 0f, var rotY: Float = 0f, var rotZ: Float = 0f) {
     fun set(x: Float, y: Float, z: Float) { rotX = x; rotY = y; rotZ = z }
@@ -17,13 +18,22 @@ class PlayerBoneSnapshot(
     companion object {
         @JvmStatic
         fun capture(model: PlayerModel<*>, into: PlayerBoneSnapshot = PlayerBoneSnapshot()): PlayerBoneSnapshot {
-            into.head.set(model.head.xRot, model.head.yRot, model.head.zRot)
-            into.body.set(model.body.xRot, model.body.yRot, model.body.zRot)
-            into.leftArm.set(model.leftArm.xRot, model.leftArm.yRot, model.leftArm.zRot)
-            into.rightArm.set(model.rightArm.xRot, model.rightArm.yRot, model.rightArm.zRot)
-            into.leftLeg.set(model.leftLeg.xRot, model.leftLeg.yRot, model.leftLeg.zRot)
-            into.rightLeg.set(model.rightLeg.xRot, model.rightLeg.yRot, model.rightLeg.zRot)
+            capturePart(model.head, into.head)
+            capturePart(model.body, into.body)
+            capturePart(model.leftArm, into.leftArm)
+            capturePart(model.rightArm, into.rightArm)
+            capturePart(model.leftLeg, into.leftLeg)
+            capturePart(model.rightLeg, into.rightLeg)
             return into
+        }
+
+        private fun capturePart(part: ModelPart, into: MutableBoneRotation) {
+            val initialPose = part.initialPose
+            into.set(
+                -(part.xRot - initialPose.xRot),
+                -(part.yRot - initialPose.yRot),
+                part.zRot - initialPose.zRot
+            )
         }
     }
 }

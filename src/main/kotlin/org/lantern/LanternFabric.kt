@@ -6,12 +6,18 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
+import net.fabricmc.fabric.api.client.rendering.v1.LivingEntityFeatureRendererRegistrationCallback
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents
+import net.minecraft.client.model.PlayerModel
+import net.minecraft.client.player.AbstractClientPlayer
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers
+import net.minecraft.client.renderer.entity.RenderLayerParent
+import net.minecraft.client.renderer.entity.player.PlayerRenderer
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener
+import org.lantern.costume.renderer.CostumeRenderLayer
 import org.lantern.item.plugin.LanternModelPlugin
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.entity.EntityRendererProvider
@@ -54,6 +60,7 @@ class LanternFabric : ClientModInitializer {
 
         // 注册客户端事件
         registerClientEvents()
+        registerCostumeRenderLayer()
         FabricClientListener.register()
 
         // 实体卸载时清理位置缓存，防止 EntityStateUtil.lastPositions 内存泄漏
@@ -148,6 +155,16 @@ class LanternFabric : ClientModInitializer {
                 Lantern.logger.info("[Lantern]   No BlockEntity at first tracked position!")
             }
             Lantern.logger.info("[Lantern] ====== END DIAGNOSTIC ======")
+        }
+    }
+
+    private fun registerCostumeRenderLayer() {
+        LivingEntityFeatureRendererRegistrationCallback.EVENT.register { _, entityRenderer, registrationHelper, _ ->
+            if (entityRenderer is PlayerRenderer) {
+                @Suppress("UNCHECKED_CAST")
+                val parent = entityRenderer as RenderLayerParent<AbstractClientPlayer, PlayerModel<AbstractClientPlayer>>
+                registrationHelper.register(CostumeRenderLayer(parent))
+            }
         }
     }
 

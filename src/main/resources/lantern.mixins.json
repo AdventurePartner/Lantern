@@ -4,6 +4,7 @@
   "compatibilityLevel": "JAVA_21",
   "minVersion": "0.8",
   "client": [
+    "accessor.PoseStackAccessor",
     "EntityMixin",
     "EntityRenderDispatcherMixin",
     "font.StringRenderOutputMixin",
@@ -11,7 +12,6 @@
     "model.ModelBakeryMixin",
     "renderer.EntityRendererMixin",
     "resource.FallbackResourceManagerMixin",
-    "costume.PlayerRendererMixin",
     "costume.ItemInHandRendererMixin",
     "hud.GuiHudRenderMixin",
     "hud.PlayerTabOverlayMixin",
