@@ -1,3 +1,6 @@
+import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.Sync
+
 plugins {
     kotlin("jvm") version "1.9.21"
     id("fabric-loom") version "1.7-SNAPSHOT"
@@ -9,13 +12,14 @@ group = "${property("maven_group")}"
 version = "${property("mod_version")}"
 
 val minecraftVersion = findProperty("minecraft_version") as String
+val projectArchivesName = property("archives_name") as String
 
 kotlin {
     jvmToolchain(21)
 }
 
 base {
-    archivesName = "${property("archives_name")}"
+    archivesName = projectArchivesName
 }
 
 sourceSets {
@@ -65,6 +69,7 @@ tasks {
 
     remapJar {
         inputFile.set(shadowJar.get().archiveFile)
+        archiveFileName.set("$projectArchivesName-$version-$minecraftVersion-fabric.jar")
     }
 
     processResources {
@@ -76,6 +81,50 @@ tasks {
             )
         }
     }
+}
+
+val packageArtifactTaskNames = listOf("remapJar", "shadowJar", "jar")
+val standalonePlatformModuleDirs = listOf("forge-1.21.1", "forge-1.20.1")
+
+val copyJarsToObject by tasks.registering(Sync::class) {
+    group = "build"
+    description = "Syncs packaged module jars into object/."
+    into(layout.projectDirectory.dir("object"))
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+gradle.projectsEvaluated {
+    val artifactTasks = allprojects.mapNotNull { project ->
+        packageArtifactTaskNames
+            .asSequence()
+            .mapNotNull { taskName -> project.tasks.findByName(taskName) }
+            .firstOrNull { task -> task.enabled }
+    }
+    val includedProjectDirs = allprojects.map { project -> project.projectDir.canonicalFile }.toSet()
+    val standaloneJarDirs = standalonePlatformModuleDirs
+        .map { moduleDir -> layout.projectDirectory.dir(moduleDir).asFile }
+        .filter { moduleDir -> moduleDir.exists() && moduleDir.canonicalFile !in includedProjectDirs }
+        .map { moduleDir -> moduleDir.resolve("build/libs") }
+
+    copyJarsToObject.configure {
+        dependsOn(artifactTasks)
+        mustRunAfter(allprojects.mapNotNull { project -> project.tasks.findByName("build") })
+        artifactTasks.forEach { artifactTask ->
+            from(artifactTask.outputs.files) {
+                include("*.jar")
+            }
+        }
+        standaloneJarDirs.forEach { jarDir ->
+            from(jarDir) {
+                include("*.jar")
+                exclude("*-dev-shadow.jar")
+            }
+        }
+    }
+}
+
+tasks.named("build") {
+    finalizedBy(copyJarsToObject)
 }
 
 java {
