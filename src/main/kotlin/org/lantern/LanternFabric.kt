@@ -63,6 +63,7 @@ class LanternFabric : ClientModInitializer {
 
         // 断开连接时清理所有缓存，防止 CostumeHandler/ResourceHandler 内存泄漏
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
+            PacketNetwork.clearPendingMainChunks()
             CostumeHandler.reload()
             BlockRendererHandler.clear()
             BlockRendererHandler.clearPositions()

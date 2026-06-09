@@ -22,6 +22,7 @@ import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 
 object NetworkHandler {
@@ -35,6 +36,14 @@ object NetworkHandler {
     private var cachedCostumesBytes: ByteArray? = null
     private var cachedBlockModelsBytes: ByteArray? = null
     private var cachedResourcePackKeyBytes: ByteArray? = null
+    private const val MAIN_CHANNEL = "lantern:main"
+    private const val S2C_JSON_PACKET_TYPE = 0
+    private const val S2C_CHUNK_PACKET_TYPE = 2
+    private const val MAX_PLUGIN_MESSAGE_BYTES = 32766
+    private const val CHUNK_HEADER_BYTES = 21
+    private const val MAX_CHUNK_PAYLOAD_BYTES = 32_000
+    private val chunkMessageIds = AtomicInteger()
+
 
     fun invalidateCache() {
         cachedCharactersBytes = null
@@ -51,7 +60,7 @@ object NetworkHandler {
         ByteArrayOutputStream().use { byteStream ->
             DataOutputStream(byteStream).use { dataStream ->
                 val str = JsonUtil.toJson(obj)
-                dataStream.writeByte(0)
+                dataStream.writeByte(S2C_JSON_PACKET_TYPE)
                 dataStream.writeInt(internalPacketId)
                 dataStream.write(str.toByteArray(Charsets.UTF_8))
             }
@@ -59,11 +68,42 @@ object NetworkHandler {
         }
     }
 
-    private fun sendCachedPacket(player: Player, bytes: ByteArray) {
+    private fun sendSerializedPacket(player: Player, bytes: ByteArray) {
+        if (bytes.size <= MAX_PLUGIN_MESSAGE_BYTES) {
+            sendPluginMessage(player, bytes)
+            return
+        }
+
+        sendChunkedPacket(player, bytes)
+    }
+
+    private fun sendPluginMessage(player: Player, bytes: ByteArray) {
         try {
-            player.sendPluginMessage(LanternPlugin.instance, "lantern:main", bytes)
+            player.sendPluginMessage(LanternPlugin.instance, MAIN_CHANNEL, bytes)
         } catch (e: IOException) {
             LanternPlugin.instance.logger.warning("Failed to send message to Forge client: " + e.message)
+        }
+    }
+
+    private fun sendChunkedPacket(player: Player, bytes: ByteArray) {
+        val messageId = chunkMessageIds.incrementAndGet()
+        val totalChunks = (bytes.size + MAX_CHUNK_PAYLOAD_BYTES - 1) / MAX_CHUNK_PAYLOAD_BYTES
+
+        for (chunkIndex in 0 until totalChunks) {
+            val offset = chunkIndex * MAX_CHUNK_PAYLOAD_BYTES
+            val chunkLength = (bytes.size - offset).coerceAtMost(MAX_CHUNK_PAYLOAD_BYTES)
+            ByteArrayOutputStream(CHUNK_HEADER_BYTES + chunkLength).use { byteStream ->
+                DataOutputStream(byteStream).use { dataStream ->
+                    dataStream.writeByte(S2C_CHUNK_PACKET_TYPE)
+                    dataStream.writeInt(messageId)
+                    dataStream.writeInt(totalChunks)
+                    dataStream.writeInt(chunkIndex)
+                    dataStream.writeInt(bytes.size)
+                    dataStream.writeInt(chunkLength)
+                    dataStream.write(bytes, offset, chunkLength)
+                }
+                sendPluginMessage(player, byteStream.toByteArray())
+            }
         }
     }
 
@@ -92,7 +132,7 @@ object NetworkHandler {
             packet.add("screens", array)
             serializePacket(5, packet).also { cachedScreensBytes = it }
         }
-        sendCachedPacket(player, bytes)
+        sendSerializedPacket(player, bytes)
     }
 
     fun sendOpenGui(player: Player, screenId: String) {
@@ -118,7 +158,7 @@ object NetworkHandler {
             packet.add("characters", array)
             serializePacket(1, packet).also { cachedCharactersBytes = it }
         }
-        sendCachedPacket(player, bytes)
+        sendSerializedPacket(player, bytes)
     }
 
     fun sendEntityModelsPacket(player: Player, config: FileConfiguration) {
@@ -169,7 +209,7 @@ object NetworkHandler {
             packet.add("models", array)
             serializePacket(2, packet).also { cachedModelsBytes = it }
         }
-        sendCachedPacket(player, bytes)
+        sendSerializedPacket(player, bytes)
     }
 
     fun sendKeyboards(player: Player, keys: Map<String, KeyCache>) {
@@ -185,7 +225,7 @@ object NetworkHandler {
             packet.add("keys", array)
             serializePacket(3, packet).also { cachedKeysBytes = it }
         }
-        sendCachedPacket(player, bytes)
+        sendSerializedPacket(player, bytes)
     }
 
     fun sendItemIcons(player: Player, itemIcons: Map<Int, ItemIconCache>) {
@@ -203,7 +243,7 @@ object NetworkHandler {
             packet.add("icons", array)
             serializePacket(4, packet).also { cachedItemIconsBytes = it }
         }
-        sendCachedPacket(player, bytes)
+        sendSerializedPacket(player, bytes)
     }
 
     fun sendResourcePackKey(player: Player) {
@@ -214,7 +254,7 @@ object NetworkHandler {
             packet.addProperty("key", key)
             serializePacket(7, packet).also { cachedResourcePackKeyBytes = it }
         }
-        sendCachedPacket(player, bytes)
+        sendSerializedPacket(player, bytes)
     }
 
     fun sendCostumesPacket(player: Player, costumes: Map<String, CostumeCache>) {
@@ -263,7 +303,7 @@ object NetworkHandler {
             packet.add("costumes", array)
             serializePacket(8, packet).also { cachedCostumesBytes = it }
         }
-        sendCachedPacket(player, bytes)
+        sendSerializedPacket(player, bytes)
     }
 
     fun sendCostumeAssignment(
@@ -333,7 +373,7 @@ object NetworkHandler {
             packet.add("blocks", array)
             serializePacket(10, packet).also { cachedBlockModelsBytes = it }
         }
-        sendCachedPacket(player, bytes)
+        sendSerializedPacket(player, bytes)
     }
 
 
@@ -398,22 +438,6 @@ object NetworkHandler {
     }
 
     private fun sendPacket(player: Player, internalPacketId: Int, obj: JsonObject) {
-        try {
-            ByteArrayOutputStream().use { byteStream ->
-                DataOutputStream(byteStream).use { dataStream ->
-                    val str = JsonUtil.toJson(obj)
-                    dataStream.writeByte(0)
-                    dataStream.writeInt(internalPacketId)
-                    dataStream.write(str.toByteArray(Charsets.UTF_8))
-                    player.sendPluginMessage(
-                        LanternPlugin.instance,
-                        "lantern:main",
-                        byteStream.toByteArray()
-                    )
-                }
-            }
-        } catch (e: IOException) {
-            LanternPlugin.instance.logger.warning("Failed to send message to Forge client: " + e.message)
-        }
+        sendSerializedPacket(player, serializePacket(internalPacketId, obj))
     }
 }

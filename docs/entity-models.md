@@ -98,3 +98,4 @@ assets/lantern/animations/entity/example_pig.animation.json
 | 只有影子或不显示 | 模型、贴图、动画文件位置是否正确 |
 | 名字挡住模型 | 调整 `offset-y` 或把 `hidden` 改成 `true` |
 | 碰撞范围不合适 | 调整 `height` 和 `width` |
+| 配置很多时报 “plugin message too large” | 同时更新服务端插件和客户端模组；新版会把大的模型配置自动拆包发送，不需要删配置 |
