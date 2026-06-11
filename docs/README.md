@@ -29,7 +29,7 @@ Lantern 分为两部分：
 
 | 位置 | 用途 |
 |---|---|
-| `plugins/Lantern/config.yml` | 加密资源包的密码 |
+| `plugins/Lantern/config.yml` | 加密资源包密码、聊天频道 |
 | `plugins/Lantern/huds/` | 常驻在游戏画面上的提示条、状态栏 |
 | `plugins/Lantern/screens/` | 可以用指令或按钮打开的弹出界面 |
 | `plugins/Lantern/keys.yml` | 玩家按键触发指令 |
@@ -55,6 +55,29 @@ Lantern 分为两部分：
 1. 保存你修改的文件。
 2. 在服务器执行 `/lantern reload`。
 3. 如果你改的是模型、贴图或加密资源包，玩家客户端可能需要等待资源刷新；仍未显示时，让玩家重新进入服务器。
+
+## 聊天频道按钮
+
+在 `plugins/Lantern/config.yml` 配置服务端同步给客户端的聊天频道：
+
+```yaml
+chat-channels:
+  - id: all
+    display-name: "全部"
+    prefixes: []
+    filter:
+      - system
+  - id: announcement
+    display-name: "公告"
+    prefixes:
+      - "[公告]"
+  - id: system
+    display-name: "系统"
+    prefixes:
+      - "[系统]"
+```
+
+执行 `/lantern reload` 后，玩家打开聊天栏会在输入框上方看到每个频道的按钮。`prefixes` 匹配客户端实际看到的纯文本开头，不写 `&` 或 `§` 颜色代码；`prefixes: []` 表示该频道显示所有已缓存聊天消息。`filter` 填频道 `id` 列表，会从当前频道里排除这些频道的非空 `prefixes` 命中的消息，例如上面的 `all` 不显示 `[系统]` 消息。切换按钮会替换原版聊天栏当前显示的消息队列，不再显示额外独立面板。非 `all` 频道收到新消息时，玩家没打开聊天栏会在左下角看到“收到新消息”；玩家正在聊天栏内时，对应频道按钮右上角会显示红点，点击该频道后清除。
 
 ## 功能文档
 
