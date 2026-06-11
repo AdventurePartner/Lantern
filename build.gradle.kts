@@ -57,6 +57,8 @@ dependencies {
     // zip4j for encrypted ZIP resource packs
     implementation("net.lingala.zip4j:zip4j:2.11.5")
     include("net.lingala.zip4j:zip4j:2.11.5")
+
+    testImplementation(kotlin("test-junit5"))
 }
 
 tasks {
@@ -80,6 +82,10 @@ tasks {
                 "minecraft_version" to minecraftVersion
             )
         }
+    }
+
+    test {
+        useJUnitPlatform()
     }
 }
 
