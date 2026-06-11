@@ -36,6 +36,7 @@ object NetworkHandler {
     private var cachedCostumesBytes: ByteArray? = null
     private var cachedBlockModelsBytes: ByteArray? = null
     private var cachedResourcePackKeyBytes: ByteArray? = null
+    private var cachedChatChannelsBytes: ByteArray? = null
     private const val MAIN_CHANNEL = "lantern:main"
     private const val S2C_JSON_PACKET_TYPE = 0
     private const val S2C_CHUNK_PACKET_TYPE = 2
@@ -54,6 +55,7 @@ object NetworkHandler {
         cachedCostumesBytes = null
         cachedBlockModelsBytes = null
         cachedResourcePackKeyBytes = null
+        cachedChatChannelsBytes = null
     }
 
     private fun serializePacket(internalPacketId: Int, obj: JsonObject): ByteArray {
@@ -112,6 +114,7 @@ object NetworkHandler {
         sendCharactersPacket(player, Configurations.characters)
         sendEntityModelsPacket(player, Configurations.models)
         sendKeyboards(player, CacheHandler.keys)
+        sendChatChannels(player, readChatChannels(LanternPlugin.instance.config))
         sendItemIcons(player, CacheHandler.itemIcons)
         sendUiScreens(player, UiConfigurations.getScreens())
         sendCostumesPacket(player, CacheHandler.costumes)
@@ -224,6 +227,69 @@ object NetworkHandler {
             val packet = JsonObject()
             packet.add("keys", array)
             serializePacket(3, packet).also { cachedKeysBytes = it }
+        }
+        sendSerializedPacket(player, bytes)
+    }
+
+    private data class ChatChannelConfig(
+        val id: String,
+        val displayName: String,
+        val prefixes: List<String>,
+        val filter: List<String>
+    )
+
+    private fun readChatChannels(config: FileConfiguration): List<ChatChannelConfig> {
+        val channels = ArrayList<ChatChannelConfig>()
+        val seenIds = HashSet<String>()
+
+        config.getMapList("chat-channels").forEach { section ->
+            val id = section["id"]?.toString()?.trim().orEmpty()
+            if (id.isEmpty() || !seenIds.add(id)) {
+                return@forEach
+            }
+
+            val displayName = section["display-name"]?.toString()?.trim().takeUnless { it.isNullOrEmpty() } ?: id
+            val prefixes = (section["prefixes"] as? Iterable<*>)
+                ?.asSequence()
+                ?.mapNotNull { it?.toString()?.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?.distinct()
+                ?.toList()
+                ?: emptyList()
+            val filter = (section["filter"] as? Iterable<*>)
+                ?.asSequence()
+                ?.mapNotNull { it?.toString()?.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?.distinct()
+                ?.toList()
+                ?: emptyList()
+
+
+            channels.add(ChatChannelConfig(id, displayName, prefixes, filter))
+        }
+
+        return channels
+    }
+
+    private fun sendChatChannels(player: Player, channels: List<ChatChannelConfig>) {
+        val bytes = cachedChatChannelsBytes ?: run {
+            val array = JsonArray()
+            channels.forEach { channel ->
+                val obj = JsonObject()
+                obj.addProperty("id", channel.id)
+                obj.addProperty("display-name", channel.displayName)
+                val prefixes = JsonArray()
+                channel.prefixes.forEach { prefixes.add(it) }
+                obj.add("prefixes", prefixes)
+                val filter = JsonArray()
+                channel.filter.forEach { filter.add(it) }
+                obj.add("filter", filter)
+                array.add(obj)
+            }
+
+            val packet = JsonObject()
+            packet.add("channels", array)
+            serializePacket(14, packet).also { cachedChatChannelsBytes = it }
         }
         sendSerializedPacket(player, bytes)
     }

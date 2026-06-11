@@ -3,6 +3,8 @@ package org.lantern.internal.network
 import com.google.gson.JsonObject
 import net.minecraft.client.Minecraft
 import org.lantern.Lantern
+import org.lantern.internal.chat.ChatChannel
+import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.handler.EncryptedPackLoader
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.parser.UiParser
@@ -40,6 +42,7 @@ object NetworkParser {
             11 -> parseBlockPositions(obj)
             12 -> parseBlockPositionUpdate(obj)
             13 -> parsePlaceholderUpdate(obj)
+            14 -> parseChatChannels(obj)
             99 -> reloadResourcePack()
         }
     }
@@ -53,6 +56,29 @@ object NetworkParser {
         }
         val entry = UiScreenStorage.get(screenId) ?: return
         PlaceholderStore.update(screenId, entry.rootWidget, values)
+    }
+
+    private fun parseChatChannels(obj: JsonObject) {
+        val channelArray = obj.getAsJsonArray("channels") ?: return
+        val channels = channelArray.mapNotNull { element ->
+            if (!element.isJsonObject) {
+                return@mapNotNull null
+            }
+
+            val channelObj = element.asJsonObject
+            val id = channelObj.get("id")?.asString.orEmpty()
+            val displayName = channelObj.get("display-name")?.asString ?: id
+            val prefixes = channelObj.getAsJsonArray("prefixes")
+                ?.mapNotNull { prefix -> prefix.takeIf { it.isJsonPrimitive }?.asString }
+                ?: emptyList()
+            val filter = channelObj.getAsJsonArray("filter")
+                ?.mapNotNull { filteredId -> filteredId.takeIf { it.isJsonPrimitive }?.asString }
+                ?: emptyList()
+
+
+            ChatChannel(id, displayName, prefixes, filter)
+        }
+        ChatChannelHandler.setChannels(channels)
     }
 
     private fun parseUiScreens(obj: JsonObject) {

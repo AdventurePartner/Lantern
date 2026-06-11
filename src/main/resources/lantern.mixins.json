@@ -5,6 +5,7 @@
   "minVersion": "0.8",
   "client": [
     "accessor.PoseStackAccessor",
+    "accessor.ChatComponentAccessor",
     "EntityMixin",
     "EntityRenderDispatcherMixin",
     "font.StringRenderOutputMixin",
@@ -14,6 +15,8 @@
     "resource.FallbackResourceManagerMixin",
     "costume.ItemInHandRendererMixin",
     "hud.GuiHudRenderMixin",
+    "chat.ChatComponentMixin",
+    "chat.ChatScreenMixin",
     "hud.PlayerTabOverlayMixin",
     "uix.ScreenRenderMixin",
     "block.LevelRendererMixin",

@@ -25,6 +25,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.PackType
 import net.minecraft.server.packs.resources.ResourceManager
 import org.lantern.costume.handler.CostumeHandler
+import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.handler.CycleHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.handler.TextureHandler
@@ -71,6 +72,7 @@ class LanternFabric : ClientModInitializer {
         // 断开连接时清理所有缓存，防止 CostumeHandler/ResourceHandler 内存泄漏
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             PacketNetwork.clearPendingMainChunks()
+            ChatChannelHandler.clear()
             CostumeHandler.reload()
             BlockRendererHandler.clear()
             BlockRendererHandler.clearPositions()
