@@ -123,8 +123,8 @@ object NetworkHandler {
         sendBlockPositions(player)
 
         // 延迟一秒发送重载资源数据包
-        val relaodRunnable = Runnable { sendReloadResourceManagerPacket(player) }
-        Bukkit.getScheduler().runTaskLaterAsynchronously(LanternPlugin.instance, relaodRunnable, 20L)
+        val reloadRunnable = Runnable { sendReloadResourceManagerPacket(player) }
+        Bukkit.getScheduler().runTaskLater(LanternPlugin.instance, reloadRunnable, 20L)
     }
 
     fun sendUiScreens(player: Player, screens: List<JsonObject>) {
@@ -477,7 +477,6 @@ object NetworkHandler {
     fun sendBlockPositions(player: Player) {
         val world = player.world.name
         val positions = CustomBlockTracker.getAll(world)
-        if (positions.isEmpty()) return
 
         val array = JsonArray()
         positions.forEach { (packed, variation) ->
