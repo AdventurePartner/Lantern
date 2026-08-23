@@ -13,10 +13,14 @@ import org.bukkit.inventory.meta.ItemMeta
 import org.lantern.config.Configurations
 import org.lantern.config.UiConfigurations
 import org.lantern.handler.CacheHandler
+import org.lantern.gui.WardrobeGui
+import org.lantern.handler.CostumeAssignmentHandler
 import org.lantern.network.NetworkHandler
 import org.lantern.placeholder.PlaceholderService
 
 class LanternCommand : CommandExecutor, TabCompleter {
+    private val validSlots = setOf("full_body", "back", "tail", "head", "effect")
+
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String?>): Boolean {
         when (args.getOrNull(0)?.lowercase()) {
@@ -47,7 +51,9 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 sender.sendMessage("${ChatColor.GREEN}Opened screen '$screenId' for ${target.name}.")
             }
             "give" -> handleGive(sender, args)
-            else -> sender.sendMessage("${ChatColor.RED}Unknown subcommand. Use: reload | open | give")
+            "costume" -> handleCostume(sender, args)
+            "wardrobe" -> handleWardrobe(sender, args)
+            else -> sender.sendMessage("${ChatColor.RED}Unknown subcommand. Use: reload | open | give | costume | wardrobe")
         }
         return true
     }
@@ -59,7 +65,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
         args: Array<out String?>
     ): List<String> {
         return when (args.size) {
-            1 -> listOf("reload", "open", "give")
+            1 -> listOf("reload", "open", "give", "costume", "wardrobe")
                 .filter { it.startsWith(args[0] ?: "", ignoreCase = true) }
             2 -> when (args[0]?.lowercase()) {
                 "open" -> UiConfigurations.getScreens()
@@ -67,12 +73,25 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "give" -> CacheHandler.blockModels.keys
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
+                "costume" -> listOf("equip", "unequip")
+                    .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
+                "wardrobe" -> Bukkit.getOnlinePlayers().map { it.name }
+                    .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 else -> emptyList()
             }
-            3 -> if (args[0].equals("open", ignoreCase = true) || args[0].equals("give", ignoreCase = true))
-                    Bukkit.getOnlinePlayers()
-                        .map { it.name }
-                        .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+            3 -> when (args[0]?.lowercase()) {
+                "open", "give", "costume" -> Bukkit.getOnlinePlayers().map { it.name }
+                    .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+                else -> emptyList()
+            }
+            4 -> if (args[0].equals("costume", ignoreCase = true))
+                    validSlots.filter { it.startsWith(args[3] ?: "", ignoreCase = true) }
+                 else emptyList()
+            5 -> if (args[0].equals("costume", ignoreCase = true) && args[1]?.lowercase() == "equip")
+                    CacheHandler.costumes.entries
+                        .filter { it.value.slot.equals(args[3] ?: "", ignoreCase = true) }
+                        .map { it.key }
+                        .filter { it.startsWith(args[4] ?: "", ignoreCase = true) }
                  else emptyList()
             else -> emptyList()
         }
@@ -113,5 +132,70 @@ class LanternCommand : CommandExecutor, TabCompleter {
         target.inventory.addItem(item)
         sender.sendMessage("${ChatColor.GREEN}Gave ${amount}x $blockId to ${target.name}.")
         return true
+    }
+
+    private fun handleCostume(sender: CommandSender, args: Array<out String?>) {
+        val sub = args.getOrNull(1)?.lowercase()
+        when (sub) {
+            "equip" -> {
+                val playerName = args.getOrNull(2) ?: run { costumeUsage(sender); return }
+                val slot = args.getOrNull(3) ?: run { costumeUsage(sender); return }
+                val costumeId = args.getOrNull(4) ?: run { costumeUsage(sender); return }
+                val target = Bukkit.getPlayer(playerName) ?: run {
+                    sender.sendMessage("${ChatColor.RED}Player '$playerName' not found.")
+                    return
+                }
+                if (slot !in validSlots) {
+                    sender.sendMessage("${ChatColor.RED}Invalid slot '$slot'. Valid: ${validSlots.joinToString()}")
+                    return
+                }
+                if (costumeId !in CacheHandler.costumes) {
+                    sender.sendMessage("${ChatColor.RED}Unknown costume-id '$costumeId'. Available: ${CacheHandler.costumes.keys.joinToString()}")
+                    return
+                }
+                CostumeAssignmentHandler.assign(target.uniqueId, slot, costumeId)
+                CostumeAssignmentHandler.save()
+                NetworkHandler.broadcastCostumeAssignment()
+                sender.sendMessage("${ChatColor.GREEN}Equipped $costumeId on $slot for ${target.name}.")
+            }
+            "unequip" -> {
+                val playerName = args.getOrNull(2) ?: run { costumeUsage(sender); return }
+                val slot = args.getOrNull(3)
+                val target = Bukkit.getPlayer(playerName) ?: run {
+                    sender.sendMessage("${ChatColor.RED}Player '$playerName' not found.")
+                    return
+                }
+                if (slot != null && slot !in validSlots) {
+                    sender.sendMessage("${ChatColor.RED}Invalid slot '$slot'. Valid: ${validSlots.joinToString()}")
+                    return
+                }
+                CostumeAssignmentHandler.remove(target.uniqueId, slot)
+                CostumeAssignmentHandler.save()
+                NetworkHandler.broadcastCostumeAssignment()
+                sender.sendMessage("${ChatColor.GREEN}Unequipped${if (slot != null) " $slot" else " all slots"} for ${target.name}.")
+            }
+            else -> costumeUsage(sender)
+        }
+    }
+
+    private fun costumeUsage(sender: CommandSender) {
+        sender.sendMessage("${ChatColor.RED}Usage: /lantern costume equip <player> <slot> <costume-id>")
+        sender.sendMessage("${ChatColor.RED}       /lantern costume unequip <player> [slot]")
+    }
+
+    private fun handleWardrobe(sender: CommandSender, args: Array<out String?>) {
+        val target: Player = args.getOrNull(1)
+            ?.let { name ->
+                Bukkit.getPlayer(name) ?: run {
+                    sender.sendMessage("${ChatColor.RED}Player '$name' not found.")
+                    return
+                }
+            }
+            ?: (sender as? Player) ?: run {
+                sender.sendMessage("${ChatColor.RED}Console must specify a player name.")
+                return
+            }
+        WardrobeGui.openMain(target)
+        sender.sendMessage("${ChatColor.GREEN}Opened wardrobe for ${target.name}.")
     }
 }

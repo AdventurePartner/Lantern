@@ -6,7 +6,6 @@ import org.bukkit.event.player.PlayerRegisterChannelEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.lantern.LanternPlugin
 import org.lantern.network.NetworkHandler
-import org.lantern.handler.CostumeAssignmentHandler
 
 class PlayerListener : Listener {
 
@@ -20,7 +19,6 @@ class PlayerListener : Listener {
     @EventHandler
     fun onQuit(event: PlayerQuitEvent) {
         val uuid = event.player.uniqueId
-        CostumeAssignmentHandler.remove(uuid)
         LanternPlugin.instance.channelListener.removePlayer(uuid)
     }
 }

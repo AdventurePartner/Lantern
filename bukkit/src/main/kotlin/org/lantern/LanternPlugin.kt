@@ -6,8 +6,10 @@ import org.lantern.channel.LanternChannelMessageListener
 import org.lantern.command.LanternCommand
 import org.lantern.config.Configurations
 import org.lantern.handler.CustomBlockTracker
+import org.lantern.handler.CostumeAssignmentHandler
 import org.lantern.listen.BlockListener
 import org.lantern.listen.PlayerListener
+import org.lantern.listen.WardrobeListener
 import org.lantern.config.UiConfigurations
 import org.lantern.placeholder.PlaceholderService
 
@@ -25,9 +27,12 @@ class LanternPlugin : AyPlugin() {
         Configurations.load()
         CustomBlockTracker.load()
         CustomBlockTracker.startAutoSave(this)
+        CostumeAssignmentHandler.load()
+        CostumeAssignmentHandler.startAutoSave(this)
         // 注册监听器
         Bukkit.getPluginManager().registerEvents(PlayerListener(), this)
         Bukkit.getPluginManager().registerEvents(BlockListener(), this)
+        Bukkit.getPluginManager().registerEvents(WardrobeListener(), this)
         // 注册消息通道
         Bukkit.getMessenger().registerOutgoingPluginChannel(this, "lantern:main")
         channelListener = LanternChannelMessageListener()
@@ -46,5 +51,7 @@ class LanternPlugin : AyPlugin() {
         PlaceholderService.stopAll()
         CustomBlockTracker.stopAutoSave()
         CustomBlockTracker.save()
+        CostumeAssignmentHandler.stopAutoSave()
+        CostumeAssignmentHandler.save()
     }
 }

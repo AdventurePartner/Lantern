@@ -406,6 +406,14 @@ object NetworkHandler {
         sendPacket(player, 9, packet)
     }
 
+    /**
+     * 向所有在线玩家广播当前全量装扮分配。命令/GUI 改动装扮后调用以即时同步。
+     */
+    fun broadcastCostumeAssignment() {
+        val all = CostumeAssignmentHandler.getAll()
+        Bukkit.getOnlinePlayers().forEach { sendCostumeAssignment(it, all) }
+    }
+
     fun sendBlockModels(player: Player, blockModels: Map<String, BlockModelCache>) {
         val bytes = cachedBlockModelsBytes ?: run {
             val array = JsonArray()

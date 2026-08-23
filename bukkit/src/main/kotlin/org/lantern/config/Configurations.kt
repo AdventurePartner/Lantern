@@ -60,5 +60,6 @@ object Configurations {
             CacheHandler.rebuildBlockModelIndices()
         }
         UiConfigurations.load()
+        WardrobeConfig.load()
     }
 }

@@ -1,0 +1,20 @@
+title: '&8衣柜'
+size: 54
+slots:
+  - name: full_body
+    index: 11
+  - name: back
+    index: 13
+  - name: tail
+    index: 15
+  - name: head
+    index: 29
+  - name: effect
+    index: 31
+empty-slot:
+  material: GRAY_STAINED_GLASS_PANE
+  name: '&7空槽位'
+border:
+  material: BLACK_STAINED_GLASS_PANE
+  name: ' '
+  slots: '0-8,45-53'
