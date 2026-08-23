@@ -33,6 +33,6 @@ object OverlayRenderer {
         for (root in overlays) {
             EventDispatcher.dispatchClick(root, mouseX.toInt(), mouseY.toInt(), button)
         }
-        return false
+        return true
     }
 }
