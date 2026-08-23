@@ -1,6 +1,8 @@
 package org.lantern.listen
 
+import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.block.Block
 import org.bukkit.block.data.type.Barrel as BarrelData
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -8,7 +10,10 @@ import org.bukkit.event.Listener
 import org.bukkit.event.inventory.InventoryOpenEvent
 import org.bukkit.event.inventory.InventoryType
 import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.BlockExplodeEvent
 import org.bukkit.event.block.BlockPlaceEvent
+import org.bukkit.event.entity.EntityExplodeEvent
+import org.lantern.LanternPlugin
 import org.lantern.handler.CacheHandler
 import org.lantern.handler.CustomBlockTracker
 import org.lantern.network.NetworkHandler
@@ -24,7 +29,7 @@ class BlockListener : Listener {
      * 方块放置：如果木桶物品携带 CustomModelData，
      * 注册位置映射。
      */
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onBlockPlace(event: BlockPlaceEvent) {
         val item = event.itemInHand
         if (item.type !in carrierMaterials) return
@@ -56,35 +61,45 @@ class BlockListener : Listener {
     /**
      * 方块破坏：如果是已追踪的自定义方块位置，清理追踪数据。
      */
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onBlockBreak(event: BlockBreakEvent) {
         val block = event.block
         if (block.type !in carrierMaterials) return
 
-        val world = block.world.name
+        val blockWorld = block.world
+        val world = blockWorld.name
         val x = block.x
         val y = block.y
         val z = block.z
 
         // 仅处理被追踪的自定义方块位置
-        val variation = CustomBlockTracker.getVariation(world, x, y, z) ?: return
         if (!CustomBlockTracker.remove(world, x, y, z)) return
 
         // 取消原版木桶掉落物
         event.isDropItems = false
 
-        // 自定义破坏音效
-        val cache = CacheHandler.blockModelsByVariation[variation]
-        if (cache != null && cache.breakSound.isNotBlank()) {
-            block.world.playSound(
-                block.location, cache.breakSound, 
-                org.bukkit.SoundCategory.BLOCKS, 1.0f, 1.0f
-            )
-        }
-
-        // 通知附近玩家移除此位置
-        NetworkHandler.sendBlockPositionUpdate(block.world, "remove", x, y, z, 0)
         CustomBlockTracker.markDirty()
+
+        // 等原版破坏事件发出后再移除客户端映射，确保粒子和声音仍能按位置取到配置。
+        Bukkit.getScheduler().runTaskLater(
+            LanternPlugin.instance,
+            Runnable {
+                if (CustomBlockTracker.getVariation(world, x, y, z) == null) {
+                    NetworkHandler.sendBlockPositionUpdate(blockWorld, "remove", x, y, z, 0)
+                }
+            },
+            1L
+        )
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onEntityExplode(event: EntityExplodeEvent) {
+        scheduleExplosionCleanup(event.blockList())
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onBlockExplode(event: BlockExplodeEvent) {
+        scheduleExplosionCleanup(event.blockList())
     }
 
     /**
@@ -100,4 +115,48 @@ class BlockListener : Listener {
         CustomBlockTracker.getVariation(world, loc.blockX, loc.blockY, loc.blockZ) ?: return
         event.isCancelled = true
     }
+
+    private fun scheduleExplosionCleanup(blocks: List<Block>) {
+        val tracked = blocks.mapNotNull { block ->
+            if (block.type !in carrierMaterials) return@mapNotNull null
+            val variation = CustomBlockTracker.getVariation(
+                block.world.name,
+                block.x,
+                block.y,
+                block.z
+            ) ?: return@mapNotNull null
+            TrackedBlock(block.world.name, block.x, block.y, block.z, variation)
+        }
+        if (tracked.isEmpty()) return
+
+        Bukkit.getScheduler().runTaskLater(
+            LanternPlugin.instance,
+            Runnable {
+                var changed = false
+                tracked.forEach { block ->
+                    val world = Bukkit.getWorld(block.world) ?: return@forEach
+                    if (world.getBlockAt(block.x, block.y, block.z).type in carrierMaterials) {
+                        return@forEach
+                    }
+                    if (CustomBlockTracker.getVariation(block.world, block.x, block.y, block.z) != block.variation) {
+                        return@forEach
+                    }
+                    if (CustomBlockTracker.remove(block.world, block.x, block.y, block.z)) {
+                        changed = true
+                        NetworkHandler.sendBlockPositionUpdate(world, "remove", block.x, block.y, block.z, 0)
+                    }
+                }
+                if (changed) CustomBlockTracker.markDirty()
+            },
+            1L
+        )
+    }
+
+    private data class TrackedBlock(
+        val world: String,
+        val x: Int,
+        val y: Int,
+        val z: Int,
+        val variation: Int
+    )
 }
