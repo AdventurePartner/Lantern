@@ -1,6 +1,7 @@
 package org.lantern.model.block
 
 import net.minecraft.resources.ResourceLocation
+import org.lantern.platform.IdentifierBridge
 import org.lantern.Lantern
 import org.lantern.internal.handler.TextureHandler
 import software.bernie.geckolib.model.GeoModel
@@ -13,9 +14,9 @@ class LanternBlockGeoModel : GeoModel<LanternBlockEntity>() {
 
     companion object {
         // 缺省占位资源（当 wrapper 未设置时）
-        private val FALLBACK_MODEL = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "geo/block/fallback.geo.json")
-        private val FALLBACK_TEXTURE = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "textures/block/fallback.png")
-        private val FALLBACK_ANIMATION = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "animations/block/fallback.animation.json")
+        private val FALLBACK_MODEL = IdentifierBridge.of(Lantern.MOD_ID, "geo/block/fallback.geo.json")
+        private val FALLBACK_TEXTURE = IdentifierBridge.of(Lantern.MOD_ID, "textures/block/fallback.png")
+        private val FALLBACK_ANIMATION = IdentifierBridge.of(Lantern.MOD_ID, "animations/block/fallback.animation.json")
     }
 
     override fun getModelResource(animatable: LanternBlockEntity?): ResourceLocation {

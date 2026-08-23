@@ -4,7 +4,6 @@ import net.minecraft.client.GuiMessage
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.components.ChatComponent
 import net.minecraft.client.gui.screens.ChatScreen
-import org.lantern.internal.mixin.accessor.ChatComponentAccessor
 
 object ChatChannelHandler {
     private const val MAX_MESSAGES = 100
@@ -103,7 +102,7 @@ object ChatChannelHandler {
     }
 
     private fun seedCurrentMessages(chat: ChatComponent) {
-        val accessor = chat as ChatComponentAccessor
+        val accessor = chat as ChatComponentBridge
         messageCache.seedIfEmpty(accessor.`lantern$getAllMessages`())
     }
 
@@ -113,7 +112,7 @@ object ChatChannelHandler {
     }
 
     private fun applyMessages(chat: ChatComponent, messages: List<GuiMessage>) {
-        val accessor = chat as ChatComponentAccessor
+        val accessor = chat as ChatComponentBridge
         val allMessages = accessor.`lantern$getAllMessages`()
         allMessages.clear()
         allMessages.addAll(messages)

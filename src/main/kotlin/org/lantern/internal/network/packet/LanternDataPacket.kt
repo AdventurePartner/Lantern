@@ -5,6 +5,8 @@ import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import org.lantern.Lantern
 import org.lantern.internal.util.JsonUtils
 
@@ -17,7 +19,7 @@ data class LanternDataPacket(
 
     companion object {
         val TYPE: CustomPacketPayload.Type<LanternDataPacket> = CustomPacketPayload.Type(
-            ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "data")
+            IdentifierBridge.of(Lantern.MOD_ID, "data")
         )
 
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, LanternDataPacket> = StreamCodec.of(

@@ -23,6 +23,8 @@ import org.lantern.internal.handler.TextureHandler
 import org.lantern.model.handler.RendererHandler
 import org.lantern.model.wrapper.AnimationStateMapping
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import java.util.UUID
 
 object NetworkParser {
@@ -182,7 +184,7 @@ object NetworkParser {
             val texturePath = it.get("texture").asString
 
             val isHttpTexture = TextureHandler.isHttpUrl(texturePath)
-            val geo = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, geoPath)
+            val geo = IdentifierBridge.of(Lantern.MOD_ID, geoPath)
 
             val texture: ResourceLocation
             val textureUrl: String?
@@ -190,7 +192,7 @@ object NetworkParser {
                 texture = TextureHandler.getTexture(texturePath)
                 textureUrl = texturePath
             } else {
-                texture = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, texturePath)
+                texture = IdentifierBridge.of(Lantern.MOD_ID, texturePath)
                 textureUrl = null
             }
 
@@ -200,7 +202,7 @@ object NetworkParser {
             if (it.has("animations") && it.get("animations").isJsonObject) {
                 val animationsObj = it.getAsJsonObject("animations")
                 val animPath = animationsObj.get("file").asString
-                animationLocation = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, animPath)
+                animationLocation = IdentifierBridge.of(Lantern.MOD_ID, animPath)
 
                 val statesObj = animationsObj.getAsJsonObject("states")
                 animationStates = AnimationStateMapping(
@@ -211,7 +213,7 @@ object NetworkParser {
                     death = statesObj?.get("death")?.asString
                 )
             } else {
-                animationLocation = ResourceLocation.fromNamespaceAndPath(
+                animationLocation = IdentifierBridge.of(
                     Lantern.MOD_ID, "animations/costume/default.animation.json"
                 )
                 animationStates = AnimationStateMapping.default()
@@ -319,17 +321,17 @@ object NetworkParser {
             val breakSound = it.get("break_sound")?.asString
 
             val isHttpTexture = TextureHandler.isHttpUrl(texturePath)
-            val geo = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, geoPath)
+            val geo = IdentifierBridge.of(Lantern.MOD_ID, geoPath)
             val texture: ResourceLocation
             val textureUrl: String?
             if (isHttpTexture) {
                 texture = TextureHandler.getTexture(texturePath)
                 textureUrl = texturePath
             } else {
-                texture = ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, texturePath)
+                texture = IdentifierBridge.of(Lantern.MOD_ID, texturePath)
                 textureUrl = null
             }
-            val animation = animationPath?.let { p -> ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, p) }
+            val animation = animationPath?.let { p -> IdentifierBridge.of(Lantern.MOD_ID, p) }
 
             val wrapper = BlockModelWrapper(
                 geo, texture, animation, scale, idleAnimation, textureUrl,

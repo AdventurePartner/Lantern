@@ -3,6 +3,7 @@ package org.lantern.model.block
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
+import org.lantern.platform.IdentifierBridge
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityType
@@ -57,7 +58,7 @@ class LanternBlockEntity(pos: BlockPos, state: BlockState) :
         fun register() {
             net.minecraft.core.Registry.register(
                 BuiltInRegistries.BLOCK_ENTITY_TYPE,
-                ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "custom_block"),
+                IdentifierBridge.of(Lantern.MOD_ID, "custom_block"),
                 TYPE
             )
         }

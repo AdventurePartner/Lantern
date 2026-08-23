@@ -2,6 +2,8 @@ package org.lantern.uix.renderer.impl
 
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.resources.ResourceLocation
+
+import org.lantern.platform.IdentifierBridge
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.renderer.IWidgetRenderer
@@ -34,7 +36,7 @@ object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
             TextureHandler.getTexture(widget.texture)
         } else {
             rlCache.getOrPut(widget.texture) {
-                try { ResourceLocation.parse(widget.texture) } catch (_: Exception) { null }
+                try { IdentifierBridge.parse(widget.texture) } catch (_: Exception) { null }
             } ?: return
         }
         graphics.blit(loc, x, y, w, h, 0f, 0f, w, h, w, h)

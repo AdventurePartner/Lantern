@@ -2,139 +2,74 @@ import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.tasks.Sync
 
 plugins {
-    kotlin("jvm") version "1.9.21"
-    id("fabric-loom") version "1.7-SNAPSHOT"
-    id("com.github.johnrengelman.shadow") version "8.1.1"
-    id("maven-publish")
+    base
+    kotlin("jvm") version "1.9.21" apply false
+    id("dev.architectury.loom") version "1.7.423" apply false
+    id("architectury-plugin") version "3.4.160" apply false
+    id("com.github.johnrengelman.shadow") version "8.1.1" apply false
+    id("net.neoforged.moddev") version "2.0.142" apply false
 }
 
-group = "${property("maven_group")}"
-version = "${property("mod_version")}"
+allprojects {
+    group = property("maven_group").toString()
+    version = property("mod_version").toString()
 
-val minecraftVersion = findProperty("minecraft_version") as String
-val projectArchivesName = property("archives_name") as String
-
-kotlin {
-    jvmToolchain(21)
-}
-
-base {
-    archivesName = projectArchivesName
-}
-
-sourceSets {
-    main {
-        java {
-            setSrcDirs(listOf("src/main/java", "src/main/kotlin"))
+    repositories {
+        mavenCentral()
+        maven { url = uri("https://maven.fabricmc.net/") }
+        maven { url = uri("https://maven.architectury.dev/") }
+        maven { url = uri("https://maven.minecraftforge.net/") }
+        maven {
+            name = "GeckoLib"
+            url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
+            content {
+                includeGroupByRegex("software\\.bernie.*")
+                includeGroup("com.eliotlash.mclib")
+            }
         }
     }
 }
 
-repositories {
-    mavenCentral()
-    maven {
-        name = "GeckoLib"
-        url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
-        content {
-            includeGroupByRegex("software\\.bernie.*")
-            includeGroup("com.eliotlash.mclib")
-        }
-    }
-}
-
-dependencies {
-    minecraft("net.minecraft:minecraft:${property("minecraft_version")}")
-    mappings(loom.officialMojangMappings())
-
-    // Fabric
-    modImplementation("net.fabricmc:fabric-loader:${property("fabric_loader_version")}")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}")
-    modImplementation("net.fabricmc:fabric-language-kotlin:1.12.3+kotlin.2.0.21")
-
-    // GeckoLib for Fabric
-    modImplementation("software.bernie.geckolib:geckolib-fabric-$minecraftVersion:${property("geckolib_version")}")
-
-    // zip4j for encrypted ZIP resource packs
-    implementation("net.lingala.zip4j:zip4j:2.11.5")
-    include("net.lingala.zip4j:zip4j:2.11.5")
-
-    testImplementation(kotlin("test-junit5"))
-}
-
-tasks {
-    shadowJar {
-        archiveClassifier = "dev-shadow"
-        dependencies {
-            exclude { true }
-        }
-    }
-
-    remapJar {
-        inputFile.set(shadowJar.get().archiveFile)
-        archiveFileName.set("$projectArchivesName-$version-$minecraftVersion-fabric.jar")
-    }
-
-    processResources {
-        inputs.property("version", project.version)
-        filesMatching("fabric.mod.json") {
-            expand(
-                "version" to rootProject.version,
-                "minecraft_version" to minecraftVersion
-            )
-        }
-    }
-
-    test {
-        useJUnitPlatform()
-    }
-}
-
-val packageArtifactTaskNames = listOf("remapJar", "shadowJar", "jar")
-val standalonePlatformModuleDirs = listOf("forge-1.21.1", "forge-1.20.1")
+val artifactTasksByProject = mapOf(
+    "fabric-1.21.1" to "remapJar",
+    "forge-1.21.1" to "remapJar",
+    "forge-1.20.1" to "remapJar",
+    "neoforge-1.21.10" to "jar",
+    "bukkit" to "shadowJar"
+)
 
 val copyJarsToObject by tasks.registering(Sync::class) {
     group = "build"
-    description = "Syncs packaged module jars into object/."
+    description = "Syncs packaged platform jars into object/."
     into(layout.projectDirectory.dir("object"))
     duplicatesStrategy = DuplicatesStrategy.FAIL
 }
 
 gradle.projectsEvaluated {
-    val artifactTasks = allprojects.mapNotNull { project ->
-        packageArtifactTaskNames
-            .asSequence()
-            .mapNotNull { taskName -> project.tasks.findByName(taskName) }
-            .firstOrNull { task -> task.enabled }
+    val moduleBuildTasks = subprojects.mapNotNull { it.tasks.findByName("build") }
+    val artifactTasks = artifactTasksByProject.mapNotNull { (projectName, taskName) ->
+        findProject(":$projectName")?.tasks?.findByName(taskName)
     }
-    val includedProjectDirs = allprojects.map { project -> project.projectDir.canonicalFile }.toSet()
-    val standaloneJarDirs = standalonePlatformModuleDirs
-        .map { moduleDir -> layout.projectDirectory.dir(moduleDir).asFile }
-        .filter { moduleDir -> moduleDir.exists() && moduleDir.canonicalFile !in includedProjectDirs }
-        .map { moduleDir -> moduleDir.resolve("build/libs") }
 
     copyJarsToObject.configure {
         dependsOn(artifactTasks)
-        mustRunAfter(allprojects.mapNotNull { project -> project.tasks.findByName("build") })
+        mustRunAfter(moduleBuildTasks)
         artifactTasks.forEach { artifactTask ->
             from(artifactTask.outputs.files) {
                 include("*.jar")
-            }
-        }
-        standaloneJarDirs.forEach { jarDir ->
-            from(jarDir) {
-                include("*.jar")
-                exclude("*-dev-shadow.jar")
+                exclude("*-dev-shadow.jar", "*-sources.jar", "*-javadoc.jar")
             }
         }
     }
-}
 
-tasks.named("build") {
-    finalizedBy(copyJarsToObject)
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+    tasks.named("build") {
+        dependsOn(moduleBuildTasks)
+        finalizedBy(copyJarsToObject)
     }
+}
+
+tasks.register("runClient") {
+    group = "application"
+    description = "Runs the primary NeoForge 1.21.10 development client."
+    dependsOn(":neoforge-1.21.10:runClient")
 }

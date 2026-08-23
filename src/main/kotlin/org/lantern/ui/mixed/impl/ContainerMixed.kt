@@ -25,10 +25,6 @@ class ContainerMixed(
         this.layer.onComponentsRender(graphics, partialTick, screenWidth, screenHeight)
     }
 
-    override fun renderBackground(arg: GuiGraphics, i: Int, j: Int, f: Float) {
-        super.renderBackground(arg, i, j, f)
-    }
-
     override fun getLayer(): ILayer {
         return layer
     }

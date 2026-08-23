@@ -5,7 +5,7 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.resources.ResourceLocation;
+import org.lantern.platform.IdentifierBridge;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import org.lantern.model.handler.BlockRendererHandler;
@@ -38,13 +38,12 @@ public abstract class LevelRendererMixin {
 
         // 播放自定义破坏音效（在方块位置）
         String breakSound = wrapper.getBreakSound();
-        if (breakSound != null && !breakSound.isEmpty()) {
-            SoundEvent sound = SoundEvent.createVariableRangeEvent(ResourceLocation.parse(breakSound));
-            level.playLocalSound(
-                pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
-                sound, SoundSource.BLOCKS, 1.0f, 1.0f, false
-            );
-        }
+        if (breakSound == null || breakSound.isEmpty()) return;
+        SoundEvent sound = SoundEvent.createVariableRangeEvent(IdentifierBridge.parse(breakSound));
+        level.playLocalSound(
+            pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
+            sound, SoundSource.BLOCKS, 1.0f, 1.0f, false
+        );
 
         // 粒子由 ParticleEngineMixin 拦截处理（使用正确的自定义纹理）
         if (level != null) {

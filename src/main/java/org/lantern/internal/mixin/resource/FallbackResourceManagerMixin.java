@@ -13,12 +13,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import net.fabricmc.loader.api.FabricLoader;
-
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -44,21 +40,20 @@ public abstract class FallbackResourceManagerMixin {
             return;
         }
 
-        try {
-            InputStream is = wrapper.getResource();
+        try (InputStream is = wrapper.getResource()) {
             byte[] bytes = is.readAllBytes();
             cir.setReturnValue(Optional.of(new Resource(
                 LanternVirtualPackResources.INSTANCE,
                 () -> new ByteArrayInputStream(bytes)
             )));
+            cir.cancel();
         } catch (Exception e) {
             Lantern.logger.error("[Lantern] Failed to provide dynamic resource: {}", e.getMessage());
         }
     }
 
     /**
-     * 备用逻辑：如果 HEAD 注入点未能处理，在 RETURN 时再次检查。
-     * 优先级：动态注册资源（model JSON）> LanternPackLocal 本地文件夹（纹理 PNG 等）
+     * 备用逻辑：如果 HEAD 注入点未能处理，在 RETURN 时再次检查动态注册资源。
      */
     @Inject(method = "getResource", at = @At("RETURN"), cancellable = true)
     private void lantern$getResourceReturn(ResourceLocation location, CallbackInfoReturnable<Optional<Resource>> cir) {
@@ -84,24 +79,6 @@ public abstract class FallbackResourceManagerMixin {
                 Lantern.logger.error("[Lantern] Failed to provide fallback resource: {}", e.getMessage());
             }
         }
-
-        // 从 LanternPackLocal 本地文件夹读取（主要用于纹理 PNG）
-        try {
-            Path localFile = FabricLoader.getInstance().getGameDir()
-                .resolve("resourcePacks")
-                .resolve("LanternPackLocal")
-                .resolve("assets")
-                .resolve(location.getNamespace())
-                .resolve(location.getPath());
-            if (Files.exists(localFile)) {
-                cir.setReturnValue(Optional.of(new Resource(
-                    LanternVirtualPackResources.INSTANCE,
-                    () -> Files.newInputStream(localFile)
-                )));
-            }
-        } catch (Exception e) {
-            Lantern.logger.error("[Lantern] Failed to read from LanternPackLocal: {}", e.getMessage());
-        }
     }
 
     @Inject(method = "listResources", at = @At("RETURN"), cancellable = true)
@@ -116,51 +93,10 @@ public abstract class FallbackResourceManagerMixin {
                     LanternVirtualPackResources.INSTANCE,
                     wrapper::getResource
                 );
-                if (location.getPath().startsWith("models/")) {
-                    merged.put(location, resource);
-                } else {
-                    merged.putIfAbsent(location, resource);
-                }
+                // 动态资源优先级必须与 getResource HEAD 注入保持一致，确保本地包和加密包可覆盖图集资源。
+                merged.put(location, resource);
             }
         });
-
-        // 遍历 LanternPackLocal 本地文件夹（仅 lantern 命名空间）
-        // 当 vanilla 的 atlases/blocks.json 中 DirectoryLister 调用 listResources("textures/item",...) 时，
-        // 此处会将 LanternPackLocal/assets/lantern/textures/item/*.png 加入返回列表，从而进入图集
-        if ("lantern".equals(namespace)) {
-            try {
-                Path localNsPath = FabricLoader.getInstance().getGameDir()
-                    .resolve("resourcePacks")
-                    .resolve("LanternPackLocal")
-                    .resolve("assets")
-                    .resolve("lantern");
-                Path searchPath = localNsPath.resolve(path);
-                if (Files.exists(searchPath)) {
-                    // Files.walk only runs during resource atlas building (not per-frame).
-                    // The directory is small (LanternPackLocal local files), so no caching needed.
-                    Files.walk(searchPath)
-                        .filter(Files::isRegularFile)
-                        .forEach(file -> {
-                            // 逐文件捕获异常：含空格、括号等非法字符的文件名会导致
-                            // ResourceLocation 创建失败，跳过该文件而不中断整个遍历
-                            try {
-                                String rel = localNsPath.relativize(file).toString().replace('\\', '/');
-                                ResourceLocation rl = ResourceLocation.fromNamespaceAndPath("lantern", rel);
-                                if (predicate.test(rl)) {
-                                    merged.putIfAbsent(rl, new Resource(
-                                        LanternVirtualPackResources.INSTANCE,
-                                        () -> Files.newInputStream(file)
-                                    ));
-                                }
-                            } catch (Exception fileEx) {
-                                Lantern.logger.debug("[Lantern] Skipping invalid resource file (illegal chars in name): {}", file.getFileName());
-                            }
-                        });
-                }
-            } catch (Exception e) {
-                Lantern.logger.warn("[Lantern] Failed to list LanternPackLocal/{}: {}", path, e.getMessage());
-            }
-        }
 
         cir.setReturnValue(merged);
     }

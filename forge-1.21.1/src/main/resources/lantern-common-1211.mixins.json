@@ -1,0 +1,32 @@
+{
+  "required": true,
+  "package": "org.lantern.internal.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "client": [
+    "accessor.PoseStackAccessor",
+    "accessor.ChatComponentAccessor",
+    "EntityMixin",
+    "EntityRenderDispatcherMixin",
+    "font.StringRenderOutputMixin",
+    "model.ModelBakeryMixin",
+    "renderer.EntityRendererMixin",
+    "resource.FallbackResourceManagerMixin",
+    "costume.ItemInHandRendererMixin",
+    "hud.GuiHudRenderMixin",
+    "chat.ChatComponentMixin",
+    "chat.ChatScreenMixin",
+    "hud.PlayerTabOverlayMixin",
+    "uix.ScreenRenderMixin",
+    "block.LevelRendererMixin",
+    "block.ParticleEngineMixin",
+    "block.BlockRenderDispatcherMixin",
+    "block.BlockItemMixin",
+    "block.BarrelBlockMixin",
+    "model.BarrelModelMixin"
+  ],
+  "mixins": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

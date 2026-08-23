@@ -38,10 +38,13 @@ bin/
 ### Mac OS ###
 .DS_Store
 
-AGENTS.md
 .cursor/
 .claude/
 .qoder/
 .crush/
 .kilo/
 object/
+.mimosa/
+.zcode/
+.eclipse/
+run/

@@ -22,6 +22,7 @@ import org.lantern.item.plugin.LanternModelPlugin
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.entity.EntityRendererProvider
 import net.minecraft.resources.ResourceLocation
+import org.lantern.platform.IdentifierBridge
 import net.minecraft.server.packs.PackType
 import net.minecraft.server.packs.resources.ResourceManager
 import org.lantern.costume.handler.CostumeHandler
@@ -174,7 +175,7 @@ class LanternFabric : ClientModInitializer {
         ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(
             object : SimpleSynchronousResourceReloadListener {
                 override fun getFabricId(): ResourceLocation {
-                    return ResourceLocation.fromNamespaceAndPath(Lantern.MOD_ID, "reload_listener")
+                    return IdentifierBridge.of(Lantern.MOD_ID, "reload_listener")
                 }
 
                 override fun onResourceManagerReload(manager: ResourceManager) {
