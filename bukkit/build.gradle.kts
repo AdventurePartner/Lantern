@@ -36,9 +36,7 @@ tasks {
     }
     shadowJar {
         archiveFileName = "LanternPlugin-$version.jar"
-        dependencies {
-            exclude { true }
-        }
+        relocate("kotlin", "org.lantern.shadow.kotlin")
     }
 }
 
