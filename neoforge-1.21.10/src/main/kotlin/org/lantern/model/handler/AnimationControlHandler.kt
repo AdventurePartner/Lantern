@@ -21,40 +21,39 @@ object AnimationControlHandler {
 
     fun handle(uuid: UUID, play: Boolean, animation: String, transition: Int, loop: Boolean, speed: Float) {
         if (!play) {
+            // stop 只碰 ConcurrentHashMap，网络线程直接执行即可
             AnimationControlStore.stop(uuid, animation)
             return
         }
-        val level = Minecraft.getInstance().level ?: return
-        val entity = level.getEntity(uuid) ?: return
-        val name = entity.customName?.string ?: return
-        val wrapper = RendererHandler.getCustomModelWrapper(name) ?: run {
-            Lantern.logger.debug(
-                "[Lantern] Animation target '{}' is not a Lantern entity model, ignored",
-                name
-            )
-            return
-        }
-        val safeSpeed = if (speed > 0.01f) speed else 1.0f
-        val expiresAtMs = if (loop) {
-            0L
-        } else {
-            val lengthMs = resolveAnimationLengthMs(wrapper.animationLocation, animation)
-            Lantern.logger.info(
-                "[Lantern][AnimDiag] play '{}' loop={} length={} -> expires in {}ms",
-                animation, loop, lengthMs,
-                if (lengthMs != null) (lengthMs / safeSpeed).toLong() + EXPIRY_MARGIN_MS else FALLBACK_ONCE_MAX_MS
-            )
-            if (lengthMs != null) {
-                System.currentTimeMillis() + (lengthMs / safeSpeed).toLong() + EXPIRY_MARGIN_MS
-            } else {
+        // play 需要读客户端实体表，调度回主线程避免并发可见性问题
+        Minecraft.getInstance().execute {
+            val level = Minecraft.getInstance().level ?: return@execute
+            val entity = level.getEntity(uuid) ?: return@execute
+            val name = entity.customName?.string ?: return@execute
+            val wrapper = RendererHandler.getCustomModelWrapper(name) ?: run {
                 Lantern.logger.debug(
-                    "[Lantern] Animation '{}' length unknown for '{}', using fallback expiry",
-                    animation, name
+                    "[Lantern] Animation target '{}' is not a Lantern entity model, ignored",
+                    name
                 )
-                System.currentTimeMillis() + FALLBACK_ONCE_MAX_MS
+                return@execute
             }
+            val safeSpeed = if (speed > 0.01f) speed else 1.0f
+            val expiresAtMs = if (loop) {
+                0L
+            } else {
+                val lengthMs = resolveAnimationLengthMs(wrapper.animationLocation, animation)
+                if (lengthMs != null) {
+                    System.currentTimeMillis() + (lengthMs / safeSpeed).toLong() + EXPIRY_MARGIN_MS
+                } else {
+                    Lantern.logger.debug(
+                        "[Lantern] Animation '{}' length unknown for '{}', using fallback expiry",
+                        animation, name
+                    )
+                    System.currentTimeMillis() + FALLBACK_ONCE_MAX_MS
+                }
+            }
+            AnimationControlStore.play(uuid, animation, transition, loop, safeSpeed, expiresAtMs)
         }
-        AnimationControlStore.play(uuid, animation, transition, loop, safeSpeed, expiresAtMs)
     }
 
     private fun resolveAnimationLengthMs(

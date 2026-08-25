@@ -10,12 +10,10 @@ import net.minecraft.client.renderer.state.CameraRenderState;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Mob;
 import org.lantern.Lantern;
 import org.lantern.animation.AnimationHost;
 import org.lantern.model.GeckoResourceIds;
 import org.lantern.model.entity.GenericReplacedEntity;
-import org.lantern.model.enums.EntityAnimationState;
 import org.lantern.model.geo.GenericGeoModel;
 import org.lantern.model.renderstate.AnimationControlStore;
 import org.lantern.model.renderstate.LanternDataTickets;
@@ -33,6 +31,7 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
     private final String rendererKey;
     private final CustomModelWrapper wrapper;
     private final GenericGeoModel geoModel;
+    private final net.minecraft.resources.ResourceLocation modelId;
 
     private GenericGeoRenderer(
         EntityRendererProvider.Context context,
@@ -44,6 +43,7 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
         this.geoModel = (GenericGeoModel) super.getGeoModel();
         this.rendererKey = rendererKey;
         this.wrapper = wrapper;
+        this.modelId = GeckoResourceIds.model(wrapper.getModelLocation());
         withScale(wrapper.getScale());
     }
 
@@ -64,6 +64,21 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
         return super.getDeathMaxRotation(renderState);
     }
 
+    /**
+     * 死亡动画持有末帧期间抑制受击/死亡红闪：GeckoLib 默认按 deathTime > 0 打红，
+     * 真击杀后的 20 tick 尸体期会在倒地模型上闪一层红色。仅死亡抑制，存活期受击红闪保留
+     */
+    @Override
+    public int getPackedOverlay(GenericReplacedEntity animatable, Entity entity, float u, float partialTick) {
+        if (wrapper.getAnimationStates().getDeath() != null &&
+            entity instanceof LivingEntity livingEntity &&
+            livingEntity.isDeadOrDying()
+        ) {
+            return net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY;
+        }
+        return super.getPackedOverlay(animatable, entity, u, partialTick);
+    }
+
     @Override
     public void addRenderData(        GenericReplacedEntity animatable,
         Entity entity,
@@ -80,7 +95,6 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
             new ReplacedRenderData(
                 rendererKey,
                 wrapper.getAnimationStates(),
-                detectActionState(entity),
                 entity.getUUID(),
                 AnimationControlStore.INSTANCE.get(entity.getUUID()),
                 poseMap
@@ -107,12 +121,11 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
         SubmitNodeCollector submitNodes,
         CameraRenderState cameraState
     ) {
-        net.minecraft.resources.ResourceLocation modelId = GeckoResourceIds.model(wrapper.getModelLocation());
-        if (!GeckoLibResources.getBakedModels().containsKey(modelId)) {
-            if (WARNED_MODELS.add(modelId)) {
+        if (!GeckoLibResources.getBakedModels().containsKey(this.modelId)) {
+            if (WARNED_MODELS.add(this.modelId)) {
                 Lantern.INSTANCE.getLogger().warn(
                     "[Lantern] Entity model not yet cached, deferring render: {}",
-                    modelId
+                    this.modelId
                 );
             }
             return;
@@ -121,24 +134,13 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
         if (renderState instanceof software.bernie.geckolib.renderer.base.GeoRenderState geoState) {
             ReplacedRenderData data = geoState.getGeckolibData(LanternDataTickets.REPLACED_ENTITY);
             if (data != null && data.getPose() != null) {
-                AnimationHost.applyPose(this.geoModel.getAnimationProcessor(), data.getPose());
+                AnimationHost.applyPose(
+                    this.geoModel.getAnimationProcessor(),
+                    data.getPose(),
+                    this.geoModel.getInitialPose()
+                );
             }
         }
         super.submit(renderState, poseStack, submitNodes, cameraState);
-    }
-
-    private static EntityAnimationState detectActionState(Entity entity) {
-        if (entity instanceof LivingEntity livingEntity) {
-            if (livingEntity.isDeadOrDying()) {
-                return EntityAnimationState.DEATH;
-            }
-            if (livingEntity.hurtTime > 0) {
-                return EntityAnimationState.HURT;
-            }
-        }
-        if (entity instanceof Mob mob && mob.isAggressive()) {
-            return EntityAnimationState.ATTACK;
-        }
-        return null;
     }
 }

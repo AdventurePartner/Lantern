@@ -1,7 +1,6 @@
 package org.lantern.model.entity
 
 import net.minecraft.world.entity.EntityType
-import org.lantern.animation.AnimationHost
 import software.bernie.geckolib.animatable.GeoReplacedEntity
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache
 import software.bernie.geckolib.animatable.manager.AnimatableManager
@@ -27,9 +26,4 @@ class GenericReplacedEntity(
     override fun getAnimatableInstanceCache(): AnimatableInstanceCache = cache
 
     override fun getReplacingEntityType(): EntityType<*> = entityType
-
-    companion object {
-        @JvmStatic
-        fun resetHost() = AnimationHost.reset()
-    }
 }

@@ -30,17 +30,17 @@ class AnimationPlayer(private val uuid: UUID) {
     private var activeTime = 0f
     private var activeSpeed = 1f
 
-    // 交叉淡化：旧剪辑继续推进并在 BLEND_SECONDS 内淡出
+    // 交叉淡化：旧剪辑继续推进并在过渡时长内淡出
     private var fadeClip: ClipData? = null
     private var fadeTime = 0f
     private var fadeElapsed = -1f
+    private var fadeDuration = BLEND_SECONDS
 
     private var channelId = -1L
     private var lastFinishReportedId = -1L
     private var dead = false
     private var lastNanos = 0L
 
-    private val initialPose = HashMap<String, FloatArray>()
     var pose: Map<String, FloatArray> = emptyMap()
         private set
 
@@ -98,29 +98,36 @@ class AnimationPlayer(private val uuid: UUID) {
         // --- 每帧直选目标剪辑：死亡 > 播控 > 行走 ---
         val target: ClipData?
         val targetSpeed: Float
+        val blendSeconds: Float
         when {
             dead -> {
                 target = states.death?.let { clips[it] }
                 targetSpeed = 1f
+                blendSeconds = BLEND_SECONDS
             }
             activeForced != null -> {
                 if (activeForced.id != channelId) channelId = activeForced.id
                 target = clips[activeForced.animation]
                 targetSpeed = activeForced.speed
+                // 播控切入的过渡时长由服务端指令指定（tick × 50ms）；0 = 立即切换（如死亡）。
+                // 协议默认 5 tick = 0.25s，与行走层淡化时长一致，技能动画观感不变
+                blendSeconds = activeForced.transition * 0.05f
             }
             else -> {
                 channelId = -1L
                 target = if (isMoving) clips[states.walk] else clips[states.idle]
                 targetSpeed = 1f
+                blendSeconds = BLEND_SECONDS
             }
         }
 
-        // --- 切换：旧剪辑进入淡出 ---
+        // --- 切换：旧剪辑进入淡出（过渡为 0 时立即切换，无淡化） ---
         if (target !== activeClip) {
-            if (activeClip != null && target != null) {
+            if (activeClip != null && target != null && blendSeconds > 0f) {
                 fadeClip = activeClip
                 fadeTime = activeTime
                 fadeElapsed = 0f
+                fadeDuration = blendSeconds
             } else {
                 fadeClip = null
                 fadeElapsed = -1f
@@ -146,12 +153,12 @@ class AnimationPlayer(private val uuid: UUID) {
         val targetPose = activeClip?.let { samplePose(it, activeTime) } ?: emptyMap()
         pose = if (fadeClip != null && fadeElapsed >= 0f) {
             fadeElapsed += dt
-            if (fadeElapsed >= BLEND_SECONDS) {
+            if (fadeElapsed >= fadeDuration) {
                 fadeClip = null
                 fadeElapsed = -1f
                 targetPose
             } else {
-                blendPoses(samplePose(fadeClip!!, fadeTime), targetPose, fadeElapsed / BLEND_SECONDS)
+                blendPoses(samplePose(fadeClip!!, fadeTime), targetPose, fadeElapsed / fadeDuration)
             }
         } else {
             targetPose
@@ -177,42 +184,6 @@ class AnimationPlayer(private val uuid: UUID) {
             lastPosMs = now
         }
         return movingCached
-    }
-
-    /**
-     * 唯一骨骼写入方：先重置全部骨骼到 geo 静态姿势（initialSnapshot 权威值），
-     * 再写入最终姿势；剪辑未驱动的轴回落到静态值。
-     */
-    fun applyTo(processor: AnimationProcessor<*>) {
-        val bones: Collection<GeoBone> = processor.registeredBones
-        if (bones.isEmpty()) return
-        if (initialPose.isEmpty()) {
-            for (bone in bones) {
-                val snap = bone.initialSnapshot
-                initialPose[bone.name] = floatArrayOf(
-                    snap.rotX, snap.rotY, snap.rotZ,
-                    snap.offsetX, snap.offsetY, snap.offsetZ,
-                    snap.scaleX, snap.scaleY, snap.scaleZ
-                )
-            }
-        }
-        for (bone in bones) {
-            val init = initialPose[bone.name] ?: continue
-            val v = pose[bone.name]
-            bone.updateRotation(
-                if (v == null || v[0].isNaN()) init[0] else v[0],
-                if (v == null || v[1].isNaN()) init[1] else v[1],
-                if (v == null || v[2].isNaN()) init[2] else v[2]
-            )
-            bone.updatePosition(
-                if (v == null || v[3].isNaN()) init[3] else v[3],
-                if (v == null || v[4].isNaN()) init[4] else v[4],
-                if (v == null || v[5].isNaN()) init[5] else v[5]
-            )
-            bone.setScaleX(if (v == null || v[6].isNaN()) init[6] else v[6])
-            bone.setScaleY(if (v == null || v[7].isNaN()) init[7] else v[7])
-            bone.setScaleZ(if (v == null || v[8].isNaN()) init[8] else v[8])
-        }
     }
 }
 
@@ -251,20 +222,23 @@ private fun samplePose(clip: ClipData, rawTime: Float): Map<String, FloatArray> 
 /** 两姿势按权重混合；只在单侧出现的骨骼/轴取另一侧值，随权重渐现/渐隐 */
 private fun blendPoses(from: Map<String, FloatArray>, to: Map<String, FloatArray>, w: Float): Map<String, FloatArray> {
     val out = HashMap<String, FloatArray>(from.size + to.size)
-    for (name in from.keys + to.keys) {
-        val a = from[name]
+    for ((name, a) in from) {
         val b = to[name]
-        out[name] = when {
-            a != null && b != null -> FloatArray(9) { i ->
+        out[name] = if (b != null) {
+            FloatArray(9) { i ->
                 when {
                     a[i].isNaN() -> b[i]
                     b[i].isNaN() -> a[i]
                     else -> a[i] + (b[i] - a[i]) * w
                 }
             }
-            a != null -> a
-            else -> b!!
+        } else {
+            a
         }
+    }
+    // 只在 to 独有的骨骼上补齐，避免合并键集的中间 Set 分配
+    for ((name, b) in to) {
+        if (name !in out) out[name] = b
     }
     return out
 }
@@ -317,17 +291,20 @@ private fun spline(t: Float, p0: Float, p1: Float, p2: Float, p3: Float): Float 
         )
 }
 
-/** 渲染阶段（submit 内，逐实体串行）调用：将 per-entity 姿势映射写入处理器骨骼 */
-fun applyPoseToBones(processor: AnimationProcessor<*>, pose: Map<String, FloatArray>?) {
+/**
+ * 渲染阶段（submit 内，逐实体串行）调用：将 per-entity 姿势映射写入处理器骨骼。
+ * [initial] 为该渲染器克隆骨骼的静态初始姿势（见 GenericGeoModel），剪辑未驱动的
+ * 骨骼/轴回落到它——由调用方预计算，避免每帧重新装配
+ */
+fun applyPoseToBones(
+    processor: AnimationProcessor<*>,
+    pose: Map<String, FloatArray>?,
+    initial: Map<String, FloatArray>
+) {
     val bones = processor.registeredBones
     if (bones.isEmpty() || pose == null) return
     for (bone in bones) {
-        val snap = bone.initialSnapshot
-        val init = floatArrayOf(
-            snap.rotX, snap.rotY, snap.rotZ,
-            snap.offsetX, snap.offsetY, snap.offsetZ,
-            snap.scaleX, snap.scaleY, snap.scaleZ
-        )
+        val init = initial[bone.name] ?: continue
         val v = pose[bone.name]
         bone.updateRotation(
             if (v == null || v[0].isNaN()) init[0] else v[0],

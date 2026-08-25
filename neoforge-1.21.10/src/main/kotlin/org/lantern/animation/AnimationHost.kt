@@ -24,7 +24,12 @@ object AnimationHost {
     @JvmStatic
     fun drivePose(entity: Entity, wrapper: CustomModelWrapper): Map<String, FloatArray>? {
         val clips = AnimationRepository.clips(wrapper.animationLocation)
-        if (clips.isNullOrEmpty()) return null
+        if (clips.isNullOrEmpty()) {
+            // 动画资产缺失：播控既无法播放也无法到期，清掉残留条目；
+            // 返回空姿势让骨骼回退静态初始值，而不是冻结在上一帧
+            AnimationControlStore.stop(entity.uuid, null)
+            return emptyMap()
+        }
         val uuid = entity.uuid
         val player = players.computeIfAbsent(uuid) { AnimationPlayer(it) }
         val actionState = if (entity is LivingEntity && entity.isDeadOrDying) {
@@ -46,14 +51,22 @@ object AnimationHost {
 
     /** 渲染阶段调用（submit 内，逐实体串行）：从 DataTicket 读回姿势写入骨骼 */
     @JvmStatic
-    fun applyPose(processor: AnimationProcessor<*>, pose: Map<String, FloatArray>?) {
-        // 使用任一 player 的 initialPose 捕获逻辑（骨骼写入与 player 状态解耦）
-        // 直接静态应用——pose 是完整的姿势映射，不依赖特定 player 实例
-        org.lantern.animation.applyPoseToBones(processor, pose)
+    fun applyPose(
+        processor: AnimationProcessor<*>,
+        pose: Map<String, FloatArray>?,
+        initial: Map<String, FloatArray>
+    ) {
+        org.lantern.animation.applyPoseToBones(processor, pose, initial)
     }
 
     @JvmStatic
     fun reset() {
         players.clear()
+    }
+
+    /** 实体离开世界时释放其播放器状态（移动检测、活跃剪辑等） */
+    @JvmStatic
+    fun remove(uuid: UUID) {
+        players.remove(uuid)
     }
 }

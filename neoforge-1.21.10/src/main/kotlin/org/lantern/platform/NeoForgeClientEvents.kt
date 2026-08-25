@@ -7,6 +7,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.client.event.ScreenEvent
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent
+import org.lantern.animation.AnimationHost
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatChannelTabsRenderer
@@ -15,6 +16,8 @@ import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.placeholder.PlaceholderStore
 import org.lantern.internal.storage.ScreenType
 import org.lantern.internal.storage.UiScreenStorage
+import org.lantern.model.handler.RendererHandler
+import org.lantern.model.renderstate.AnimationControlStore
 import org.lantern.uix.canvas.impl.GuiCanvas
 import org.lantern.uix.event.EventDispatcher
 import org.lantern.uix.input.FocusManager
@@ -79,6 +82,11 @@ object NeoForgeClientEvents {
     private fun onEntityLeaveLevel(event: EntityLeaveLevelEvent) {
         if (event.level.isClientSide) {
             CostumeHandler.removePlayer(event.entity.uuid)
+            // 淘汰 Lantern 实体模型的 per-UUID 状态，防止长期游玩内存无上限增长；
+            // 渲染器懒重建，实体换维度重新进入视距时会自动恢复
+            RendererHandler.evict(event.entity.uuid)
+            AnimationHost.remove(event.entity.uuid)
+            AnimationControlStore.stop(event.entity.uuid, null)
         }
     }
 

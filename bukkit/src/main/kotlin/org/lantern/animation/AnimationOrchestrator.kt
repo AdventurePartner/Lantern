@@ -139,9 +139,7 @@ object AnimationOrchestrator {
     fun onClientFinished(uuidRaw: String, animation: String, event: String) {
         if (event != "finish") return
         val uuid = runCatching { UUID.fromString(uuidRaw) }.getOrNull() ?: return
-        val finished = active.remove(uuid)
-        LanternPlugin.instance.logger.info("[DeathDiag] 客户端回报: $animation @ ${uuidRaw.take(8)} 已登记=${finished != null}")
-        if (finished == null) return
+        val finished = active.remove(uuid) ?: return
         if (finished.animation != animation) {
             // 过期事件（已被新动画覆盖），放回当前状态
             active.putIfAbsent(uuid, finished)

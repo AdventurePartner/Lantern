@@ -23,6 +23,14 @@ class GenericGeoModel(
      */
     private var isolatedModel: BakedGeoModel? = null
 
+    /**
+     * 克隆骨骼的静态初始姿势（rot/pos/scale 各 3 轴，共 9 值）。
+     * 值在克隆时一次定格、永不变化，渲染阶段写骨骼时的回落基准；
+     * 预计算避免每帧从 initialSnapshot 重新装数组
+     */
+    var initialPose: Map<String, FloatArray> = emptyMap()
+        private set
+
     override fun getModelResource(renderState: GeoRenderState): ResourceLocation =
         GeckoResourceIds.model(wrapper.modelLocation)
 
@@ -33,17 +41,37 @@ class GenericGeoModel(
         GeckoResourceIds.animation(wrapper.animationLocation)
 
     override fun getBakedModel(location: ResourceLocation): BakedGeoModel {
+        // 不走 super.getBakedModel 兜底：父类会把全局共享骨骼注册进 processor，破坏
+        // per-renderer 隔离。modelId 由 GeckoResourceIds 规范化生成且 submit 前有
+        // containsKey 守卫，缓存未命中只可能是异常时序，直接抛错暴露而不是静默退化
         val shared = GeckoLibResources.getBakedModels()[location]
-            ?: return super.getBakedModel(location)
+            ?: throw IllegalArgumentException("[Lantern] Model not baked: $location")
         isolatedModel?.let { return it }
-        val clone = BakedGeoModel(
-            shared.topLevelBones().map { cloneBone(it, null) },
-            shared.properties()
-        )
+        val copies = shared.topLevelBones().map { cloneBone(it, null) }
+        val clone = BakedGeoModel(copies, shared.properties())
         // processor 同步指向克隆骨骼；registerGeoBone 会为每根新骨骼 saveInitialSnapshot
         getAnimationProcessor().setActiveModel(clone)
         isolatedModel = clone
+        // 此刻克隆骨骼尚未被任何姿势写入，当前值即静态初始值
+        initialPose = buildInitialPose(copies)
         return clone
+    }
+
+    private fun buildInitialPose(topLevel: List<GeoBone>): Map<String, FloatArray> {
+        val out = HashMap<String, FloatArray>()
+        captureInitial(topLevel, out)
+        return out
+    }
+
+    private fun captureInitial(bones: List<GeoBone>, out: MutableMap<String, FloatArray>) {
+        for (bone in bones) {
+            out[bone.name] = floatArrayOf(
+                bone.rotX, bone.rotY, bone.rotZ,
+                bone.posX, bone.posY, bone.posZ,
+                bone.scaleX, bone.scaleY, bone.scaleZ
+            )
+            captureInitial(bone.childBones, out)
+        }
     }
 
     private fun cloneBone(source: GeoBone, parent: GeoBone?): GeoBone {

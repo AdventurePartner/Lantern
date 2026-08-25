@@ -41,7 +41,6 @@ class DeathAnimationInterceptor : Listener {
         val deathAnim = AnimationOrchestrator.deathAnimationOf(entity) ?: return
         event.isCancelled = true
         dying.add(entity.uniqueId)
-        LanternPlugin.instance.logger.info("[DeathDiag] ${entity.name} 拦截致命伤害 -> 濒死, 播放 $deathAnim")
         (entity as? org.bukkit.entity.Mob)?.setAI(false)
         entity.isInvulnerable = true
         NetworkHandler.playAnimation(entity, deathAnim, 0, loop = false)
@@ -53,22 +52,18 @@ class DeathAnimationInterceptor : Listener {
         val entity = event.animEntity as? LivingEntity ?: return
         // 动画名核对必须在濒死集合操作之前：攻击/技能动画的 finish 事件与死亡动画
         // finish 混流，若先 remove 会被无关事件销毁濒死状态，生物永久卡在假死亡
-        val expected = AnimationOrchestrator.deathAnimationOf(entity)
-        LanternPlugin.instance.logger.info("[DeathDiag] finish 事件: ${event.animationName} (期望 $expected, 濒死=${dying.contains(entity.uniqueId)})")
-        if (event.animationName != expected) return
+        if (event.animationName != AnimationOrchestrator.deathAnimationOf(entity)) return
         if (!dying.remove(entity.uniqueId)) return
         // health=0 不再被拦截；不触发伤害事件避免递归
         if (entity.isValid) {
             entity.isInvulnerable = false
             // 不恢复 AI：死亡期内 AI 开着会导致僵尸移动/寻路（视觉即"站起来走两步"）
             entity.health = 0.0
-            LanternPlugin.instance.logger.info("[DeathDiag] ${entity.name} 真击杀执行")
         }
     }
 
     private fun forceKill(entity: LivingEntity) {
         if (!dying.remove(entity.uniqueId)) return
-        LanternPlugin.instance.logger.info("[DeathDiag] ${entity.name} 兜底强杀触发")
         if (entity.isValid) {
             entity.isInvulnerable = false
             entity.health = 0.0

@@ -110,6 +110,15 @@ object RendererHandler {
             }
     }
 
+    /**
+     * 实体离开世界（消失/死亡移除/区块卸载）时淘汰其渲染器，
+     * 释放克隆骨骼树；实体重新进入视距时由 getRenderer 懒重建
+     */
+    fun evict(uuid: java.util.UUID) {
+        val key = uuid.toString()
+        renderers.values.forEach { it.remove(key) }
+    }
+
     fun getCustomModelWrapper(customName: String): CustomModelWrapper? =
         wrappers[customName] ?: wrappers[normalizeName(customName)]
 
