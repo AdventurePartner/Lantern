@@ -36,6 +36,7 @@ class AnimationPlayer(private val uuid: UUID) {
     private var fadeElapsed = -1f
 
     private var channelId = -1L
+    private var lastFinishReportedId = -1L
     private var dead = false
     private var lastNanos = 0L
 
@@ -79,9 +80,16 @@ class AnimationPlayer(private val uuid: UUID) {
             val timestampExpired = forced.expiresAtMs > 0 &&
                 System.currentTimeMillis() >= forced.expiresAtMs
             if (timelineEnded || timestampExpired) {
-                AnimationControlStore.stop(uuid, forced.animation)
-                org.lantern.internal.network.NetworkParser.animationEventSender
-                    ?.invoke(uuid, forced.animation, "finish")
+                if (lastFinishReportedId != forced.id) {
+                    lastFinishReportedId = forced.id
+                    org.lantern.internal.network.NetworkParser.animationEventSender
+                        ?.invoke(uuid, forced.animation, "finish")
+                }
+                if (forced.animation != states.death) {
+                    AnimationControlStore.stop(uuid, forced.animation)
+                }
+                // 死亡动画播完后持有末帧等待真死亡（服务端 finish 回报 -> health=0），
+                // 不回落行走——否则真死亡晚于回落到达时会把 die 从头重播"再死一次"
             }
         }
         val activeForced = AnimationControlStore.get(uuid)

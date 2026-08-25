@@ -34,6 +34,7 @@ class LanternPlugin : AyPlugin() {
         Bukkit.getPluginManager().registerEvents(PlayerListener(), this)
         Bukkit.getPluginManager().registerEvents(BlockListener(), this)
         Bukkit.getPluginManager().registerEvents(WardrobeListener(), this)
+        Bukkit.getPluginManager().registerEvents(org.lantern.animation.DeathAnimationInterceptor(), this)
         // 注册消息通道
         Bukkit.getMessenger().registerOutgoingPluginChannel(this, "lantern:main")
         channelListener = LanternChannelMessageListener()

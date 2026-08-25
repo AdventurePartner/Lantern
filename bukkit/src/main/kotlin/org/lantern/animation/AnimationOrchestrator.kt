@@ -180,6 +180,12 @@ object AnimationOrchestrator {
         return nameToModelKey[stripped]
     }
 
+    /** 实体对应模型映射的 death 状态动画名（无模型或无 death 映射返回 null），供死亡拦截使用 */
+    fun deathAnimationOf(entity: Entity): String? {
+        val key = resolveModelKey(entity) ?: return null
+        return Configurations.models.getString("$key.animations.states.death")
+    }
+
     fun reset() {
         active.values.forEach { a -> a.tasks.forEach { it.cancel() } }
         active.clear()
