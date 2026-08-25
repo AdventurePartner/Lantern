@@ -15,7 +15,9 @@ object AnimationControlHandler {
 
     /** once 模式查不到动画时长时的兜底持有上限，防止强制动画永久锁死 */
     private const val FALLBACK_ONCE_MAX_MS = 10_000L
-    private const val EXPIRY_MARGIN_MS = 300L
+    /** 时间戳到期的兜底余量：正常路径由播放器时间轴到头即刻释放（见 AnimationPlayer），
+     *  过渡由淡化机制完成，此处不再叠加过渡 tick */
+    private const val EXPIRY_MARGIN_MS = 100L
 
     fun handle(uuid: UUID, play: Boolean, animation: String, transition: Int, loop: Boolean, speed: Float) {
         if (!play) {
@@ -40,10 +42,10 @@ object AnimationControlHandler {
             Lantern.logger.info(
                 "[Lantern][AnimDiag] play '{}' loop={} length={} -> expires in {}ms",
                 animation, loop, lengthMs,
-                if (lengthMs != null) (lengthMs / safeSpeed).toLong() + transition * 50L + EXPIRY_MARGIN_MS else FALLBACK_ONCE_MAX_MS
+                if (lengthMs != null) (lengthMs / safeSpeed).toLong() + EXPIRY_MARGIN_MS else FALLBACK_ONCE_MAX_MS
             )
             if (lengthMs != null) {
-                System.currentTimeMillis() + (lengthMs / safeSpeed).toLong() + transition * 50L + EXPIRY_MARGIN_MS
+                System.currentTimeMillis() + (lengthMs / safeSpeed).toLong() + EXPIRY_MARGIN_MS
             } else {
                 Lantern.logger.debug(
                     "[Lantern] Animation '{}' length unknown for '{}', using fallback expiry",

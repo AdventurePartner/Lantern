@@ -69,14 +69,20 @@ class AnimationPlayer(private val uuid: UUID) {
             dead = false
         }
 
-        // --- 播控到期（once） ---
-        if (forced != null && !forced.loop &&
-            forced.expiresAtMs > 0 &&
-            System.currentTimeMillis() >= forced.expiresAtMs
-        ) {
-            AnimationControlStore.stop(uuid, forced.animation)
-            org.lantern.internal.network.NetworkParser.animationEventSender
-                ?.invoke(uuid, forced.animation, "finish")
+        // --- 播控到期（once）：本地时间轴到达剪辑末尾即刻释放；
+        //     时间戳兜底仅在剪辑缺失/长度异常时生效。持有末帧等待到期戳会造成
+        //     "动画播完仍僵立收招"的空窗（Boss 已在走路而画面停在站姿） ---
+        if (forced != null && !forced.loop) {
+            val forcedClip = clips[forced.animation]
+            val timelineEnded = forcedClip != null && forcedClip.length > 0f &&
+                channelId == forced.id && activeTime >= forcedClip.length
+            val timestampExpired = forced.expiresAtMs > 0 &&
+                System.currentTimeMillis() >= forced.expiresAtMs
+            if (timelineEnded || timestampExpired) {
+                AnimationControlStore.stop(uuid, forced.animation)
+                org.lantern.internal.network.NetworkParser.animationEventSender
+                    ?.invoke(uuid, forced.animation, "finish")
+            }
         }
         val activeForced = AnimationControlStore.get(uuid)
 
