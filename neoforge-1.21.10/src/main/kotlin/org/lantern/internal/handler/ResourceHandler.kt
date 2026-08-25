@@ -209,10 +209,9 @@ object ResourceHandler {
 
     fun clearSession() {
         EncryptedPackLoader.clearPassword()
-        resources.clear()
-        encryptedResources.clear()
-        localResources.clear()
-        generatedResources.clear()
+        // 本地包/加密包是客户端本地资源，退出服务器时保留；
+        // 清空会导致重连后 pkt 99 的重载向 GeckoLib 提供空包，模型全部消失
+        clearResources(generatedResources)
         itemIcons.clear()
         blockModels.clear()
         characters.clear()

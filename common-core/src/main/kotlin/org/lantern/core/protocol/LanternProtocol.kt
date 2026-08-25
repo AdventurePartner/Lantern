@@ -17,6 +17,12 @@ data class KeyboardC2SPacket(
     val inGui: Boolean
 )
 
+data class AnimationEventC2SPacket(
+    val uuid: String,
+    val animation: String,
+    val event: String
+)
+
 class MainPayloadDecoder {
     private data class PendingMessage(
         val totalChunks: Int,
@@ -140,6 +146,7 @@ object LanternProtocol {
     const val S2C_JSON_PACKET_TYPE = 0
     const val C2S_KEYBOARD_PACKET_TYPE = 1
     const val S2C_CHUNK_PACKET_TYPE = 2
+    const val C2S_ANIMATION_EVENT_PACKET_TYPE = 3
 
     fun encodeMainS2C(packetId: Int, json: String): ByteArray {
         val output = ByteArrayOutputStream()
@@ -186,4 +193,33 @@ object LanternProtocol {
     }
 
     private const val MAX_KEY_BYTES = 1024
+
+    fun encodeAnimationEventC2S(uuid: String, animation: String, event: String): ByteArray {
+        val output = ByteArrayOutputStream()
+        DataOutputStream(output).use { data ->
+            data.writeByte(C2S_ANIMATION_EVENT_PACKET_TYPE)
+            data.writeUTF(uuid)
+            data.writeUTF(animation)
+            data.writeUTF(event)
+        }
+        return output.toByteArray()
+    }
+
+    fun decodeAnimationEventC2S(data: ByteArray): AnimationEventC2SPacket? {
+        if (data.isEmpty()) return null
+        return try {
+            DataInputStream(ByteArrayInputStream(data)).use { input ->
+                if (input.readByte().toInt() != C2S_ANIMATION_EVENT_PACKET_TYPE) return null
+                val uuid = input.readUTF()
+                if (uuid.length !in 1..64) return null
+                val animation = input.readUTF()
+                if (animation.length !in 1..256) return null
+                val event = input.readUTF()
+                if (event.length !in 1..32) return null
+                AnimationEventC2SPacket(uuid, animation, event)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 }

@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import org.bukkit.Bukkit
 import org.bukkit.configuration.file.FileConfiguration
+import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import org.bukkit.World
 import org.lantern.handler.CustomBlockTracker
@@ -464,6 +465,55 @@ object NetworkHandler {
         }
         packet.add("values", valuesObj)
         sendPacket(player, 13, packet)
+    }
+
+    /**
+     * 发送动画播控包（packet ID 15）。
+     * 客户端对该实体播放/停止指定动画；非 Lantern 模型实体的包会被客户端忽略。
+     */
+    fun sendAnimationControl(
+        player: Player,
+        entityUuid: UUID,
+        action: String,
+        animation: String,
+        transitionTicks: Int,
+        loop: Boolean,
+        speed: Float
+    ) {
+        val packet = JsonObject()
+        packet.addProperty("uuid", entityUuid.toString())
+        packet.addProperty("action", action)
+        packet.addProperty("animation", animation)
+        packet.addProperty("transition", transitionTicks.coerceAtLeast(0))
+        packet.addProperty("mode", if (loop) "loop" else "once")
+        packet.addProperty("speed", speed)
+        sendPacket(player, 15, packet)
+    }
+
+    /**
+     * 对实体播放指定动画（loop 循环直到 stop；once 播完自动回落并上报 finish）。
+     * 广播给全体在线玩家，同时驱动服务端编排（动作轨道/事件/链式）。
+     */
+    fun playAnimation(
+        entity: Entity,
+        animation: String,
+        transitionTicks: Int = 5,
+        loop: Boolean = true,
+        speed: Float = 1.0f
+    ) {
+        val safeSpeed = if (speed > 0.01f) speed else 1.0f
+        Bukkit.getOnlinePlayers().forEach {
+            sendAnimationControl(it, entity.uniqueId, "play", animation, transitionTicks, loop, safeSpeed)
+        }
+        org.lantern.animation.AnimationOrchestrator.onPlay(entity, animation, loop)
+    }
+
+    /** 停止实体上由 [playAnimation] 播放的指定动画。 */
+    fun stopAnimation(entity: Entity, animation: String, transitionTicks: Int = 0) {
+        Bukkit.getOnlinePlayers().forEach {
+            sendAnimationControl(it, entity.uniqueId, "stop", animation, transitionTicks, false, 1.0f)
+        }
+        org.lantern.animation.AnimationOrchestrator.onStop(entity, animation)
     }
 
     fun sendReloadResourceManagerPacket(player: Player) {

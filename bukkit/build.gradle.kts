@@ -11,6 +11,10 @@ repositories {
         name = "AiYo Studio Repository"
         url = uri("https://repo.mc9y.com/snapshots")
     }
+    maven {
+        name = "Lumine Repository"
+        url = uri("https://mvn.lumine.io/repository/maven-public/")
+    }
     mavenCentral()
 }
 
@@ -19,6 +23,7 @@ dependencies {
     compileOnly("org.spigotmc:spigot-api:1.20.1-R0.1-SNAPSHOT")
     compileOnly("com.aystudio.core:AyCore:1.3.1-BETA")
     compileOnly("me.clip:placeholderapi:2.11.1")
+    compileOnly("io.lumine:Mythic-Dist:5.13.0")
 }
 
 kotlin {

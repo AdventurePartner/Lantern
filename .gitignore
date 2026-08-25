@@ -48,3 +48,5 @@ object/
 .zcode/
 .eclipse/
 run/
+/docs/animation-control-plan.md
+bukkit/src/main/resources/animations.yml

@@ -1,5 +1,6 @@
 package org.lantern.model.renderstate
 
+import java.util.UUID
 import org.lantern.model.enums.EntityAnimationState
 import org.lantern.model.wrapper.AnimationStateMapping
 import software.bernie.geckolib.constant.dataticket.DataTicket
@@ -7,7 +8,9 @@ import software.bernie.geckolib.constant.dataticket.DataTicket
 data class ReplacedRenderData(
     val rendererKey: String,
     val animationStates: AnimationStateMapping,
-    val actionState: EntityAnimationState?
+    val actionState: EntityAnimationState?,
+    val entityUuid: UUID,
+    val forcedAnimation: AnimationControlStore.ForcedAnimation?
 )
 
 object LanternDataTickets {

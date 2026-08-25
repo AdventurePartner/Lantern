@@ -29,6 +29,19 @@ import java.util.UUID
 
 object NetworkParser {
 
+    /**
+     * packetId 15（动画播控）的处理器，由支持运行时动画控制的客户端平台注册。
+     * 参数: (实体UUID, 是否播放, 动画名, 过渡tick, 是否循环, 速度倍率)；未注册的平台忽略该包。
+     */
+    var animationControlHandler: ((uuid: UUID, play: Boolean, animation: String, transition: Int, loop: Boolean, speed: Float) -> Unit)? =
+        null
+
+    /**
+     * C2S 动画生命周期事件上报（如 once 播完），由各平台网络层注册发送实现。
+     * 事件类型: "finish"
+     */
+    var animationEventSender: ((uuid: UUID, animation: String, event: String) -> Unit)? = null
+
     fun parse(packetId: Int, obj: JsonObject) {
         when (packetId) {
             1 -> parseCharacters(obj)
@@ -45,6 +58,7 @@ object NetworkParser {
             12 -> parseBlockPositionUpdate(obj)
             13 -> parsePlaceholderUpdate(obj)
             14 -> parseChatChannels(obj)
+            15 -> parseAnimationControl(obj)
             99 -> reloadResourcePack()
         }
     }
@@ -375,6 +389,23 @@ object NetworkParser {
                 BlockRendererHandler.markSectionDirtyAt(pos)
             }
         }
+    }
+
+    private fun parseAnimationControl(obj: JsonObject) {
+        val handler = animationControlHandler ?: return
+        val uuid = obj.get("uuid")?.asString
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            ?: return
+        val play = when (obj.get("action")?.asString) {
+            "play" -> true
+            "stop" -> false
+            else -> return
+        }
+        val animation = obj.get("animation")?.asString ?: return
+        val transition = obj.get("transition")?.asInt ?: 0
+        val loop = obj.get("mode")?.asString != "once"
+        val speed = obj.get("speed")?.asFloat ?: 1.0f
+        handler(uuid, play, animation, transition, loop, speed)
     }
 
     private fun reloadResourcePack() {

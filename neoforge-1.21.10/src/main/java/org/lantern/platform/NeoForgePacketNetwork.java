@@ -67,6 +67,20 @@ public final class NeoForgePacketNetwork {
         return true;
     }
 
+    /**
+     * C2S 动画生命周期事件上报（type 3），由共享 NetworkParser.animationEventSender 调用。
+     */
+    public static boolean sendAnimationEvent(java.util.UUID uuid, String animation, String event) {
+        ClientPacketListener listener = Minecraft.getInstance().getConnection();
+        if (listener == null || !listener.hasChannel(LanternMainPayload.TYPE)) {
+            return false;
+        }
+
+        byte[] data = LanternProtocol.INSTANCE.encodeAnimationEventC2S(uuid.toString(), animation, event);
+        ClientPacketDistributor.sendToServer(new LanternMainPayload(data));
+        return true;
+    }
+
     public static void clear() {
         DECODER.clear();
     }

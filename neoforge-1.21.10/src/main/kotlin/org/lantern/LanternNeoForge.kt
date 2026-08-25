@@ -14,7 +14,9 @@ import net.neoforged.neoforge.client.renderstate.RegisterRenderStateModifiersEve
 import net.neoforged.neoforge.event.AddPackFindersEvent
 import org.lantern.internal.chat.ChatChannelNotificationRenderer
 import org.lantern.internal.handler.LanternReloadListener
+import org.lantern.internal.network.NetworkParser
 import org.lantern.internal.pack.LanternDynamicPackSource
+import org.lantern.model.handler.AnimationControlHandler
 import org.lantern.model.handler.RendererHandler
 import org.lantern.neoforge.block.LanternBlockClientExtensions
 import org.lantern.neoforge.block.TrackedBarrelRenderer
@@ -32,9 +34,15 @@ class LanternNeoForge(modBus: IEventBus) {
     init {
         Lantern.logger = LoggerFactory.getLogger(Lantern.MOD_ID)
         Lantern.logger.info("Lantern NeoForge 1.21.10 initializing...")
+        // 首轮资源重载前预载本地包，启动时 GeckoLib 扫描烘焙即可命中模型文件
+        org.lantern.internal.handler.LocalPackLoader.reload()
 
         NeoForgePacketNetwork.register(modBus)
         NeoForgeClientEvents.register()
+        NetworkParser.animationControlHandler = AnimationControlHandler::handle
+        NetworkParser.animationEventSender = { uuid, animation, event ->
+            NeoForgePacketNetwork.sendAnimationEvent(uuid, animation, event)
+        }
         modBus.addListener(
             AddPackFindersEvent::class.java,
             Consumer<AddPackFindersEvent>(LanternDynamicPackSource::register)

@@ -25,6 +25,7 @@ class LanternPlugin : AyPlugin() {
     override fun onEnable() {
         instance = this
         Configurations.load()
+        org.lantern.animation.AnimationOrchestrator.load(this)
         CustomBlockTracker.load()
         CustomBlockTracker.startAutoSave(this)
         CostumeAssignmentHandler.load()
@@ -45,10 +46,16 @@ class LanternPlugin : AyPlugin() {
         }
         // 启动 PlaceholderAPI 变量推送（依赖 UiConfigurations 已加载）
         PlaceholderService.load(UiConfigurations.getPlaceholderConfigs())
+        // MythicMobs 集成（softdepend，未安装时跳过；加载失败不影响主功能）
+        if (Bukkit.getPluginManager().getPlugin("MythicMobs") != null) {
+            runCatching { org.lantern.mythic.MythicIntegration.register(this) }
+                .onFailure { logger.warning("MythicMobs integration failed to load: ${it.message}") }
+        }
     }
 
     override fun onDisable() {
         PlaceholderService.stopAll()
+        org.lantern.animation.AnimationOrchestrator.reset()
         CustomBlockTracker.stopAutoSave()
         CustomBlockTracker.save()
         CostumeAssignmentHandler.stopAutoSave()

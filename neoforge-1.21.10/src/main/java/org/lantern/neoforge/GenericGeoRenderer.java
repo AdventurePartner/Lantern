@@ -12,10 +12,12 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import org.lantern.Lantern;
+import org.lantern.animation.AnimationHost;
 import org.lantern.model.GeckoResourceIds;
 import org.lantern.model.entity.GenericReplacedEntity;
 import org.lantern.model.enums.EntityAnimationState;
 import org.lantern.model.geo.GenericGeoModel;
+import org.lantern.model.renderstate.AnimationControlStore;
 import org.lantern.model.renderstate.LanternDataTickets;
 import org.lantern.model.renderstate.ReplacedRenderData;
 import org.lantern.model.wrapper.CustomModelWrapper;
@@ -30,6 +32,7 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
 
     private final String rendererKey;
     private final CustomModelWrapper wrapper;
+    private final GenericGeoModel geoModel;
 
     private GenericGeoRenderer(
         EntityRendererProvider.Context context,
@@ -38,6 +41,7 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
         CustomModelWrapper wrapper
     ) {
         super(context, new GenericGeoModel(wrapper), new GenericReplacedEntity(entityType));
+        this.geoModel = (GenericGeoModel) super.getGeoModel();
         this.rendererKey = rendererKey;
         this.wrapper = wrapper;
         withScale(wrapper.getScale());
@@ -61,8 +65,17 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
     ) {
         renderState.addGeckolibData(
             LanternDataTickets.REPLACED_ENTITY,
-            new ReplacedRenderData(rendererKey, wrapper.getAnimationStates(), detectActionState(entity))
+            new ReplacedRenderData(
+                rendererKey,
+                wrapper.getAnimationStates(),
+                detectActionState(entity),
+                entity.getUUID(),
+                AnimationControlStore.INSTANCE.get(entity.getUUID())
+            )
         );
+        // Lantern 自托管动画：本渲染器不注册 GeckoLib 谓词控制器，
+        // 每帧由 AnimationHost 采样并直写骨骼（唯一写入方）
+        AnimationHost.drive(entity, wrapper, this.geoModel.getAnimationProcessor());
         if (renderState.nameTagAttachment != null && wrapper.getNameTagOffsetY() != 0) {
             renderState.nameTagAttachment = renderState.nameTagAttachment.add(
                 0,

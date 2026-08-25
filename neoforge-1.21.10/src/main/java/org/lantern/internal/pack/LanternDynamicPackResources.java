@@ -3,7 +3,6 @@ package org.lantern.internal.pack;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.minecraft.resources.ResourceLocation;
@@ -15,6 +14,11 @@ import net.minecraft.server.packs.resources.IoSupplier;
 import org.lantern.internal.handler.ResourceHandler;
 import org.lantern.internal.wrapper.resource.IResourceWrapper;
 
+/**
+ * Lantern 动态虚拟资源包。实时查询 ResourceHandler 内存表而非持有构造期快照：
+ * GeckoLib 只在资源重载时扫描烘焙，若这里返回冻结快照，本轮重载中途写入的
+ * 资源要等下一轮重载才可见（快照滞后一轮），表现为进服后模型丢失、需手动再重载。
+ */
 public final class LanternDynamicPackResources extends AbstractPackResources {
     private static final byte[] PACK_METADATA = """
         {
@@ -26,11 +30,8 @@ public final class LanternDynamicPackResources extends AbstractPackResources {
         }
         """.getBytes(StandardCharsets.UTF_8);
 
-    private final Map<ResourceLocation, IResourceWrapper> resources;
-
     public LanternDynamicPackResources(PackLocationInfo location) {
         super(location);
-        this.resources = ResourceHandler.INSTANCE.resourceSnapshot();
     }
 
     @Override
@@ -46,7 +47,7 @@ public final class LanternDynamicPackResources extends AbstractPackResources {
         if (type != PackType.CLIENT_RESOURCES) {
             return null;
         }
-        IResourceWrapper resource = resources.get(location);
+        IResourceWrapper resource = ResourceHandler.INSTANCE.getResource(location);
         return resource == null ? null : resource::getResource;
     }
 
@@ -60,11 +61,8 @@ public final class LanternDynamicPackResources extends AbstractPackResources {
         if (type != PackType.CLIENT_RESOURCES) {
             return;
         }
-        resources.forEach((location, resource) -> {
-            if (location.getNamespace().equals(namespace) && location.getPath().startsWith(path)) {
-                output.accept(location, resource::getResource);
-            }
-        });
+        ResourceHandler.INSTANCE.listDynamicResources(namespace, path)
+            .forEach((location, resource) -> output.accept(location, resource::getResource));
     }
 
     @Override
@@ -72,7 +70,7 @@ public final class LanternDynamicPackResources extends AbstractPackResources {
         if (type != PackType.CLIENT_RESOURCES) {
             return Set.of();
         }
-        return resources.keySet().stream()
+        return ResourceHandler.INSTANCE.resourceSnapshot().keySet().stream()
             .map(ResourceLocation::getNamespace)
             .collect(Collectors.toUnmodifiableSet());
     }

@@ -90,6 +90,39 @@ assets/lantern/animations/entity/example_pig.animation.json
 2. 执行 `/lantern reload`。
 3. 如果模型没有立刻出现，让玩家重新进入服务器。
 
+## 手动播放动画
+
+除了 `idle`/`walk` 这些自动状态，还可以随时让生物播放动画文件里的任意一个动画。动画名就是 `.animation.json` 里 `animations` 下面的那个名字。
+
+站在生物旁边（8 格内），执行：
+
+```
+/lantern anim play <动画名>                # 循环播放，直到停止
+/lantern anim play <动画名> 5 once         # 播一遍自动结束，5 tick 过渡
+/lantern anim stop <动画名>                # 停止循环播放
+```
+
+第一个数字是过渡时间（tick，默认 5），`once` 表示只播一遍，不写就是循环。
+
+## 配合 MythicMobs
+
+服务端装了 MythicMobs 插件时，Lantern 会自动注册一个技能机制 `lanternanim`，可以在 MM 的技能里直接触发动画。
+
+绑定模型的方法：让 MM 生物的 `Display` 名字和 `entityModels.yml` 里该条目的 `name` 字段值一致（不是文件里的 key！颜色符号会自动忽略），客户端就会把这只生物渲染成对应模型。
+
+然后在 MM 生物或技能配置里写：
+
+```yml
+Skills:
+  - lanternanim{anim=skill_slash} @Self                 # 播放（循环）
+  - lanternanim{anim=skill_slash;mode=once} @Self       # 播一遍
+  - lanternanim{anim=skill_slash;remove=true;time=0} @Self  # 停止
+```
+
+参数（都可以只写首字母）：`anim/a` 动画名、`remove/r` 是否停止（默认 false）、`time/t` 过渡 tick（默认 5）、`mode/m` `loop` 或 `once`（默认 loop）。目标写法随意（`@Self`、`@PlayersInRadius{r=10}` 等），不是 Lantern 模型的生物会被自动忽略。
+
+没装 MythicMobs 时这个机制不会注册，插件其他功能不受影响。
+
 ## 常见问题
 
 | 现象 | 检查 |

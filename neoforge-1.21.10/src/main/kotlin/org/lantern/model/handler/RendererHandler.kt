@@ -5,7 +5,9 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.EntityType
 import org.lantern.Lantern
+import org.lantern.animation.AnimationRepository
 import org.lantern.internal.handler.TextureHandler
+import org.lantern.model.renderstate.AnimationControlStore
 import org.lantern.model.wrapper.AnimationStateMapping
 import org.lantern.model.wrapper.CustomModelWrapper
 import org.lantern.model.renderer.GenericGeoRenderer
@@ -25,6 +27,9 @@ object RendererHandler {
     fun reload() {
         wrappers.clear()
         renderers.clear()
+        AnimationControlStore.reset()
+        AnimationRepository.reset()
+        org.lantern.animation.AnimationHost.reset()
         version++
     }
 
