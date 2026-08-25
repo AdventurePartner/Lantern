@@ -502,6 +502,13 @@ object NetworkHandler {
         speed: Float = 1.0f
     ) {
         val safeSpeed = if (speed > 0.01f) speed else 1.0f
+        // 濒死(假死亡)实体只允许 death 动画：MM ~onTimer 技能不受 setAI(false) 影响，
+        // 濒死期间的踩踏等 lanternanim 指令会顶掉正在播放的 die，导致死亡流程断裂
+        if (org.lantern.animation.DeathAnimationInterceptor.isDying(entity.uniqueId) &&
+            animation != org.lantern.animation.AnimationOrchestrator.deathAnimationOf(entity)
+        ) {
+            return
+        }
         Bukkit.getOnlinePlayers().forEach {
             sendAnimationControl(it, entity.uniqueId, "play", animation, transitionTicks, loop, safeSpeed)
         }

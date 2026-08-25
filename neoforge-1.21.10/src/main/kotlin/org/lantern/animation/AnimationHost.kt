@@ -20,14 +20,11 @@ object AnimationHost {
 
     private val players = ConcurrentHashMap<UUID, AnimationPlayer>()
 
+    /** 提取阶段调用：只计算姿势（存入 player.pose），不写骨骼 */
     @JvmStatic
-    fun drive(
-        entity: Entity,
-        wrapper: CustomModelWrapper,
-        processor: AnimationProcessor<*>
-    ) {
+    fun drivePose(entity: Entity, wrapper: CustomModelWrapper): Map<String, FloatArray>? {
         val clips = AnimationRepository.clips(wrapper.animationLocation)
-        if (clips.isNullOrEmpty()) return
+        if (clips.isNullOrEmpty()) return null
         val uuid = entity.uuid
         val player = players.computeIfAbsent(uuid) { AnimationPlayer(it) }
         val actionState = if (entity is LivingEntity && entity.isDeadOrDying) {
@@ -44,7 +41,15 @@ object AnimationHost {
             entity.z,
             wrapper.animationStates
         )
-        player.applyTo(processor)
+        return player.pose
+    }
+
+    /** 渲染阶段调用（submit 内，逐实体串行）：从 DataTicket 读回姿势写入骨骼 */
+    @JvmStatic
+    fun applyPose(processor: AnimationProcessor<*>, pose: Map<String, FloatArray>?) {
+        // 使用任一 player 的 initialPose 捕获逻辑（骨骼写入与 player 状态解耦）
+        // 直接静态应用——pose 是完整的姿势映射，不依赖特定 player 实例
+        org.lantern.animation.applyPoseToBones(processor, pose)
     }
 
     @JvmStatic

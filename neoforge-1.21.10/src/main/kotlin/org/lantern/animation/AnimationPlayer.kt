@@ -41,7 +41,8 @@ class AnimationPlayer(private val uuid: UUID) {
     private var lastNanos = 0L
 
     private val initialPose = HashMap<String, FloatArray>()
-    private var pose: Map<String, FloatArray> = emptyMap()
+    var pose: Map<String, FloatArray> = emptyMap()
+        private set
 
     // 位移实测的移动检测：客户端远程实体的 deltaMovement 不同步，
     // 用实际水平速度判定；结果在采样窗口间保持，双阈值滞回避免边界闪烁
@@ -125,11 +126,21 @@ class AnimationPlayer(private val uuid: UUID) {
                 fadeElapsed = -1f
             }
             activeClip = target
-            activeTime = 0f
+            // 真死亡后的任何切换钉死末帧：无论从哪条路径切入 death 剪辑，
+            // 都不从第 0 帧重播（消除"站起来一下再死"）
+            activeTime = if (dead && target != null) target.length else 0f
         }
         activeSpeed = targetSpeed
         activeClip?.let { activeTime = advance(it, activeTime, dt * activeSpeed) }
         fadeClip?.let { fadeTime = advance(it, fadeTime, dt) }
+
+        // 死亡状态无条件钉死：清除一切交叉淡化、时间钳制到剪辑末帧。
+        // 任何残留的 fadeClip 都会把"躺倒姿势"拉向"站立姿势"——视觉即"站起来"
+        if (dead && activeClip != null) {
+            activeTime = activeClip?.length ?: 0f
+            fadeClip = null
+            fadeElapsed = -1f
+        }
 
         // --- 采样 + 交叉淡化 ---
         val targetPose = activeClip?.let { samplePose(it, activeTime) } ?: emptyMap()
@@ -304,4 +315,32 @@ private fun spline(t: Float, p0: Float, p1: Float, p2: Float, p3: Float): Float 
             (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
             (-p0 + 3f * p1 - 3f * p2 + p3) * t3
         )
+}
+
+/** 渲染阶段（submit 内，逐实体串行）调用：将 per-entity 姿势映射写入处理器骨骼 */
+fun applyPoseToBones(processor: AnimationProcessor<*>, pose: Map<String, FloatArray>?) {
+    val bones = processor.registeredBones
+    if (bones.isEmpty() || pose == null) return
+    for (bone in bones) {
+        val snap = bone.initialSnapshot
+        val init = floatArrayOf(
+            snap.rotX, snap.rotY, snap.rotZ,
+            snap.offsetX, snap.offsetY, snap.offsetZ,
+            snap.scaleX, snap.scaleY, snap.scaleZ
+        )
+        val v = pose[bone.name]
+        bone.updateRotation(
+            if (v == null || v[0].isNaN()) init[0] else v[0],
+            if (v == null || v[1].isNaN()) init[1] else v[1],
+            if (v == null || v[2].isNaN()) init[2] else v[2]
+        )
+        bone.updatePosition(
+            if (v == null || v[3].isNaN()) init[3] else v[3],
+            if (v == null || v[4].isNaN()) init[4] else v[4],
+            if (v == null || v[5].isNaN()) init[5] else v[5]
+        )
+        bone.setScaleX(if (v == null || v[6].isNaN()) init[6] else v[6])
+        bone.setScaleY(if (v == null || v[7].isNaN()) init[7] else v[7])
+        bone.setScaleZ(if (v == null || v[8].isNaN()) init[8] else v[8])
+    }
 }
