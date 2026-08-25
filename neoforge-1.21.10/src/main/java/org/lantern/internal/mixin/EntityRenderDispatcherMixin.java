@@ -55,7 +55,8 @@ public abstract class EntityRenderDispatcherMixin {
         }
         GenericGeoRenderer<?> renderer = RendererHandler.INSTANCE.getRenderer(
             entity.getType(),
-            entity.getCustomName().getString()
+            entity.getCustomName().getString(),
+            entity.getUUID()
         );
         if (renderer != null) {
             callback.setReturnValue(renderer);
@@ -78,7 +79,8 @@ public abstract class EntityRenderDispatcherMixin {
         ReplacedRenderData data = geoState.getGeckolibData(LanternDataTickets.REPLACED_ENTITY);
         GenericGeoRenderer<?> renderer = RendererHandler.INSTANCE.getRenderer(
             renderState.entityType,
-            data.getRendererKey()
+            data.getRendererKey(),
+            data.getEntityUuid()
         );
         if (renderer != null) {
             callback.setReturnValue(renderer);

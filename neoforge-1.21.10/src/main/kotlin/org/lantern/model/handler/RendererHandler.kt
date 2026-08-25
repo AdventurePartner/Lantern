@@ -95,12 +95,17 @@ object RendererHandler {
         version++
     }
 
-    fun getRenderer(entityType: EntityType<*>, customName: String): GenericGeoRenderer<*>? {
+    /**
+     * 按实体 UUID 实例化渲染器：同名实体的渲染器若共享，则共享同一副 GeoBone，
+     * 提取阶段多实体的骨骼写入互相覆盖（A 的动作播在 B 上），因此骨骼必须按实体隔离。
+     * 实体移除后的残留渲染器由 reload() 清理。
+     */
+    fun getRenderer(entityType: EntityType<*>, customName: String, uuid: java.util.UUID): GenericGeoRenderer<*>? {
         val rendererContext = context ?: return null
         val normalizedName = normalizeName(customName)
         val wrapper = getCustomModelWrapper(normalizedName) ?: return null
         return renderers.computeIfAbsent(entityType) { ConcurrentHashMap() }
-            .computeIfAbsent(normalizedName) {
+            .computeIfAbsent(uuid.toString()) {
                 GenericGeoRenderer.create(rendererContext, entityType, normalizedName, wrapper)
             }
     }

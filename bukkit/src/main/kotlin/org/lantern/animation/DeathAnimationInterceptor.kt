@@ -44,9 +44,11 @@ class DeathAnimationInterceptor : Listener {
     @EventHandler
     fun onAnimationFinish(event: LanternAnimationFinishEvent) {
         val entity = event.animEntity as? LivingEntity ?: return
-        if (!dying.remove(entity.uniqueId)) return
+        // 动画名核对必须在濒死集合操作之前：攻击/技能动画的 finish 事件与死亡动画
+        // finish 混流，若先 remove 会被无关事件销毁濒死状态，生物永久卡在假死亡
         if (event.animationName != AnimationOrchestrator.deathAnimationOf(entity)) return
-        // 已从濒死集合移除，health=0 不再被拦截；不触发伤害事件避免递归
+        if (!dying.remove(entity.uniqueId)) return
+        // health=0 不再被拦截；不触发伤害事件避免递归
         if (entity.isValid) {
             entity.isInvulnerable = false
             (entity as? org.bukkit.entity.Mob)?.setAI(true)
