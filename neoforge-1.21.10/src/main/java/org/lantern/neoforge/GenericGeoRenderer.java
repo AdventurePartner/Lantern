@@ -56,9 +56,21 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
         return new GenericGeoRenderer<>(context, entityType, rendererKey, wrapper);
     }
 
+    /**
+     * 模型配置了 death 状态动画（die 剪辑自带倒地动作）时禁用原版死亡倾倒，
+     * 避免实体整体侧倾 90° 与动画倒地叠加造成"又转又移"的观感；
+     * 未映射 death 的模型保留原版倾倒。
+     */
     @Override
-    public void addRenderData(
-        GenericReplacedEntity animatable,
+    protected float getDeathMaxRotation(software.bernie.geckolib.renderer.base.GeoRenderState renderState) {
+        if (wrapper.getAnimationStates().getDeath() != null) {
+            return 0.0F;
+        }
+        return super.getDeathMaxRotation(renderState);
+    }
+
+    @Override
+    public void addRenderData(        GenericReplacedEntity animatable,
         Entity entity,
         R renderState,
         float partialTick
