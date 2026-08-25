@@ -8,6 +8,11 @@ pluginManagement {
     }
 }
 
+plugins {
+    // 允许 Gradle 自动下载缺失的 JDK 工具链 (8/17/21)，无需本机预装
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"
+}
+
 rootProject.name = "Lantern"
 
 include(":common-core")
