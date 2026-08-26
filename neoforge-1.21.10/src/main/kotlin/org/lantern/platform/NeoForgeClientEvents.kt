@@ -87,6 +87,7 @@ object NeoForgeClientEvents {
             RendererHandler.evict(event.entity.uuid)
             AnimationHost.remove(event.entity.uuid)
             AnimationControlStore.stop(event.entity.uuid, null)
+            org.lantern.animation.MolangVariableStore.remove(event.entity.uuid)
         }
     }
 

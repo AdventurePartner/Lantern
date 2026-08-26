@@ -3,6 +3,10 @@ package org.lantern.animation
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import org.lantern.Lantern
+import software.bernie.geckolib.animatable.processing.AnimationState
+import software.bernie.geckolib.loading.math.MathParser
+import software.bernie.geckolib.loading.math.MathValue
 
 /**
  * 基岩版 .animation.json 的自有解析器。
@@ -10,15 +14,29 @@ import com.google.gson.JsonObject
  * 不依赖 GeckoLib 的 BakedAnimations/KeyframeStack（其公有 API 面随版本漂移、且部分
  * 关键语义无文档），Lantern 直接解析原始 JSON，动画时间轴 100% 自管。
  *
- * 支持的关键帧值形态（Blockbench 导出的全部变体）：
+ * 支持的关键帧值形态（Blockbench 导出的全部变体），每轴可为数值或 molang 表达式：
  *   [x,y,z]
  *   {"vector": [x,y,z]}
  *   {"pre": <值>, "post": <值>, "lerp_mode": "catmullrom"}
+ *
+ * 表达式经 GeckoLib MathParser 编译为 AST（数值编译为 Constant），
+ * 每帧由 [AnimationPlayer] 带 per-entity 求值上下文取值——
+ * query.* 由 Lantern 构建的 queryValues 供给，variable.* 为服务端注入变量。
  */
 data class Vec3(val x: Float, val y: Float, val z: Float)
 
+/** 关键帧值：每轴一个已编译的 molang 表达式（数值即 Constant），按求值上下文取值 */
+class ExprVec3(val x: MathValue, val y: MathValue, val z: MathValue) {
+
+    fun eval(state: AnimationState<*>): Vec3 = Vec3(
+        x.get(state).toFloat(),
+        y.get(state).toFloat(),
+        z.get(state).toFloat()
+    )
+}
+
 /** pre = 关键帧前值（段落起点语义，ModelEngine 反编译实证：区间端点 prev.post -> next.pre） */
-data class Keyframe(val time: Float, val value: Vec3, val pre: Vec3?, val lerpMode: String?)
+data class Keyframe(val time: Float, val value: ExprVec3, val pre: ExprVec3?, val lerpMode: String?)
 
 class BoneTracks(
     val rotation: List<Keyframe>,
@@ -67,7 +85,7 @@ object BedrockAnimationParser {
         val element = bone.get(key) ?: return emptyList()
         // 常量轨道："rotation": [x,y,z]
         if (element.isJsonArray) {
-            val v = parseVector(element.asJsonArray) ?: return emptyList()
+            val v = parseExprVector(element.asJsonArray) ?: return emptyList()
             return listOf(Keyframe(0f, v, v, null))
         }
         if (!element.isJsonObject) return emptyList()
@@ -82,9 +100,9 @@ object BedrockAnimationParser {
     }
 
     /** 返回 (post 值, pre 值, lerp_mode) */
-    private fun parseFrame(element: JsonElement): Triple<Vec3, Vec3?, String?>? {
+    private fun parseFrame(element: JsonElement): Triple<ExprVec3, ExprVec3?, String?>? {
         if (element.isJsonArray) {
-            val v = parseVector(element.asJsonArray) ?: return null
+            val v = parseExprVector(element.asJsonArray) ?: return null
             return Triple(v, v, null)
         }
         if (!element.isJsonObject) return null
@@ -97,20 +115,30 @@ object BedrockAnimationParser {
         return Triple(value, pre, lerpMode)
     }
 
-    private fun parseValueVector(element: JsonElement): Vec3? {
+    private fun parseValueVector(element: JsonElement): ExprVec3? {
         return when {
-            element.isJsonArray -> parseVector(element.asJsonArray)
-            element.isJsonObject -> element.asJsonObject.get("vector")?.takeIf { it.isJsonArray }?.asJsonArray?.let { parseVector(it) }
+            element.isJsonArray -> parseExprVector(element.asJsonArray)
+            element.isJsonObject -> element.asJsonObject.get("vector")?.takeIf { it.isJsonArray }?.asJsonArray?.let { parseExprVector(it) }
             else -> null
         }
     }
 
-    private fun parseVector(array: JsonArray): Vec3? {
+    /** 每轴编译为 MathValue（数值→Constant、字符串→molang AST），并把表达式引用的
+     *  variable.* 节点绑定到 Lantern 的 per-entity 求值上下文（见 [MolangContext]） */
+    private fun parseExprVector(array: JsonArray): ExprVec3? {
         if (array.size() < 3) return null
-        return Vec3(
-            array.get(0).asFloat,
-            array.get(1).asFloat,
-            array.get(2).asFloat
-        )
+        return runCatching {
+            val compiled = ExprVec3(
+                MathParser.parseJson(array.get(0)),
+                MathParser.parseJson(array.get(1)),
+                MathParser.parseJson(array.get(2))
+            )
+            MolangContext.bindUsedVariables(compiled.x)
+            MolangContext.bindUsedVariables(compiled.y)
+            MolangContext.bindUsedVariables(compiled.z)
+            compiled
+        }.onFailure {
+            Lantern.logger.warn("[Lantern] Failed to compile keyframe values {}: {}", array, it.message)
+        }.getOrNull()
     }
 }

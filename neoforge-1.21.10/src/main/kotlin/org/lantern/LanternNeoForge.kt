@@ -43,6 +43,8 @@ class LanternNeoForge(modBus: IEventBus) {
         NetworkParser.animationEventSender = { uuid, animation, event ->
             NeoForgePacketNetwork.sendAnimationEvent(uuid, animation, event)
         }
+        // packet 17 变量同步：只触碰 ConcurrentHashMap 且值编译无 MC 依赖，网络线程直接执行
+        NetworkParser.molangVariableHandler = org.lantern.animation.MolangVariableStore::update
         modBus.addListener(
             AddPackFindersEvent::class.java,
             Consumer<AddPackFindersEvent>(LanternDynamicPackSource::register)

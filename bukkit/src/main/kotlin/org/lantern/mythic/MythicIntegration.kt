@@ -15,18 +15,20 @@ object MythicIntegration {
     fun register(plugin: LanternPlugin) {
         CustomComponentRegistry(plugin, listOf("org.lantern.mythic"))
             .registerCustomComponent(MythicComponentType.MECHANIC, "lanternanim")
+            .registerCustomComponent(MythicComponentType.MECHANIC, "lanternvar")
 
         // registerCustomComponent 内部失败只打 WARN 不抛异常，必须回查确认机制真正挂载
-        val mechanic = MythicBukkit.inst().skillManager
-            .getMechanic("lanternanim")
-            ?: MythicBukkit.inst().skillManager.getMechanic("LANTERNANIM")
-        val loaded = (mechanic as? CustomMechanic)?.mechanic?.isPresent == true
-        if (loaded) {
-            plugin.logger.info("MythicMobs integration enabled (mechanic: lanternanim / lanim)")
-        } else {
-            throw IllegalStateException(
-                "lanternanim mechanic did not attach (check MythicMobs log above for the cause)"
-            )
+        for (name in listOf("lanternanim", "lanternvar")) {
+            val mechanic = MythicBukkit.inst().skillManager
+                .getMechanic(name)
+                ?: MythicBukkit.inst().skillManager.getMechanic(name.uppercase())
+            val loaded = (mechanic as? CustomMechanic)?.mechanic?.isPresent == true
+            if (!loaded) {
+                throw IllegalStateException(
+                    "$name mechanic did not attach (check MythicMobs log above for the cause)"
+                )
+            }
         }
+        plugin.logger.info("MythicMobs integration enabled (mechanics: lanternanim / lanim, lanternvar / lvar)")
     }
 }

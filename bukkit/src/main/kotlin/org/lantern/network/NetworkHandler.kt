@@ -517,6 +517,21 @@ object NetworkHandler {
         org.lantern.animation.AnimationOrchestrator.onStop(entity, animation)
     }
 
+    /**
+     * 同步实体的 molang 变量（packet 17，S2C 广播）。
+     * 值为字符串：数字或客户端求值的 molang 表达式（可引用 query.*）；空串 = 删除该变量。
+     * 更新为合并语义，只传需要变更的键值对。
+     */
+    fun setMolangVariables(entity: Entity, vars: Map<String, String>) {
+        val packet = JsonObject()
+        packet.addProperty("uuid", entity.uniqueId.toString())
+        val varsObj = JsonObject()
+        vars.forEach { (key, value) -> varsObj.addProperty(key, value) }
+        packet.add("vars", varsObj)
+        val bytes = serializePacket(17, packet)
+        Bukkit.getOnlinePlayers().forEach { sendSerializedPacket(it, bytes) }
+    }
+
     fun sendReloadResourceManagerPacket(player: Player) {
         sendPacket(player, 99, JsonObject())
     }

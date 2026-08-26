@@ -1,6 +1,7 @@
 package org.lantern.animation
 
 import java.util.UUID
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap
 import net.minecraft.core.component.DataComponents
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
@@ -19,6 +20,11 @@ import org.lantern.model.renderstate.AnimationControlStore
 import org.lantern.model.wrapper.AnimationStateMapping
 import org.lantern.model.wrapper.PlayMode
 import org.lantern.model.wrapper.StateConfig
+import software.bernie.geckolib.animatable.GeoAnimatable
+import software.bernie.geckolib.animatable.processing.AnimationState
+import software.bernie.geckolib.loading.math.MathParser
+import software.bernie.geckolib.loading.math.MolangQueries
+import software.bernie.geckolib.loading.math.value.Variable
 import software.bernie.geckolib.animatable.processing.AnimationProcessor
 import software.bernie.geckolib.cache.`object`.GeoBone
 import kotlin.math.abs
@@ -89,6 +95,10 @@ class AnimationPlayer(private val uuid: UUID) {
     private var wasRising = false
     private var jumpEdge = false
     private var landingEdge = false
+
+    // 最近一次采样窗口的实测速度（molang query: ground_speed / vertical_speed）
+    private var groundSpeed = 0f
+    private var verticalSpeed = 0f
 
     fun drive(
         clips: Map<String, ClipData>,
@@ -243,19 +253,72 @@ class AnimationPlayer(private val uuid: UUID) {
         }
 
         // --- 采样 + 交叉淡化 ---
-        val targetPose = activeClip?.let { samplePose(it, activeTime, activeLoops) } ?: emptyMap()
-        pose = if (fadeClip != null && fadeElapsed >= 0f) {
-            fadeElapsed += dt
-            if (fadeElapsed >= fadeDuration) {
-                fadeClip = null
-                fadeElapsed = -1f
-                targetPose
+        // 表达式关键帧在此求值：query.* 来自 Lantern 构建的 per-entity queryValues，
+        // variable.* 来自 packet 17 注入的 per-entity 变量（ThreadLocal 上下文）
+        val evalState = buildEvalState(entity, living)
+        val vars = MolangVariableStore.resolve(uuid, evalState)
+        pose = MolangContext.evaluate(vars) {
+            val targetPose = activeClip?.let { samplePose(it, activeTime, activeLoops, evalState) } ?: emptyMap()
+            if (fadeClip != null && fadeElapsed >= 0f) {
+                fadeElapsed += dt
+                if (fadeElapsed >= fadeDuration) {
+                    fadeClip = null
+                    fadeElapsed = -1f
+                    targetPose
+                } else {
+                    blendPoses(
+                        samplePose(fadeClip!!, fadeTime, fadeLoops, evalState),
+                        targetPose,
+                        fadeElapsed / fadeDuration
+                    )
+                }
             } else {
-                blendPoses(samplePose(fadeClip!!, fadeTime, fadeLoops), targetPose, fadeElapsed / fadeDuration)
+                targetPose
             }
-        } else {
-            targetPose
         }
+    }
+
+    /**
+     * 构建 GeckoLib MathValue 求值用的轻量 AnimationState：query.* 函数只读
+     * queryValues map（缺失返回 0），renderState/manager 不会被触碰。
+     * query 值由 Lantern 从实体状态与播放器运动实测换算，未提供的 query 返回 0
+     */
+    private fun buildEvalState(entity: Entity, living: LivingEntity?): AnimationState<GeoAnimatable> {
+        val queries = Reference2DoubleOpenHashMap<Variable>()
+        fun q(name: String, value: Double) {
+            queries.put(MathParser.getVariableFor(name), value)
+        }
+
+        q(MolangQueries.ANIM_TIME, activeTime.toDouble())
+        q(MolangQueries.IS_MOVING, if (movingCached) 1.0 else 0.0)
+        q(MolangQueries.GROUND_SPEED, groundSpeed.toDouble())
+        q(MolangQueries.VERTICAL_SPEED, verticalSpeed.toDouble())
+        q(MolangQueries.IS_ON_GROUND, if (airborne) 0.0 else 1.0)
+        q(MolangQueries.LIFE_TIME, entity.tickCount / 20.0)
+
+        val level = entity.level()
+        q(MolangQueries.TIME_STAMP, level.gameTime.toDouble())
+        q(MolangQueries.TIME_OF_DAY, level.dayTime / 24000.0)
+        q(MolangQueries.DAY, level.gameTime / 24000.0)
+
+        if (living != null) {
+            q(MolangQueries.IS_ALIVE, if (living.isAlive) 1.0 else 0.0)
+            q(MolangQueries.HEALTH, living.health.toDouble())
+            q(MolangQueries.MAX_HEALTH, living.maxHealth.toDouble())
+            q(MolangQueries.HURT_TIME, living.hurtTime.toDouble())
+            q(MolangQueries.IS_IN_WATER, if (living.isInWater) 1.0 else 0.0)
+            q(MolangQueries.IS_RIDING, if (living.isPassenger) 1.0 else 0.0)
+            q(MolangQueries.IS_SNEAKING, if (living.isShiftKeyDown) 1.0 else 0.0)
+            q(MolangQueries.IS_SPRINTING, if (living.isSprinting) 1.0 else 0.0)
+            q(MolangQueries.IS_BABY, if (living.isBaby) 1.0 else 0.0)
+            q(MolangQueries.SCALE, living.scale.toDouble())
+            q(MolangQueries.HEAD_X_ROTATION, living.xRot.toDouble())
+            q(MolangQueries.HEAD_Y_ROTATION, living.yRot.toDouble())
+            q(MolangQueries.BODY_Y_ROTATION, living.yBodyRot.toDouble())
+            q(MolangQueries.YAW_SPEED, (living.yRot - living.yRotO).toDouble())
+            q(MolangQueries.DEATH_TICKS, if (dead) activeTime * 20.0 else 0.0)
+        }
+        return AnimationState(null, null, 0f, queries, null)
     }
 
     /**
@@ -338,8 +401,10 @@ class AnimationPlayer(private val uuid: UUID) {
         val secs = elapsed / 1000.0
         val speedSq = (dx * dx + dz * dz) / (secs * secs)
         movingCached = if (movingCached) speedSq > 0.04 else speedSq > 0.09
+        groundSpeed = kotlin.math.sqrt(speedSq).toFloat()
+        verticalSpeed = (dy / secs).toFloat()
 
-        val vy = dy / secs
+        val vy = verticalSpeed.toDouble()
         val rising = vy > RISE_VY
         val fallingNow = vy < FALL_VY
         val grounded = abs(vy) < GROUNDED_VY
@@ -387,17 +452,23 @@ private fun advance(clip: ClipData, time: Float, dt: Float, loops: Boolean): Flo
     return if (loops && clip.length > 0f) next % clip.length else min(next, clip.length)
 }
 
-/** 采样剪辑 -> 骨骼写入空间姿势（轴变换在此完成；缺失轨道记 NaN = 该轴回落静态值） */
-private fun samplePose(clip: ClipData, rawTime: Float, loops: Boolean): Map<String, FloatArray> {
+/** 采样剪辑 -> 骨骼写入空间姿势（轴变换在此完成；缺失轨道记 NaN = 该轴回落静态值）。
+ *  关键帧值在此按 [state] 求值（数值关键帧是 Constant，求值即字段读） */
+private fun samplePose(
+    clip: ClipData,
+    rawTime: Float,
+    loops: Boolean,
+    state: AnimationState<*>
+): Map<String, FloatArray> {
     val time = when {
         loops && clip.length > 0f -> rawTime % clip.length
         else -> min(max(rawTime, 0f), clip.length)
     }
     val result = HashMap<String, FloatArray>(clip.bones.size)
     for ((boneName, tracks) in clip.bones) {
-        val rot = sampleTrack(tracks.rotation, time)
-        val pos = sampleTrack(tracks.position, time)
-        val scale = sampleTrack(tracks.scale, time)
+        val rot = sampleTrack(tracks.rotation, time, state)
+        val pos = sampleTrack(tracks.position, time, state)
+        val scale = sampleTrack(tracks.scale, time, state)
         result[boneName] = floatArrayOf(
             Math.toRadians((-(rot?.x ?: 0f)).toDouble()).toFloat(),
             Math.toRadians((-(rot?.y ?: 0f)).toDouble()).toFloat(),
@@ -437,24 +508,24 @@ private fun blendPoses(from: Map<String, FloatArray>, to: Map<String, FloatArray
     return out
 }
 
-private fun sampleTrack(frames: List<Keyframe>, time: Float): Vec3? {
+private fun sampleTrack(frames: List<Keyframe>, time: Float, state: AnimationState<*>): Vec3? {
     if (frames.isEmpty()) return null
-    if (frames.size == 1) return frames[0].value
-    if (time <= frames.first().time) return frames.first().value
-    if (time >= frames.last().time) return frames.last().value
+    if (frames.size == 1) return frames[0].value.eval(state)
+    if (time <= frames.first().time) return frames.first().value.eval(state)
+    if (time >= frames.last().time) return frames.last().value.eval(state)
 
     var i = 0
     while (i < frames.size - 1 && frames[i + 1].time <= time) i++
     val a = frames[i]
     val b = frames[i + 1]
     val span = b.time - a.time
-    if (span <= 0f) return b.value
+    if (span <= 0f) return b.value.eval(state)
     val t = (time - a.time) / span
 
     // 区间端点：prev.post -> next.pre；catmullrom 控制点取 pre 值
     //（ModelEngine 反编译实证：PrePostInterpolator start=prev.post, end=next.pre）
-    val start = a.value
-    val end = b.pre ?: b.value
+    val start = a.value.eval(state)
+    val end = (b.pre ?: b.value).eval(state)
 
     val catmull = a.lerpMode == "catmullrom" || b.lerpMode == "catmullrom"
     if (!catmull) {
@@ -464,8 +535,8 @@ private fun sampleTrack(frames: List<Keyframe>, time: Float): Vec3? {
             start.z + (end.z - start.z) * t
         )
     }
-    val p0 = frames[max(i - 1, 0)].let { it.pre ?: it.value }
-    val p3 = frames[min(i + 2, frames.size - 1)].let { it.pre ?: it.value }
+    val p0 = frames[max(i - 1, 0)].let { (it.pre ?: it.value).eval(state) }
+    val p3 = frames[min(i + 2, frames.size - 1)].let { (it.pre ?: it.value).eval(state) }
     return Vec3(
         spline(t, p0.x, start.x, end.x, p3.x),
         spline(t, p0.y, start.y, end.y, p3.y),

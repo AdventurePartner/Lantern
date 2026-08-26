@@ -54,9 +54,10 @@ class LanternCommand : CommandExecutor, TabCompleter {
             }
             "give" -> handleGive(sender, args)
             "anim" -> handleAnim(sender, args)
+            "var" -> handleVar(sender, args)
             "costume" -> handleCostume(sender, args)
             "wardrobe" -> handleWardrobe(sender, args)
-            else -> sender.sendMessage("${ChatColor.RED}Unknown subcommand. Use: reload | open | give | anim | costume | wardrobe")
+            else -> sender.sendMessage("${ChatColor.RED}Unknown subcommand. Use: reload | open | give | anim | var | costume | wardrobe")
         }
         return true
     }
@@ -68,7 +69,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
         args: Array<out String?>
     ): List<String> {
         return when (args.size) {
-            1 -> listOf("reload", "open", "give", "anim", "costume", "wardrobe")
+            1 -> listOf("reload", "open", "give", "anim", "var", "costume", "wardrobe")
                 .filter { it.startsWith(args[0] ?: "", ignoreCase = true) }
             2 -> when (args[0]?.lowercase()) {
                 "open" -> UiConfigurations.getScreens()
@@ -221,6 +222,32 @@ class LanternCommand : CommandExecutor, TabCompleter {
         } else {
             NetworkHandler.stopAnimation(target, animation, transition)
             sender.sendMessage("${ChatColor.GREEN}Stopped '$animation' on ${target.type}$displayName.")
+        }
+    }
+
+    /** /lantern var <key> <value|del>：设置/删除 8 格内最近已命名实体的 molang 变量 */
+    private fun handleVar(sender: CommandSender, args: Array<out String?>) {
+        val key = args.getOrNull(1)
+        val value = args.getOrNull(2)
+        if (key == null || value == null) {
+            sender.sendMessage("${ChatColor.RED}Usage: /lantern var <key> <value|del>")
+            sender.sendMessage("${ChatColor.RED}       value 支持数字或 molang 表达式（如 math.sin(query.time_stamp/100)）")
+            return
+        }
+        val player = sender as? Player ?: run {
+            sender.sendMessage("${ChatColor.RED}Console cannot target nearby entities; use the NetworkHandler API instead.")
+            return
+        }
+        val target = findAnimTarget(player) ?: run {
+            sender.sendMessage("${ChatColor.RED}No named entity within 8 blocks.")
+            return
+        }
+        if (value.equals("del", ignoreCase = true)) {
+            NetworkHandler.setMolangVariables(target, mapOf(key to ""))
+            sender.sendMessage("${ChatColor.GREEN}Removed molang variable '$key' from nearby entity.")
+        } else {
+            NetworkHandler.setMolangVariables(target, mapOf(key to value))
+            sender.sendMessage("${ChatColor.GREEN}Set '$key=$value' on nearby entity.")
         }
     }
 

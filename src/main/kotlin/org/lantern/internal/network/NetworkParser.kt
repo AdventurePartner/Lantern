@@ -42,6 +42,13 @@ object NetworkParser {
      */
     var animationEventSender: ((uuid: UUID, animation: String, event: String) -> Unit)? = null
 
+    /**
+     * packetId 17（molang 变量同步）的处理器，由实现了表达式动画求值的客户端平台注册。
+     * 参数: (实体UUID, 变量名 -> 值字符串)；值可为数字或表达式，空串 = 删除该变量。
+     * 未注册的平台忽略该包。
+     */
+    var molangVariableHandler: ((uuid: UUID, vars: Map<String, String>) -> Unit)? = null
+
     fun parse(packetId: Int, obj: JsonObject) {
         when (packetId) {
             1 -> parseCharacters(obj)
@@ -59,8 +66,22 @@ object NetworkParser {
             13 -> parsePlaceholderUpdate(obj)
             14 -> parseChatChannels(obj)
             15 -> parseAnimationControl(obj)
+            17 -> parseMolangVariables(obj)
             99 -> reloadResourcePack()
         }
+    }
+
+    private fun parseMolangVariables(obj: JsonObject) {
+        val handler = molangVariableHandler ?: return
+        val uuid = obj.get("uuid")?.asString
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            ?: return
+        val varsObj = obj.getAsJsonObject("vars") ?: return
+        val vars = LinkedHashMap<String, String>()
+        for ((key, value) in varsObj.entrySet()) {
+            if (value.isJsonPrimitive) vars[key] = value.asString
+        }
+        if (vars.isNotEmpty()) handler(uuid, vars)
     }
 
     private fun parsePlaceholderUpdate(obj: JsonObject) {
