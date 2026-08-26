@@ -15,15 +15,18 @@ import org.lantern.LanternPlugin
 import org.lantern.network.NetworkHandler
 
 /**
- * MythicMobs 技能机制：播放/停止目标的 Lantern 实体模型动画。
+ * MythicMobs 技能机制：播放/停止/暂停/跳转目标的 Lantern 实体模型动画。
  *
  * 用法（MM 技能行内）：
  *   lanternanim{anim=skill_slash} @Self                        播放（loop，过渡 5 tick）
  *   lanternanim{anim=skill_slash;remove=true;time=0} @Self     停止
  *   lanternanim{anim=roar;mode=once} @PlayersInRadius{r=10}    播一遍
+ *   lanternanim{anim=roar;pause=true} @Self                    暂停当前播控
+ *   lanternanim{anim=roar;pause=false} @Self                   恢复
+ *   lanternanim{anim=roar;seek=1.5} @Self                      时间轴跳到 1.5 秒
  *
  * 目标实体必须已由 Lantern 实体模型渲染（自定义名 == entityModels.yml 的 key），
- * 否则客户端忽略该指令。remove=false 播放 / remove=true 停止。
+ * 否则客户端忽略该指令。
  *
  * 注意：CustomComponentRegistry 通过 (MythicMechanicLoadEvent) 构造器实例化本类，
  * 不能使用内置机制的 (SkillExecutor, File, String, MythicLineConfig) 签名。
@@ -48,16 +51,22 @@ class LanternAnimMechanic(
     private val transition: Int = lineConfig.getInteger(arrayOf("time", "t"), 5).coerceAtLeast(0)
     private val loop: Boolean = !lineConfig.getString(arrayOf("mode", "m"), "loop").equals("once", ignoreCase = true)
     private val speed: Float = lineConfig.getString(arrayOf("speed", "sp"), "1.0").toFloatOrNull()?.coerceAtLeast(0.01f) ?: 1.0f
+    private val seek: Float? = lineConfig.getString(arrayOf("seek", "sk"))?.toFloatOrNull()
+    private val pause: Boolean? = lineConfig.getString(arrayOf("pause", "p"))?.toBooleanStrictOrNull()
 
     override fun castAtEntity(data: SkillMetadata, target: AbstractEntity): SkillResult {
         val anim = animation ?: return SkillResult.INVALID_CONFIG
         val entity = target.bukkitEntity ?: return SkillResult.INVALID_TARGET
-        // MM 技能可能在异步线程执行，发包统一调度回主线程
+        // MM 技能可能在异步线程执行，发包统一调度回主线程。
+        // 动作优先级：remove=停止 > seek > pause > 播放
         Bukkit.getScheduler().runTask(LanternPlugin.instance, Runnable {
-            if (remove) {
-                NetworkHandler.stopAnimation(entity, anim, transition)
-            } else {
-                NetworkHandler.playAnimation(entity, anim, transition, loop, speed)
+            when {
+                remove -> NetworkHandler.stopAnimation(entity, anim, transition)
+                seek != null -> NetworkHandler.seekAnimation(entity, anim, seek)
+                pause != null ->
+                    if (pause) NetworkHandler.pauseAnimation(entity, anim)
+                    else NetworkHandler.resumeAnimation(entity, anim)
+                else -> NetworkHandler.playAnimation(entity, anim, transition, loop, speed)
             }
         })
         return SkillResult.SUCCESS

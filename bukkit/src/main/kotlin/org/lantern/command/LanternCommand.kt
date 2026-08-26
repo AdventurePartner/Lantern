@@ -77,7 +77,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "give" -> CacheHandler.blockModels.keys
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
-                "anim" -> listOf("play", "stop")
+                "anim" -> listOf("play", "stop", "pause", "resume", "seek")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "costume" -> listOf("equip", "unequip")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
@@ -200,7 +200,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
     private fun handleAnim(sender: CommandSender, args: Array<out String?>) {
         val sub = args.getOrNull(1)?.lowercase()
         val animation = args.getOrNull(2)
-        if (sub != "play" && sub != "stop" || animation == null) {
+        if (sub !in setOf("play", "stop", "pause", "resume", "seek") || animation == null) {
             animUsage(sender)
             return
         }
@@ -208,20 +208,40 @@ class LanternCommand : CommandExecutor, TabCompleter {
             sender.sendMessage("${ChatColor.RED}Console cannot target nearby entities; use the NetworkHandler API instead.")
             return
         }
-        val transition = (args.getOrNull(3)?.toIntOrNull() ?: if (sub == "play") 5 else 0).coerceAtLeast(0)
-        val loop = !args.getOrNull(4).equals("once", ignoreCase = true)
-        val speed = args.getOrNull(5)?.toFloatOrNull()?.takeIf { it > 0.01f } ?: 1.0f
         val target = findAnimTarget(player) ?: run {
             sender.sendMessage("${ChatColor.RED}No named entity within 8 blocks.")
             return
         }
         val displayName = target.customName?.let { " (${ChatColor.stripColor(it)})" } ?: ""
-        if (sub == "play") {
-            NetworkHandler.playAnimation(target, animation, transition, loop, speed)
-            sender.sendMessage("${ChatColor.GREEN}Playing '$animation' (${if (loop) "loop" else "once"} x$speed) on ${target.type}$displayName.")
-        } else {
-            NetworkHandler.stopAnimation(target, animation, transition)
-            sender.sendMessage("${ChatColor.GREEN}Stopped '$animation' on ${target.type}$displayName.")
+        when (sub) {
+            "play" -> {
+                val transition = (args.getOrNull(3)?.toIntOrNull() ?: 5).coerceAtLeast(0)
+                val loop = !args.getOrNull(4).equals("once", ignoreCase = true)
+                val speed = args.getOrNull(5)?.toFloatOrNull()?.takeIf { it > 0.01f } ?: 1.0f
+                NetworkHandler.playAnimation(target, animation, transition, loop, speed)
+                sender.sendMessage("${ChatColor.GREEN}Playing '$animation' (${if (loop) "loop" else "once"} x$speed) on ${target.type}$displayName.")
+            }
+            "stop" -> {
+                val transition = (args.getOrNull(3)?.toIntOrNull() ?: 0).coerceAtLeast(0)
+                NetworkHandler.stopAnimation(target, animation, transition)
+                sender.sendMessage("${ChatColor.GREEN}Stopped '$animation' on ${target.type}$displayName.")
+            }
+            "pause" -> {
+                NetworkHandler.pauseAnimation(target, animation)
+                sender.sendMessage("${ChatColor.GREEN}Paused '$animation' on ${target.type}$displayName.")
+            }
+            "resume" -> {
+                NetworkHandler.resumeAnimation(target, animation)
+                sender.sendMessage("${ChatColor.GREEN}Resumed '$animation' on ${target.type}$displayName.")
+            }
+            "seek" -> {
+                val seconds = args.getOrNull(3)?.toFloatOrNull()?.takeIf { it >= 0f } ?: run {
+                    sender.sendMessage("${ChatColor.RED}Usage: /lantern anim seek <animation> <seconds>")
+                    return
+                }
+                NetworkHandler.seekAnimation(target, animation, seconds)
+                sender.sendMessage("${ChatColor.GREEN}Seeked '$animation' to ${seconds}s on ${target.type}$displayName.")
+            }
         }
     }
 
@@ -259,8 +279,10 @@ class LanternCommand : CommandExecutor, TabCompleter {
             .minByOrNull { it.location.distanceSquared(player.location) }
 
     private fun animUsage(sender: CommandSender) {
-        sender.sendMessage("${ChatColor.RED}Usage: /lantern anim play <animation> [transition-ticks] [loop|once]")
+        sender.sendMessage("${ChatColor.RED}Usage: /lantern anim play <animation> [transition-ticks] [loop|once] [speed]")
         sender.sendMessage("${ChatColor.RED}       /lantern anim stop <animation> [transition-ticks]")
+        sender.sendMessage("${ChatColor.RED}       /lantern anim pause <animation> | resume <animation>")
+        sender.sendMessage("${ChatColor.RED}       /lantern anim seek <animation> <seconds>")
     }
 
     private fun handleWardrobe(sender: CommandSender, args: Array<out String?>) {

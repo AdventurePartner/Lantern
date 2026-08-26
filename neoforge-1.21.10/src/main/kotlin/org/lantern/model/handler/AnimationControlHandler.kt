@@ -10,6 +10,9 @@ import software.bernie.geckolib.cache.GeckoLibResources
 /**
  * packetId 15 动画播控入口：校验目标实体确由 Lantern 实体模型渲染后，写入强制动画存储。
  * 在共享 NetworkParser 的钩子上注册，仅 neoforge 1.21.10 实现了完整链路。
+ *
+ * play 需要读客户端实体表（调度回主线程）；stop/pause/resume/seek 只碰
+ * ConcurrentHashMap，网络线程直接执行。
  */
 object AnimationControlHandler {
 
@@ -19,12 +22,32 @@ object AnimationControlHandler {
      *  过渡由淡化机制完成，此处不再叠加过渡 tick */
     private const val EXPIRY_MARGIN_MS = 100L
 
-    fun handle(uuid: UUID, play: Boolean, animation: String, transition: Int, loop: Boolean, speed: Float) {
-        if (!play) {
-            // stop 只碰 ConcurrentHashMap，网络线程直接执行即可
-            AnimationControlStore.stop(uuid, animation)
-            return
+    fun handle(
+        uuid: UUID,
+        action: String,
+        animation: String,
+        transition: Int,
+        loop: Boolean,
+        speed: Float,
+        seekSeconds: Float
+    ) {
+        when (action) {
+            "stop" -> AnimationControlStore.stop(uuid, animation)
+            "pause", "resume", "seek" -> {
+                // 动画名校验：指令指定的动画与当前播控不一致时忽略（防误操作打错实体）
+                val entry = AnimationControlStore.get(uuid) ?: return
+                if (entry.animation != animation) return
+                when (action) {
+                    "pause" -> AnimationControlStore.pause(uuid)
+                    "resume" -> AnimationControlStore.resume(uuid)
+                    else -> AnimationControlStore.seek(uuid, seekSeconds)
+                }
+            }
+            "play" -> play(uuid, animation, transition, loop, speed)
         }
+    }
+
+    private fun play(uuid: UUID, animation: String, transition: Int, loop: Boolean, speed: Float) {
         // play 需要读客户端实体表，调度回主线程避免并发可见性问题
         Minecraft.getInstance().execute {
             val level = Minecraft.getInstance().level ?: return@execute

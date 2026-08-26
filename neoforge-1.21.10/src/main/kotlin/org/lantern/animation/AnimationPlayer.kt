@@ -120,10 +120,14 @@ class AnimationPlayer(private val uuid: UUID) {
             dead = false
         }
 
+        // --- 播控暂停：冻结一切时间推进（时间轴/淡化/once 墙钟到期——
+        //     暂停中的动画既不该结束也不该继续淡入淡出） ---
+        val paused = AnimationControlStore.isPaused(uuid)
+
         // --- 播控到期（once）：本地时间轴到达剪辑末尾即刻释放；
         //     时间戳兜底仅在剪辑缺失/长度异常时生效。持有末帧等待到期戳会造成
         //     "动画播完仍僵立收招"的空窗（Boss 已在走路而画面停在站姿） ---
-        if (forced != null && !forced.loop) {
+        if (!paused && forced != null && !forced.loop) {
             val forcedClip = clips[forced.animation]
             val timelineEnded = forcedClip != null && forcedClip.length > 0f &&
                 channelId == forced.id && activeTime >= forcedClip.length
@@ -240,9 +244,22 @@ class AnimationPlayer(private val uuid: UUID) {
             activeTime = if (dead && target != null) target.length else 0f
             activeLoops = loops
         }
+        // --- seek：跳转当前剪辑时间轴（秒）。暂停状态下同样生效（定格到新帧） ---
+        if (activeClip != null) {
+            AnimationControlStore.consumeSeek(uuid)?.let { seconds ->
+                val clip = activeClip!!
+                activeTime = if (activeLoops && clip.length > 0f) {
+                    ((seconds % clip.length) + clip.length) % clip.length
+                } else {
+                    seconds.coerceIn(0f, clip.length)
+                }
+            }
+        }
         activeSpeed = targetSpeed
-        activeClip?.let { activeTime = advance(it, activeTime, dt * activeSpeed, activeLoops) }
-        fadeClip?.let { fadeTime = advance(it, fadeTime, dt, fadeLoops) }
+        if (!paused) {
+            activeClip?.let { activeTime = advance(it, activeTime, dt * activeSpeed, activeLoops) }
+            fadeClip?.let { fadeTime = advance(it, fadeTime, dt, fadeLoops) }
+        }
 
         // 死亡状态无条件钉死：清除一切交叉淡化、时间钳制到剪辑末帧。
         // 任何残留的 fadeClip 都会把"躺倒姿势"拉向"站立姿势"——视觉即"站起来"
@@ -260,7 +277,7 @@ class AnimationPlayer(private val uuid: UUID) {
         pose = MolangContext.evaluate(vars) {
             val targetPose = activeClip?.let { samplePose(it, activeTime, activeLoops, evalState) } ?: emptyMap()
             if (fadeClip != null && fadeElapsed >= 0f) {
-                fadeElapsed += dt
+                if (!paused) fadeElapsed += dt
                 if (fadeElapsed >= fadeDuration) {
                     fadeClip = null
                     fadeElapsed = -1f

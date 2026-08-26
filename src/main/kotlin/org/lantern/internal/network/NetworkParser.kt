@@ -31,9 +31,11 @@ object NetworkParser {
 
     /**
      * packetId 15（动画播控）的处理器，由支持运行时动画控制的客户端平台注册。
-     * 参数: (实体UUID, 是否播放, 动画名, 过渡tick, 是否循环, 速度倍率)；未注册的平台忽略该包。
+     * action: play | stop | pause | resume | seek；
+     * seek 时 seekSeconds 为跳转目标（秒），其他 action 为 -1。
+     * 未注册的平台忽略该包。
      */
-    var animationControlHandler: ((uuid: UUID, play: Boolean, animation: String, transition: Int, loop: Boolean, speed: Float) -> Unit)? =
+    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float) -> Unit)? =
         null
 
     /**
@@ -411,16 +413,14 @@ object NetworkParser {
         val uuid = obj.get("uuid")?.asString
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
             ?: return
-        val play = when (obj.get("action")?.asString) {
-            "play" -> true
-            "stop" -> false
-            else -> return
-        }
+        val action = obj.get("action")?.asString ?: return
         val animation = obj.get("animation")?.asString ?: return
         val transition = obj.get("transition")?.asInt ?: 0
         val loop = obj.get("mode")?.asString != "once"
         val speed = obj.get("speed")?.asFloat ?: 1.0f
-        handler(uuid, play, animation, transition, loop, speed)
+        val seekSeconds = obj.get("time")?.asFloat ?: -1f
+        if (action == "seek" && seekSeconds < 0f) return
+        handler(uuid, action, animation, transition, loop, speed, seekSeconds)
     }
 
     private fun reloadResourcePack() {

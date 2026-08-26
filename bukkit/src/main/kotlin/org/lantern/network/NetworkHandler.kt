@@ -472,7 +472,8 @@ object NetworkHandler {
         animation: String,
         transitionTicks: Int,
         loop: Boolean,
-        speed: Float
+        speed: Float,
+        timeSeconds: Float? = null
     ) {
         val packet = JsonObject()
         packet.addProperty("uuid", entityUuid.toString())
@@ -481,6 +482,7 @@ object NetworkHandler {
         packet.addProperty("transition", transitionTicks.coerceAtLeast(0))
         packet.addProperty("mode", if (loop) "loop" else "once")
         packet.addProperty("speed", speed)
+        timeSeconds?.let { packet.addProperty("time", it) }
         sendPacket(player, 15, packet)
     }
 
@@ -515,6 +517,27 @@ object NetworkHandler {
             sendAnimationControl(it, entity.uniqueId, "stop", animation, transitionTicks, false, 1.0f)
         }
         org.lantern.animation.AnimationOrchestrator.onStop(entity, animation)
+    }
+
+    /** 暂停实体当前播控动画（冻结时间轴与 once 到期，直到 resume/stop）。 */
+    fun pauseAnimation(entity: Entity, animation: String) {
+        Bukkit.getOnlinePlayers().forEach {
+            sendAnimationControl(it, entity.uniqueId, "pause", animation, 0, false, 1.0f)
+        }
+    }
+
+    /** 恢复实体被 [pauseAnimation] 暂停的播控动画。 */
+    fun resumeAnimation(entity: Entity, animation: String) {
+        Bukkit.getOnlinePlayers().forEach {
+            sendAnimationControl(it, entity.uniqueId, "resume", animation, 0, false, 1.0f)
+        }
+    }
+
+    /** 跳转实体当前播控动画的时间轴到指定秒（loop 取模，once 钳制到长度内）。 */
+    fun seekAnimation(entity: Entity, animation: String, seconds: Float) {
+        Bukkit.getOnlinePlayers().forEach {
+            sendAnimationControl(it, entity.uniqueId, "seek", animation, 0, false, 1.0f, seconds)
+        }
     }
 
     /**
