@@ -50,3 +50,4 @@ object/
 run/
 /docs/animation-control-plan.md
 bukkit/src/main/resources/animations.yml
+/docs/camera-control-plan.md

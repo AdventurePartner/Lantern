@@ -1,5 +1,10 @@
-O:
-  press: true
-  in-gui: false   # 可选，默认 false；设为 true 时在 GUI（聊天栏等）中也会触发
-  commands:
-    - "console:say %player% KeyPress"
+# 键位绑定示例（顶层 key = 键 spec，支持 ctrl+/shift+/alt+ 前缀与
+# up/down/left/right/f1-f25 等命名键，与 camera.yml 的键位语法一致）。
+# 注意：O 键默认是越肩相机的换肩键（camera.yml adjust.swap-key），
+# 相机键与 keys.yml 冲突时相机优先，同名命令绑定不会触发，故示例仅注释保留。
+#
+# O:
+#   press: true
+#   in-gui: false   # 可选，默认 false；设为 true 时在 GUI（聊天栏等）中也会触发
+#   commands:
+#     - "console:say %player% KeyPress"

@@ -69,7 +69,24 @@ object NetworkParser {
             14 -> parseChatChannels(obj)
             15 -> parseAnimationControl(obj)
             17 -> parseMolangVariables(obj)
+            18 -> parseCameraControl(obj)
             99 -> reloadResourcePack()
+        }
+    }
+
+    /**
+     * packetId 18（相机控制）。
+     * 阶段一仅 "shoulder"（越肩参数，直写共享 [org.lantern.camera.ShoulderCameraState]）；
+     * 后续演出指令（lock/shake/fov/...）在同一包号下扩展 action 分支。
+     */
+    private fun parseCameraControl(obj: JsonObject) {
+        when (obj.get("action")?.asString) {
+            "shoulder" -> org.lantern.camera.ShoulderCameraState.update(
+                obj.get("enabled")?.asBoolean ?: false,
+                obj.get("offset-x")?.asDouble ?: 0.0,
+                obj.get("offset-y")?.asDouble ?: 0.0,
+                obj.get("distance")?.asDouble ?: 4.0
+            )
         }
     }
 

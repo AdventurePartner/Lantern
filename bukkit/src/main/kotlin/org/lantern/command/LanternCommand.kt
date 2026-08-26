@@ -55,9 +55,10 @@ class LanternCommand : CommandExecutor, TabCompleter {
             "give" -> handleGive(sender, args)
             "anim" -> handleAnim(sender, args)
             "var" -> handleVar(sender, args)
+            "cam" -> handleCam(sender, args)
             "costume" -> handleCostume(sender, args)
             "wardrobe" -> handleWardrobe(sender, args)
-            else -> sender.sendMessage("${ChatColor.RED}Unknown subcommand. Use: reload | open | give | anim | var | costume | wardrobe")
+            else -> sender.sendMessage("${ChatColor.RED}Unknown subcommand. Use: reload | open | give | anim | var | cam | costume | wardrobe")
         }
         return true
     }
@@ -69,7 +70,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
         args: Array<out String?>
     ): List<String> {
         return when (args.size) {
-            1 -> listOf("reload", "open", "give", "anim", "var", "costume", "wardrobe")
+            1 -> listOf("reload", "open", "give", "anim", "var", "cam", "costume", "wardrobe")
                 .filter { it.startsWith(args[0] ?: "", ignoreCase = true) }
             2 -> when (args[0]?.lowercase()) {
                 "open" -> UiConfigurations.getScreens()
@@ -78,6 +79,8 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 "give" -> CacheHandler.blockModels.keys
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "anim" -> listOf("play", "stop", "pause", "resume", "seek")
+                    .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
+                "cam" -> listOf("info", "toggle", "reset", "set")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "costume" -> listOf("equip", "unequip")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
@@ -90,11 +93,21 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     validSlots.filter { it.startsWith(args[3] ?: "", ignoreCase = true) }
                 args[0].equals("anim", ignoreCase = true) && args[1]?.lowercase() == "play" ->
                     listOf("0", "5", "10").filter { it.startsWith(args[3] ?: "", ignoreCase = true) }
+                args[0].equals("cam", ignoreCase = true) && args[1]?.lowercase() == "set" ->
+                    Bukkit.getOnlinePlayers().map { it.name }
+                        .filter { it.startsWith(args[3] ?: "", ignoreCase = true) }
                 else -> emptyList()
             }
             3 -> when (args[0]?.lowercase()) {
                 "open", "give", "costume" -> Bukkit.getOnlinePlayers().map { it.name }
                     .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+                "cam" -> if (args[1]?.lowercase() == "set") {
+                    listOf("offset-x", "offset-y", "distance")
+                        .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+                } else {
+                    Bukkit.getOnlinePlayers().map { it.name }
+                        .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+                }
                 else -> emptyList()
             }
             5 -> when {
@@ -283,6 +296,85 @@ class LanternCommand : CommandExecutor, TabCompleter {
         sender.sendMessage("${ChatColor.RED}       /lantern anim stop <animation> [transition-ticks]")
         sender.sendMessage("${ChatColor.RED}       /lantern anim pause <animation> | resume <animation>")
         sender.sendMessage("${ChatColor.RED}       /lantern anim seek <animation> <seconds>")
+    }
+
+    /** /lantern cam：越肩相机管理（camera.yml 配置，方向键微调之外的管理入口）。 */
+    private fun handleCam(sender: CommandSender, args: Array<out String?>) {
+        val service = org.lantern.camera.ShoulderCameraService
+        when (args.getOrNull(1)?.lowercase() ?: "info") {
+            "info" -> {
+                val target = camTarget(sender, args, 2) ?: return
+                val state = service.stateOf(target)
+                sender.sendMessage(
+                    "${ChatColor.GOLD}${target.name}: shoulder ${if (state.enabled) "ON" else "OFF"}, " +
+                        "offset-x=${state.offsetX}, offset-y=${state.offsetY}, distance=${state.distance} " +
+                        "(server ${if (service.globalEnabled()) "enabled" else "disabled"})"
+                )
+            }
+            "toggle" -> {
+                val target = camTarget(sender, args, 2) ?: return
+                if (service.toggle(target) == null) {
+                    sender.sendMessage("${ChatColor.RED}Shoulder camera is disabled server-wide (camera.yml shoulder.enabled).")
+                } else {
+                    val state = service.stateOf(target)
+                    sender.sendMessage("${ChatColor.GREEN}Shoulder camera ${if (state.enabled) "enabled" else "disabled"} for ${target.name}.")
+                }
+            }
+            "reset" -> {
+                val target = camTarget(sender, args, 2) ?: return
+                service.reset(target)
+                val state = service.stateOf(target)
+                sender.sendMessage(
+                    "${ChatColor.GREEN}Reset shoulder camera for ${target.name} " +
+                        "(offset-x=${state.offsetX}, offset-y=${state.offsetY}, distance=${state.distance})."
+                )
+            }
+            "set" -> {
+                val param = args.getOrNull(2)?.lowercase() ?: run {
+                    camUsage(sender)
+                    return
+                }
+                val value = args.getOrNull(3)?.toDoubleOrNull() ?: run {
+                    camUsage(sender)
+                    return
+                }
+                if (param !in setOf("offset-x", "offset-y", "distance")) {
+                    camUsage(sender)
+                    return
+                }
+                val target = camTarget(sender, args, 4) ?: return
+                if (!service.setParam(target, param, value)) {
+                    camUsage(sender)
+                    return
+                }
+                val applied = when (param) {
+                    "offset-x" -> service.stateOf(target).offsetX
+                    "offset-y" -> service.stateOf(target).offsetY
+                    else -> service.stateOf(target).distance
+                }
+                sender.sendMessage("${ChatColor.GREEN}Set $param=$value (clamped to $applied) for ${target.name}.")
+            }
+            else -> camUsage(sender)
+        }
+    }
+
+    /** cam 子命令的目标玩家：指定名取在线玩家，否则执行者，控制台必须指定。 */
+    private fun camTarget(sender: CommandSender, args: Array<out String?>, index: Int): Player? {
+        val name = args.getOrNull(index)
+        if (name != null) {
+            val target = Bukkit.getPlayer(name)
+            if (target == null) sender.sendMessage("${ChatColor.RED}Player '$name' not found.")
+            return target
+        }
+        val self = sender as? Player
+        if (self == null) sender.sendMessage("${ChatColor.RED}Console must specify a player name.")
+        return self
+    }
+
+    private fun camUsage(sender: CommandSender) {
+        sender.sendMessage("${ChatColor.RED}Usage: /lantern cam info [player]")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam toggle [player] | reset [player]")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam set <offset-x|offset-y|distance> <value> [player]")
     }
 
     private fun handleWardrobe(sender: CommandSender, args: Array<out String?>) {

@@ -115,6 +115,7 @@ object NetworkHandler {
         sendCharactersPacket(player, Configurations.characters)
         sendEntityModelsPacket(player, Configurations.models)
         sendKeyboards(player, CacheHandler.keys)
+        org.lantern.camera.ShoulderCameraService.pushState(player)
         sendChatChannels(player, readChatChannels(LanternPlugin.instance.config))
         sendItemIcons(player, CacheHandler.itemIcons)
         sendUiScreens(player, UiConfigurations.getScreens())
@@ -219,11 +220,34 @@ object NetworkHandler {
                 obj.addProperty("press", v.press)
                 array.add(obj)
             }
+            // 相机微调键并入客户端轮询集（客户端只轮询 packet 3 下发的键）；
+            // 与 keys.yml 冲突的 spec 保留原绑定，服务端处理时相机优先
+            org.lantern.camera.ShoulderCameraService.pollKeySpecs().forEach { spec ->
+                if (keys.containsKey(spec)) return@forEach
+                val obj = JsonObject()
+                obj.addProperty("key", spec)
+                obj.addProperty("press", true)
+                array.add(obj)
+            }
             val packet = JsonObject()
             packet.add("keys", array)
             serializePacket(3, packet).also { cachedKeysBytes = it }
         }
         sendSerializedPacket(player, bytes)
+    }
+
+    /**
+     * 越肩相机状态推送（packet 18 action=shoulder，per-player 不缓存）。
+     * 进服同步、/lantern reload、按键微调与 /lantern cam 命令后调用。
+     */
+    fun sendCameraState(player: Player, enabled: Boolean, offsetX: Double, offsetY: Double, distance: Double) {
+        val packet = JsonObject()
+        packet.addProperty("action", "shoulder")
+        packet.addProperty("enabled", enabled)
+        packet.addProperty("offset-x", offsetX)
+        packet.addProperty("offset-y", offsetY)
+        packet.addProperty("distance", distance)
+        sendPacket(player, 18, packet)
     }
 
     private data class ChatChannelConfig(

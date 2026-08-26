@@ -6,6 +6,10 @@
   "client": [
     "accessor.ChatComponentAccessor",
     "block.BarrelBlockMixin",
+    "camera.CameraMixin",
+    "camera.GameRendererMixin",
+    "camera.GuiMixin",
+    "camera.MinecraftMixin",
     "chat.ChatComponentMixin",
     "network.GeckoLibNetworkingNeoForgeMixin",
     "EntityMixin",

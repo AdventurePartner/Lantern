@@ -1,0 +1,47 @@
+# ============================================================
+# Lantern 相机控制配置（独立文件）
+# 阶段一：越肩视角（F5 第三人称背后形态升级，对标 Shoulder Surfing）
+#
+# 键位 spec 语法与 keys.yml 一致：
+#   单字符 a-z/0-9、f1-f25、up/down/left/right/space/enter/...
+#   支持 ctrl+ / shift+ / alt+ 修饰键前缀（如 shift+up）
+# 与 keys.yml 键位冲突时：相机处理优先（同名命令绑定不触发），
+# 服务端启动/reload 时会在日志中提示冲突。
+# ============================================================
+
+shoulder:
+  # 全服总开关；false = 调节键不下发、客户端禁用，F5 行为与原版完全一致
+  enabled: true
+
+  # 默认参数（玩家进服初始状态，方向键微调后偏离默认值；/lantern cam reset 恢复）
+  # offset-x: 相机横向偏移，正 = 右肩（玩家偏屏幕左侧），负 = 左肩
+  # offset-y: 相机垂直偏移，正 = 抬升
+  # distance: 眼睛到相机的后向距离（格），4.0 与原版第三人称同距
+  default-offset-x: 0.75
+  default-offset-y: 0.0
+  default-distance: 4.0
+
+  # 微调限幅（玩家按键调整的上边界；/lantern cam set 同样受限）
+  max-offset-x: 1.5
+  max-offset-y: 1.0
+  min-distance: 1.5
+  max-distance: 8.0
+
+  adjust:
+    # 是否允许玩家用按键微调（false = 键不下发，只能管理员用命令改）
+    enabled: true
+
+    # 微调键位（每按一次走一步；GUI 打开时不触发）
+    # 方向语义 = 画面跟随按键：相机平行反向移动，画面内容朝按键方向平移
+    swap-key: "o"           # 换肩：offset-x 取反
+    left-key: "left"        # 画面左移（相机右移，玩家模型在画面中右移）
+    right-key: "right"      # 画面右移（相机左移，玩家模型在画面中左移）
+    up-key: "up"            # 画面上移（相机降低，取景抬高）
+    down-key: "down"        # 画面下移（相机抬高，取景压低）
+    farther-key: "shift+up" # 拉远
+    closer-key: "shift+down" # 拉近
+
+    # 步进量（格/次）
+    step-offset-x: 0.05
+    step-offset-y: 0.05
+    step-distance: 0.25

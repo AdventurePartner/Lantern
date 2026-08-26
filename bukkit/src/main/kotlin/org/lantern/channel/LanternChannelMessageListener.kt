@@ -61,6 +61,8 @@ class LanternChannelMessageListener : PluginMessageListener {
         val press = dataInputStream.readBoolean()
         val inGui = if (dataInputStream.available() > 0) dataInputStream.readBoolean() else false
         val key = String(bytes, Charsets.UTF_8)
+        // 相机调节键优先消化（返回 true = 相机已处理，不再走 keys.yml 命令派发）
+        if (org.lantern.camera.ShoulderCameraService.handleKey(player, key, press, inGui)) return
         CacheHandler.keys[key]
             ?.takeIf { it.press == press && (it.inGui || !inGui) }
             ?.let { player.executeCommands(it.commands) }

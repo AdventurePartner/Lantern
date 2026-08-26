@@ -34,6 +34,10 @@ object Configurations {
                 CacheHandler.keys[key.lowercase()] = KeyCache(section)
             }
         }
+        // 相机配置依赖 keys.yml 先加载（键位冲突检测）
+        LanternPlugin.instance.saveResource("camera.yml", "camera.yml", false) {
+            org.lantern.camera.ShoulderCameraService.load(YamlConfiguration.loadConfiguration(it))
+        }
         LanternPlugin.instance.saveResource("itemIcons.yml", "itemIcons.yml", false) {
             CacheHandler.itemIcons.clear()
             val data = YamlConfiguration.loadConfiguration(it)

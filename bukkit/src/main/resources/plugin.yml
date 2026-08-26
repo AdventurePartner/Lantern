@@ -10,4 +10,4 @@ api-version: 1.20
 commands:
   lantern:
     description: Lantern management command.
-    usage: /lantern [reload|open <screen-id> [player]|give <block-id> [player] [amount]|anim play <animation> [transition-ticks] [loop|once]|anim stop <animation> [transition-ticks]|costume equip <player> <slot> <costume-id>|costume unequip <player> [slot]|wardrobe [player]]
+    usage: /lantern [reload|open <screen-id> [player]|give <block-id> [player] [amount]|anim play <animation> [transition-ticks] [loop|once]|anim stop <animation> [transition-ticks]|cam info [player]|cam toggle [player]|cam set <offset-x|offset-y|distance> <value> [player]|cam reset [player]|costume equip <player> <slot> <costume-id>|costume unequip <player> [slot]|wardrobe [player]]
