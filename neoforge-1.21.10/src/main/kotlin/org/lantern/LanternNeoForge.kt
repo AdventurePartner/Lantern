@@ -45,6 +45,8 @@ class LanternNeoForge(modBus: IEventBus) {
         }
         // packet 17 变量同步：只触碰 ConcurrentHashMap 且值编译无 MC 依赖，网络线程直接执行
         NetworkParser.molangVariableHandler = org.lantern.animation.MolangVariableStore::update
+        // packet 18 相机（shoulder + 演出指令）：NetworkParser 统一调度到主线程后更新渲染状态
+        NetworkParser.cameraActionHandler = org.lantern.camera.control.CameraControl::handle
         modBus.addListener(
             AddPackFindersEvent::class.java,
             Consumer<AddPackFindersEvent>(LanternDynamicPackSource::register)

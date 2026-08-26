@@ -87,8 +87,11 @@ object ShoulderCameraService {
         }
 
         // 配置默认值变化后，既有会话状态仍按旧值保留（玩家自己的微调成果），
-        // 但要重新夹到新限幅内并重推
-        playerStates.values.forEach { state -> clampState(state) }
+        // 但要重新夹到新限幅内；全服关闭时强制关掉存量玩家的开关（reload 语义）
+        playerStates.values.forEach { state ->
+            clampState(state)
+            if (!globalEnabled) state.enabled = false
+        }
 
         // 键位与 keys.yml 冲突：处理侧相机优先，提前告知管理员
         val collisions = keyActions.keys.filter { org.lantern.handler.CacheHandler.keys.containsKey(it) }
@@ -188,7 +191,10 @@ object ShoulderCameraService {
 
     fun pushState(player: Player) {
         val state = stateOf(player.uniqueId)
-        NetworkHandler.sendCameraState(player, state.enabled, state.offsetX, state.offsetY, state.distance)
+        // 下发生效值 = 全服开关 && 玩家开关（reload 关总开关能即时踢掉存量玩家的越肩）
+        NetworkHandler.sendCameraState(
+            player, globalEnabled && state.enabled, state.offsetX, state.offsetY, state.distance
+        )
     }
 
     fun removePlayer(uuid: UUID) {

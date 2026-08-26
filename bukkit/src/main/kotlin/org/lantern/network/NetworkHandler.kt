@@ -250,6 +250,109 @@ object NetworkHandler {
         sendPacket(player, 18, packet)
     }
 
+    // ============ 相机演出指令（packet 18，阶段二） ============
+
+    /** 强制玩家视角看向世界坐标（渲染层平滑转向；sync=true 同时写回真实朝向）。duration<=0 永久直到 unlock。 */
+    fun cameraLock(
+        player: Player,
+        x: Double, y: Double, z: Double,
+        smooth: Double = 0.3,
+        duration: Double = 0.0,
+        sync: Boolean = false
+    ) {
+        val packet = JsonObject()
+        packet.addProperty("action", "lock")
+        val target = JsonObject()
+        target.addProperty("x", x)
+        target.addProperty("y", y)
+        target.addProperty("z", z)
+        packet.add("target", target)
+        packet.addProperty("smooth", smooth.coerceAtLeast(0.0))
+        packet.addProperty("duration", duration.coerceAtLeast(0.0))
+        packet.addProperty("sync", sync)
+        sendPacket(player, 18, packet)
+    }
+
+    /** 强制玩家视角跟随实体（每帧取实体眼睛位置）。 */
+    fun cameraLockEntity(
+        player: Player,
+        entityUuid: UUID,
+        smooth: Double = 0.3,
+        duration: Double = 0.0,
+        sync: Boolean = false
+    ) {
+        val packet = JsonObject()
+        packet.addProperty("action", "lock")
+        packet.addProperty("entity", entityUuid.toString())
+        packet.addProperty("smooth", smooth.coerceAtLeast(0.0))
+        packet.addProperty("duration", duration.coerceAtLeast(0.0))
+        packet.addProperty("sync", sync)
+        sendPacket(player, 18, packet)
+    }
+
+    /** 解除 lock（无痕恢复玩家自身朝向）。 */
+    fun cameraUnlock(player: Player) {
+        sendPacket(player, 18, JsonObject().also { it.addProperty("action", "unlock") })
+    }
+
+    /** 相机震动：正弦 × 随机相位，默认线性衰减；幅度单位=格。 */
+    fun cameraShake(
+        player: Player,
+        amplitude: Double = 0.3,
+        frequency: Double = 8.0,
+        duration: Double = 0.5,
+        decay: Boolean = true
+    ) {
+        val packet = JsonObject()
+        packet.addProperty("action", "shake")
+        packet.addProperty("amplitude", amplitude.coerceIn(0.0, 0.5))
+        packet.addProperty("frequency", frequency.coerceIn(0.1, 30.0))
+        packet.addProperty("duration", duration.coerceAtLeast(0.05))
+        packet.addProperty("decay", decay)
+        sendPacket(player, 18, packet)
+    }
+
+    /** 临时 FOV（度）；value=null 表示恢复玩家设置值。 */
+    fun cameraFov(player: Player, fov: Double?, transition: Double = 1.0) {
+        val packet = JsonObject()
+        packet.addProperty("action", "fov")
+        fov?.let { packet.addProperty("value", it.coerceIn(1.0, 170.0)) }
+        packet.addProperty("transition", transition.coerceAtLeast(0.0))
+        sendPacket(player, 18, packet)
+    }
+
+    /** 朝向偏移叠加（pitch/yaw/roll，度）。 */
+    fun cameraOffset(
+        player: Player,
+        pitch: Double = 0.0,
+        yaw: Double = 0.0,
+        roll: Double = 0.0,
+        transition: Double = 2.0
+    ) {
+        val packet = JsonObject()
+        packet.addProperty("action", "offset")
+        packet.addProperty("pitch", pitch)
+        packet.addProperty("yaw", yaw)
+        packet.addProperty("roll", roll)
+        packet.addProperty("transition", transition.coerceAtLeast(0.0))
+        sendPacket(player, 18, packet)
+    }
+
+    /** 演出状态清空（lock/shake/fov/offset；不影响越肩模式）。 */
+    fun cameraClear(player: Player) {
+        sendPacket(player, 18, JsonObject().also { it.addProperty("action", "clear") })
+    }
+
+    /** 对以 origin 为中心 radius 半径内的同世界玩家逐一下发（阶段四动作轨道复用）。 */
+    fun cameraControlRadius(origin: org.bukkit.Location, radius: Double, applier: (Player) -> Unit) {
+        val radiusSq = radius * radius
+        origin.world?.players?.forEach { player ->
+            if (player.location.distanceSquared(origin) <= radiusSq) {
+                applier(player)
+            }
+        }
+    }
+
     private data class ChatChannelConfig(
         val id: String,
         val displayName: String,

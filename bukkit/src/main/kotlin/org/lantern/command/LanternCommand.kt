@@ -80,7 +80,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "anim" -> listOf("play", "stop", "pause", "resume", "seek")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
-                "cam" -> listOf("info", "toggle", "reset", "set")
+                "cam" -> listOf("info", "toggle", "reset", "set", "lock", "lockentity", "unlock", "shake", "fov", "offset", "clear")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "costume" -> listOf("equip", "unequip")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
@@ -101,11 +101,11 @@ class LanternCommand : CommandExecutor, TabCompleter {
             3 -> when (args[0]?.lowercase()) {
                 "open", "give", "costume" -> Bukkit.getOnlinePlayers().map { it.name }
                     .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
-                "cam" -> if (args[1]?.lowercase() == "set") {
-                    listOf("offset-x", "offset-y", "distance")
+                "cam" -> when (args[1]?.lowercase()) {
+                    "set" -> listOf("offset-x", "offset-y", "distance")
                         .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
-                } else {
-                    Bukkit.getOnlinePlayers().map { it.name }
+                    "lock" -> emptyList()
+                    else -> Bukkit.getOnlinePlayers().map { it.name }
                         .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
                 }
                 else -> emptyList()
@@ -303,7 +303,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
         val service = org.lantern.camera.ShoulderCameraService
         when (args.getOrNull(1)?.lowercase() ?: "info") {
             "info" -> {
-                val target = camTarget(sender, args, 2) ?: return
+                val target = camTarget(sender, args.getOrNull(2)) ?: return
                 val state = service.stateOf(target)
                 sender.sendMessage(
                     "${ChatColor.GOLD}${target.name}: shoulder ${if (state.enabled) "ON" else "OFF"}, " +
@@ -312,7 +312,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 )
             }
             "toggle" -> {
-                val target = camTarget(sender, args, 2) ?: return
+                val target = camTarget(sender, args.getOrNull(2)) ?: return
                 if (service.toggle(target) == null) {
                     sender.sendMessage("${ChatColor.RED}Shoulder camera is disabled server-wide (camera.yml shoulder.enabled).")
                 } else {
@@ -321,7 +321,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 }
             }
             "reset" -> {
-                val target = camTarget(sender, args, 2) ?: return
+                val target = camTarget(sender, args.getOrNull(2)) ?: return
                 service.reset(target)
                 val state = service.stateOf(target)
                 sender.sendMessage(
@@ -342,7 +342,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     camUsage(sender)
                     return
                 }
-                val target = camTarget(sender, args, 4) ?: return
+                val target = camTarget(sender, args.getOrNull(4)) ?: return
                 if (!service.setParam(target, param, value)) {
                     camUsage(sender)
                     return
@@ -354,13 +354,82 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 }
                 sender.sendMessage("${ChatColor.GREEN}Set $param=$value (clamped to $applied) for ${target.name}.")
             }
+            // ============ 演出指令（阶段二） ============
+            "lock" -> {
+                val x = args.getOrNull(2)?.toDoubleOrNull() ?: run { camUsage(sender); return }
+                val y = args.getOrNull(3)?.toDoubleOrNull() ?: run { camUsage(sender); return }
+                val z = args.getOrNull(4)?.toDoubleOrNull() ?: run { camUsage(sender); return }
+                val tail = parseCamTail(args, 5)
+                val target = camTarget(sender, tail.playerName) ?: return
+                NetworkHandler.cameraLock(
+                    target, x, y, z,
+                    tail.numbers.getOrElse(0) { 0.3 },
+                    tail.numbers.getOrElse(1) { 0.0 },
+                    tail.sync
+                )
+                sender.sendMessage("${ChatColor.GREEN}Locking ${target.name}'s camera to ($x, $y, $z).")
+            }
+            "lockentity" -> {
+                val tail = parseCamTail(args, 2)
+                val target = camTarget(sender, tail.playerName) ?: return
+                val origin = sender as? Player ?: target
+                val entity = findAnimTarget(origin) ?: run {
+                    sender.sendMessage("${ChatColor.RED}No named entity within 8 blocks of ${origin.name}.")
+                    return
+                }
+                NetworkHandler.cameraLockEntity(
+                    target, entity.uniqueId,
+                    tail.numbers.getOrElse(0) { 0.3 },
+                    tail.numbers.getOrElse(1) { 0.0 },
+                    tail.sync
+                )
+                sender.sendMessage("${ChatColor.GREEN}Locking ${target.name}'s camera onto ${entity.type}.")
+            }
+            "unlock" -> {
+                val target = camTarget(sender, args.getOrNull(2)) ?: return
+                NetworkHandler.cameraUnlock(target)
+                sender.sendMessage("${ChatColor.GREEN}Unlocked ${target.name}'s camera.")
+            }
+            "shake" -> {
+                val tail = parseCamTail(args, 2)
+                val target = camTarget(sender, tail.playerName) ?: return
+                NetworkHandler.cameraShake(
+                    target,
+                    tail.numbers.getOrElse(0) { 0.3 },
+                    tail.numbers.getOrElse(1) { 8.0 },
+                    tail.numbers.getOrElse(2) { 0.5 }
+                )
+                sender.sendMessage("${ChatColor.GREEN}Shaking ${target.name}'s camera.")
+            }
+            "fov" -> {
+                val tail = parseCamTail(args, 2)
+                val target = camTarget(sender, tail.playerName) ?: return
+                NetworkHandler.cameraFov(target, tail.numbers.getOrNull(0), tail.numbers.getOrElse(1) { 1.0 })
+                sender.sendMessage("${ChatColor.GREEN}Camera fov of ${target.name}: ${tail.numbers.getOrNull(0) ?: "restore"}.")
+            }
+            "offset" -> {
+                val tail = parseCamTail(args, 2)
+                val pitch = tail.numbers.getOrNull(0) ?: run { camUsage(sender); return }
+                val yaw = tail.numbers.getOrNull(1) ?: run { camUsage(sender); return }
+                val target = camTarget(sender, tail.playerName) ?: return
+                NetworkHandler.cameraOffset(
+                    target, pitch, yaw,
+                    tail.numbers.getOrElse(2) { 0.0 },
+                    tail.numbers.getOrElse(3) { 2.0 }
+                )
+                sender.sendMessage("${ChatColor.GREEN}Camera offset for ${target.name}: pitch=$pitch yaw=$yaw.")
+            }
+            "clear" -> {
+                val target = camTarget(sender, args.getOrNull(2)) ?: return
+                NetworkHandler.cameraClear(target)
+                sender.sendMessage("${ChatColor.GREEN}Cleared camera fx for ${target.name}.")
+            }
             else -> camUsage(sender)
         }
     }
 
     /** cam 子命令的目标玩家：指定名取在线玩家，否则执行者，控制台必须指定。 */
-    private fun camTarget(sender: CommandSender, args: Array<out String?>, index: Int): Player? {
-        val name = args.getOrNull(index)
+    private fun camTarget(sender: CommandSender, name: String?): Player? {
         if (name != null) {
             val target = Bukkit.getPlayer(name)
             if (target == null) sender.sendMessage("${ChatColor.RED}Player '$name' not found.")
@@ -371,10 +440,34 @@ class LanternCommand : CommandExecutor, TabCompleter {
         return self
     }
 
+    /** 演出子命令的尾参解析：数字槽按出现顺序填充，"sync" 置位，其余首个非数字视为玩家名。 */
+    private class CamTail(val numbers: List<Double>, val sync: Boolean, val playerName: String?)
+
+    private fun parseCamTail(args: Array<out String?>, from: Int): CamTail {
+        val numbers = mutableListOf<Double>()
+        var sync = false
+        var playerName: String? = null
+        for (i in from until args.size) {
+            val token = args[i]?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            val number = token.toDoubleOrNull()
+            when {
+                number != null -> numbers.add(number)
+                token.equals("sync", ignoreCase = true) -> sync = true
+                playerName == null -> playerName = token
+            }
+        }
+        return CamTail(numbers, sync, playerName)
+    }
+
     private fun camUsage(sender: CommandSender) {
-        sender.sendMessage("${ChatColor.RED}Usage: /lantern cam info [player]")
-        sender.sendMessage("${ChatColor.RED}       /lantern cam toggle [player] | reset [player]")
+        sender.sendMessage("${ChatColor.RED}Usage: /lantern cam info [player] | toggle [player] | reset [player]")
         sender.sendMessage("${ChatColor.RED}       /lantern cam set <offset-x|offset-y|distance> <value> [player]")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam lock <x> <y> <z> [smooth] [duration] [sync] [player]")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam lockentity [smooth] [duration] [sync] [player]")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam unlock [player] | clear [player]")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam shake [amplitude] [frequency] [duration] [player]")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam fov [degrees] [transition-sec] [player]  (no value = restore)")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam offset <pitch> <yaw> [roll] [transition-sec] [player]")
     }
 
     private fun handleWardrobe(sender: CommandSender, args: Array<out String?>) {

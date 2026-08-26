@@ -51,6 +51,13 @@ object NetworkParser {
      */
     var molangVariableHandler: ((uuid: UUID, vars: Map<String, String>) -> Unit)? = null
 
+    /**
+     * packetId 18 相机演出指令（lock/unlock/shake/fov/offset/clear）的处理器，
+     * 由实现了相机控制的客户端平台注册。
+     * "shoulder"（越肩参数）由共享 [org.lantern.camera.ShoulderCameraState] 直写，不经此 handler。
+     */
+    var cameraActionHandler: ((action: String, obj: JsonObject) -> Unit)? = null
+
     fun parse(packetId: Int, obj: JsonObject) {
         when (packetId) {
             1 -> parseCharacters(obj)
@@ -80,13 +87,20 @@ object NetworkParser {
      * 后续演出指令（lock/shake/fov/...）在同一包号下扩展 action 分支。
      */
     private fun parseCameraControl(obj: JsonObject) {
-        when (obj.get("action")?.asString) {
-            "shoulder" -> org.lantern.camera.ShoulderCameraState.update(
-                obj.get("enabled")?.asBoolean ?: false,
-                obj.get("offset-x")?.asDouble ?: 0.0,
-                obj.get("offset-y")?.asDouble ?: 0.0,
-                obj.get("distance")?.asDouble ?: 4.0
-            )
+        val action = obj.get("action")?.asString ?: return
+        // NeoForge 收包在网络线程（Fabric 恰好已在主线程）——统一调度到主线程再写渲染状态，
+        // 避免 CameraControl/ShoulderCameraState 与渲染线程的数据竞争与元组撕裂
+        Minecraft.getInstance().execute {
+            when (action) {
+                "shoulder" -> org.lantern.camera.ShoulderCameraState.update(
+                    obj.get("enabled")?.asBoolean ?: false,
+                    obj.get("offset-x")?.asDouble ?: 0.0,
+                    obj.get("offset-y")?.asDouble ?: 0.0,
+                    obj.get("distance")?.asDouble ?: 4.0
+                )
+                "lock", "unlock", "shake", "fov", "offset", "clear" ->
+                    cameraActionHandler?.invoke(action, obj)
+            }
         }
     }
 

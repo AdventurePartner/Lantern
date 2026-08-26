@@ -16,9 +16,10 @@ object MythicIntegration {
         CustomComponentRegistry(plugin, listOf("org.lantern.mythic"))
             .registerCustomComponent(MythicComponentType.MECHANIC, "lanternanim")
             .registerCustomComponent(MythicComponentType.MECHANIC, "lanternvar")
+            .registerCustomComponent(MythicComponentType.MECHANIC, "lanterncam")
 
         // registerCustomComponent 内部失败只打 WARN 不抛异常，必须回查确认机制真正挂载
-        for (name in listOf("lanternanim", "lanternvar")) {
+        for (name in listOf("lanternanim", "lanternvar", "lanterncam")) {
             val mechanic = MythicBukkit.inst().skillManager
                 .getMechanic(name)
                 ?: MythicBukkit.inst().skillManager.getMechanic(name.uppercase())
@@ -29,6 +30,6 @@ object MythicIntegration {
                 )
             }
         }
-        plugin.logger.info("MythicMobs integration enabled (mechanics: lanternanim / lanim, lanternvar / lvar)")
+        plugin.logger.info("MythicMobs integration enabled (mechanics: lanternanim / lanim, lanternvar / lvar, lanterncam)")
     }
 }

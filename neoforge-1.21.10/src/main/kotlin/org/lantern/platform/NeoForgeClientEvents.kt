@@ -77,6 +77,8 @@ object NeoForgeClientEvents {
         pressedKeys.clear()
         parsedKeys.clear()
         wasMouseDown = false
+        // 相机演出状态（lock/shake/fov/offset）不跨服残留
+        org.lantern.camera.control.CameraControl.hardReset()
     }
 
     private fun onEntityLeaveLevel(event: EntityLeaveLevelEvent) {
