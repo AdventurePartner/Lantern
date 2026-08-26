@@ -182,17 +182,11 @@ object NetworkHandler {
                         val animationsObj = JsonObject()
                         animationsObj.addProperty("file", animationsSection.getString("file"))
 
-                        // 解析 states
+                        // 解析 states：任意状态 key，值支持动画名简写或 {animation,mode,transition} 展开
                         if (animationsSection.contains("states")) {
                             val statesSection = animationsSection.getConfigurationSection("states")
                             if (statesSection != null) {
-                                val statesObj = JsonObject()
-                                statesSection.getString("idle")?.let { s -> statesObj.addProperty("idle", s) }
-                                statesSection.getString("walk")?.let { s -> statesObj.addProperty("walk", s) }
-                                statesSection.getString("attack")?.let { s -> statesObj.addProperty("attack", s) }
-                                statesSection.getString("hurt")?.let { s -> statesObj.addProperty("hurt", s) }
-                                statesSection.getString("death")?.let { s -> statesObj.addProperty("death", s) }
-                                animationsObj.add("states", statesObj)
+                                animationsObj.add("states", buildStatesJson(statesSection))
                             }
                         }
                         obj.add("animations", animationsObj)
@@ -569,5 +563,70 @@ object NetworkHandler {
 
     private fun sendPacket(player: Player, internalPacketId: Int, obj: JsonObject) {
         sendSerializedPacket(player, serializePacket(internalPacketId, obj))
+    }
+
+    /** entityModels 旧五状态 key：string 写法保持 string 下发（线上旧客户端按 asString 读） */
+    private val legacyStateKeys = setOf("idle", "walk", "attack", "hurt", "death")
+
+    /**
+     * 状态默认语义表（未显式配置 mode/transition 时服务端展开，客户端不做二次默认）：
+     * 一次性动作起手要快（2-3 tick），蓄力/空中过渡稍缓，持续姿态默认 5 tick。
+     * transition 默认值与事件驱动播放共用 AnimationOrchestrator.defaultTransitionOf（单一事实源）
+     */
+    private val stateDefaultModes = mapOf(
+        "jump" to "once", "landing" to "once", "spawn" to "once",
+        "heal" to "once", "attack" to "once", "pull_bow" to "hold"
+    )
+
+    private fun defaultModeOf(key: String): String {
+        stateDefaultModes[key]?.let { return it }
+        if (key.startsWith("hold_")) return "hold"
+        return "loop"
+    }
+
+    /**
+     * states 配置节 -> 下发 JSON。值两种写法：
+     * 简写 `sprint: run`（按默认语义表展开为完整 object）
+     * 展开 `jump: {animation: jump, mode: once, transition: 3}`
+     * 例外：旧五 key 的简写保持 string 下发，协议对旧客户端不变
+     */
+    private fun buildStatesJson(statesSection: org.bukkit.configuration.ConfigurationSection): JsonObject {
+        val statesObj = JsonObject()
+        for (key in statesSection.getKeys(false)) {
+            val raw = statesSection.get(key) ?: continue
+            when {
+                raw is String -> {
+                    if (raw.isBlank()) continue
+                    if (key in legacyStateKeys) {
+                        statesObj.addProperty(key, raw)
+                    } else {
+                        statesObj.add(key, expandState(key, raw, null))
+                    }
+                }
+                raw is org.bukkit.configuration.ConfigurationSection -> {
+                    val animation = raw.getString("animation")?.takeIf { it.isNotBlank() } ?: continue
+                    statesObj.add(key, expandState(key, animation, raw))
+                }
+            }
+        }
+        return statesObj
+    }
+
+    private fun expandState(
+        key: String,
+        animation: String,
+        section: org.bukkit.configuration.ConfigurationSection?
+    ): JsonObject {
+        val obj = JsonObject()
+        obj.addProperty("animation", animation)
+        obj.addProperty("mode", section?.getString("mode")?.takeIf { it.isNotBlank() } ?: defaultModeOf(key))
+        obj.addProperty(
+            "transition",
+            section?.getInt(
+                "transition",
+                org.lantern.animation.AnimationOrchestrator.defaultTransitionOf(key)
+            ) ?: org.lantern.animation.AnimationOrchestrator.defaultTransitionOf(key)
+        )
+        return obj
     }
 }

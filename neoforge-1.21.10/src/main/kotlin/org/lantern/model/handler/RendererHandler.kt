@@ -58,14 +58,7 @@ object RendererHandler {
         if (obj.has("animations") && obj.get("animations").isJsonObject) {
             val animations = obj.getAsJsonObject("animations")
             animationLocation = IdentifierBridge.of(Lantern.MOD_ID, animations.get("file").asString)
-            val states = animations.getAsJsonObject("states")
-            animationStates = AnimationStateMapping(
-                idle = states?.get("idle")?.asString ?: "idle",
-                walk = states?.get("walk")?.asString ?: "walk",
-                attack = states?.get("attack")?.asString,
-                hurt = states?.get("hurt")?.asString,
-                death = states?.get("death")?.asString
-            )
+            animationStates = AnimationStateMapping.fromStatesJson(animations.getAsJsonObject("states"))
         } else if (obj.has("animation")) {
             animationLocation = IdentifierBridge.of(Lantern.MOD_ID, obj.get("animation").asString)
             animationStates = AnimationStateMapping.default()

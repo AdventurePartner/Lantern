@@ -180,11 +180,35 @@ object AnimationOrchestrator {
         return nameToModelKey[stripped]
     }
 
-    /** 实体对应模型映射的 death 状态动画名（无模型或无 death 映射返回 null），供死亡拦截使用 */
-    fun deathAnimationOf(entity: Entity): String? {
-        val key = resolveModelKey(entity) ?: return null
-        return Configurations.models.getString("$key.animations.states.death")
+    /** 状态的动画名 + 切换过渡 tick（供事件驱动播放，取 yml 自定义或默认表） */
+    data class StateEntry(val animation: String, val transition: Int)
+
+    /**
+     * 状态默认切换过渡 tick：一次性动作起手要快（2-3 tick），持续姿态 5 tick。
+     * NetworkHandler 下发展开简写状态时用同一张表（单一事实源，勿两处分叉）
+     */
+    fun defaultTransitionOf(state: String): Int = when (state) {
+        "jump", "landing" -> 2
+        "falling", "spawn", "pull_bow", "heal", "attack" -> 3
+        else -> 5
     }
+
+    /** 实体对应模型某状态的播放条目（无模型或未配置该状态返回 null），供事件驱动播放。
+     *  兼容简写 `heal: anim` 与展开 `heal: {animation: anim, transition: N}` 两种 yml 写法 */
+    fun stateEntryOf(entity: Entity, state: String): StateEntry? {
+        val key = resolveModelKey(entity) ?: return null
+        val path = "$key.animations.states.$state"
+        val section = Configurations.models.getConfigurationSection(path)
+        if (section != null) {
+            val animation = section.getString("animation")?.takeIf { it.isNotBlank() } ?: return null
+            return StateEntry(animation, section.getInt("transition", defaultTransitionOf(state)))
+        }
+        val simple = Configurations.models.getString(path)?.takeIf { it.isNotBlank() } ?: return null
+        return StateEntry(simple, defaultTransitionOf(state))
+    }
+
+    /** 实体对应模型映射的 death 状态动画名（无模型或无 death 映射返回 null），供死亡拦截使用 */
+    fun deathAnimationOf(entity: Entity): String? = stateEntryOf(entity, "death")?.animation
 
     fun reset() {
         active.values.forEach { a -> a.tasks.forEach { it.cancel() } }

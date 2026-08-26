@@ -8,9 +8,26 @@
 #   states:
 #     idle: "idle 动画名称"
 #     walk: "walk 动画名称"
-#     attack: "attack 动画名称（可选）"
+#     attack: "attack 动画名称（可选，服务端近战命中事件驱动）"
 #     hurt: "hurt 动画名称（可选）"
-#     death: "death 动画名称（可选）"
+#     death: "death 动画名称（可选，假死拦截 + 末帧留尸体）"
+#
+# 扩展状态（全部可选，配了才生效，未配置自动穿透到低优先级状态）：
+#   一次性：  jump / landing / spawn          （起跳/落地/首次进入渲染，播完回落）
+#   服务端事件：heal / attack                  （回血/近战出手事件触发，播完回落）
+#   持续姿态：sprint / sneak_idle / sneak_walk / climbing /
+#             swim_idle / swim_walk / riding_idle / riding_walk / falling
+#   使用物品：pull_bow（弓弩蓄力，停末帧）/ eat / drink
+#   持物待机：hold_sword / hold_axe / hold_pickaxe / hold_shovel / hold_hoe /
+#             hold_trident / hold_bow / hold_crossbow / hold_shield / hold_mace
+#             （主手持有对应类型物品时的待机姿态，停末帧）
+#
+# 状态值两种写法：
+#   简写（推荐）: sprint: "run"        -> 按该状态的默认播放语义
+#   展开:         jump:                -> 自定义播放语义
+#     animation: "jump"
+#     mode: once                  # loop=循环 / once=播完回落 / hold=停末帧直到条件消失
+#     transition: 3               # 切换过渡 tick（20 tick = 1 秒）
 #
 # 旧配置格式（仍然支持）：
 # animation: "动画文件路径"
@@ -19,6 +36,8 @@
 # 注意：
 # - 动画文件路径相对于客户端资源包的 assets/lantern/ 目录
 # - 动画名称必须与动画文件中定义的名称完全一致
+# - attack 配置后由服务端近战命中事件自动播放，与 MM 技能手动播控的动画
+#   会互相顶替——凡技能里手动 lanternanim 的模型不要配 attack
 # ============================================
 
 example:
@@ -34,9 +53,15 @@ example:
     states:
       idle: "animation.example_pig.idle"
       walk: "animation.example_pig.walk"
-      # attack: "animation.example_pig.attack"   # 可选
+      # attack: "animation.example_pig.attack"   # 可选（服务端近战事件驱动）
       # hurt: "animation.example_pig.hurt"       # 可选
       # death: "animation.example_pig.death"     # 可选
+      # ---- 扩展状态示例（全部可选）----
+      # sprint: "animation.example_pig.run"
+      # jump:
+      #   animation: "animation.example_pig.jump"
+      #   mode: once
+      #   transition: 3
   # 模型缩放比例
   scale: 10.0
   # 碰撞箱高度

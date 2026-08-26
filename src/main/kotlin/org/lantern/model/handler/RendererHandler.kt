@@ -53,19 +53,9 @@ object RendererHandler {
             val animationPath = animationsObj.get("file").asString
             animationLocation = IdentifierBridge.of(Lantern.MOD_ID, animationPath)
 
-            // 解析状态映射
-            val statesObj = if (animationsObj.has("states") && animationsObj.get("states").isJsonObject) {
+            // 解析状态映射（表驱动，string=纯动画名 / object=完整播放语义）
+            animationStates = AnimationStateMapping.fromStatesJson(
                 animationsObj.getAsJsonObject("states")
-            } else {
-                null
-            }
-
-            animationStates = AnimationStateMapping(
-                idle = statesObj?.get("idle")?.asString ?: "idle",
-                walk = statesObj?.get("walk")?.asString ?: "walk",
-                attack = statesObj?.get("attack")?.asString,
-                hurt = statesObj?.get("hurt")?.asString,
-                death = statesObj?.get("death")?.asString
             )
         } else if (obj.has("animation")) {
             // 旧格式：单一 animation 字段

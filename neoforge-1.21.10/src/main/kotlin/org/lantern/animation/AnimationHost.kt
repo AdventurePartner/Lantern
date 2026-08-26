@@ -3,8 +3,6 @@ package org.lantern.animation
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import net.minecraft.world.entity.Entity
-import net.minecraft.world.entity.LivingEntity
-import org.lantern.model.enums.EntityAnimationState
 import org.lantern.model.renderstate.AnimationControlStore
 import org.lantern.model.wrapper.CustomModelWrapper
 import software.bernie.geckolib.animatable.processing.AnimationProcessor
@@ -20,6 +18,11 @@ object AnimationHost {
 
     private val players = ConcurrentHashMap<UUID, AnimationPlayer>()
 
+    // 已触发过 spawn 的实体集合：跨 reset() 存活，只有实体离场（remove）才清除——
+    // /lantern reload 会清空 players 重建，若以 player 生命周期判定 spawn，
+    // 全部在线实体会在重载后同时重播出生动画；spawn 语义是实体生命周期内首次渲染
+    private val spawned = ConcurrentHashMap.newKeySet<UUID>()
+
     /** 提取阶段调用：只计算姿势（存入 player.pose），不写骨骼 */
     @JvmStatic
     fun drivePose(entity: Entity, wrapper: CustomModelWrapper): Map<String, FloatArray>? {
@@ -32,19 +35,12 @@ object AnimationHost {
         }
         val uuid = entity.uuid
         val player = players.computeIfAbsent(uuid) { AnimationPlayer(it) }
-        val actionState = if (entity is LivingEntity && entity.isDeadOrDying) {
-            EntityAnimationState.DEATH
-        } else {
-            null
-        }
         player.drive(
             clips,
             AnimationControlStore.get(uuid),
-            actionState,
-            entity.x,
-            entity.y,
-            entity.z,
-            wrapper.animationStates
+            entity,
+            wrapper.animationStates,
+            spawned.add(uuid)
         )
         return player.pose
     }
@@ -64,9 +60,11 @@ object AnimationHost {
         players.clear()
     }
 
-    /** 实体离开世界时释放其播放器状态（移动检测、活跃剪辑等） */
+    /** 实体离开世界时释放其播放器状态（移动检测、活跃剪辑等）；
+     *  spawn 集合同步清除，重连/换维度回来的实体重新触发出生动画 */
     @JvmStatic
     fun remove(uuid: UUID) {
         players.remove(uuid)
+        spawned.remove(uuid)
     }
 }

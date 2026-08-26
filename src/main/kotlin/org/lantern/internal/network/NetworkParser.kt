@@ -219,13 +219,7 @@ object NetworkParser {
                 animationLocation = IdentifierBridge.of(Lantern.MOD_ID, animPath)
 
                 val statesObj = animationsObj.getAsJsonObject("states")
-                animationStates = AnimationStateMapping(
-                    idle = statesObj?.get("idle")?.asString ?: "idle",
-                    walk = statesObj?.get("walk")?.asString ?: "walk",
-                    attack = statesObj?.get("attack")?.asString,
-                    hurt = statesObj?.get("hurt")?.asString,
-                    death = statesObj?.get("death")?.asString
-                )
+                animationStates = AnimationStateMapping.fromStatesJson(statesObj)
             } else {
                 animationLocation = IdentifierBridge.of(
                     Lantern.MOD_ID, "animations/costume/default.animation.json"
