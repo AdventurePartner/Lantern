@@ -56,9 +56,10 @@ class LanternCommand : CommandExecutor, TabCompleter {
             "anim" -> handleAnim(sender, args)
             "var" -> handleVar(sender, args)
             "cam" -> handleCam(sender, args)
+            "campath" -> handleCampath(sender, args)
             "costume" -> handleCostume(sender, args)
             "wardrobe" -> handleWardrobe(sender, args)
-            else -> sender.sendMessage("${ChatColor.RED}Unknown subcommand. Use: reload | open | give | anim | var | cam | costume | wardrobe")
+            else -> sender.sendMessage("${ChatColor.RED}Unknown subcommand. Use: reload | open | give | anim | var | cam | campath | costume | wardrobe")
         }
         return true
     }
@@ -80,7 +81,9 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "anim" -> listOf("play", "stop", "pause", "resume", "seek")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
-                "cam" -> listOf("info", "toggle", "reset", "set", "lock", "lockentity", "unlock", "shake", "fov", "offset", "clear")
+                "cam" -> listOf("info", "toggle", "reset", "set", "lock", "lockentity", "unlock", "shake", "fov", "offset", "path", "watch", "clear")
+                    .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
+                "campath" -> listOf("start", "add", "undo", "clear", "list", "preview", "play", "save", "stop")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "costume" -> listOf("equip", "unequip")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
@@ -104,9 +107,17 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 "cam" -> when (args[1]?.lowercase()) {
                     "set" -> listOf("offset-x", "offset-y", "distance")
                         .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
-                    "lock" -> emptyList()
+                    "path" -> org.lantern.camera.CameraPathService.savedIds()
+                        .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+                    "lock", "watch" -> emptyList()
                     else -> Bukkit.getOnlinePlayers().map { it.name }
                         .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+                }
+                "campath" -> when (args[1]?.lowercase()) {
+                    "start" -> emptyList()
+                    "add" -> listOf("linear", "smooth", "hold")
+                        .filter { it.startsWith(args[3] ?: "", ignoreCase = true) }
+                    else -> emptyList()
                 }
                 else -> emptyList()
             }
@@ -419,6 +430,34 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 )
                 sender.sendMessage("${ChatColor.GREEN}Camera offset for ${target.name}: pitch=$pitch yaw=$yaw.")
             }
+            "path" -> {
+                val id = args.getOrNull(2) ?: run { camUsage(sender); return }
+                val tail = parseCamTail(args, 3)
+                val target = camTarget(sender, tail.playerName) ?: return
+                val speed = tail.numbers.getOrElse(0) { 1.0 }
+                val error = org.lantern.camera.CameraPathService.playTo(target, id, speed)
+                if (error != null) {
+                    sender.sendMessage("${ChatColor.RED}$error")
+                } else {
+                    sender.sendMessage("${ChatColor.GREEN}Playing camera path '$id' for ${target.name} (speed=$speed).")
+                }
+            }
+            "watch" -> {
+                val x = args.getOrNull(2)?.toDoubleOrNull() ?: run { camUsage(sender); return }
+                val y = args.getOrNull(3)?.toDoubleOrNull() ?: run { camUsage(sender); return }
+                val z = args.getOrNull(4)?.toDoubleOrNull() ?: run { camUsage(sender); return }
+                val lx = args.getOrNull(5)?.toDoubleOrNull() ?: run { camUsage(sender); return }
+                val ly = args.getOrNull(6)?.toDoubleOrNull() ?: run { camUsage(sender); return }
+                val lz = args.getOrNull(7)?.toDoubleOrNull() ?: run { camUsage(sender); return }
+                val tail = parseCamTail(args, 8)
+                val target = camTarget(sender, tail.playerName) ?: return
+                NetworkHandler.cameraWatch(
+                    target, x, y, z, lx, ly, lz, null,
+                    tail.numbers.getOrElse(0) { 0.0 },
+                    tail.numbers.getOrElse(1) { 1.0 }
+                )
+                sender.sendMessage("${ChatColor.GREEN}Watch point ($x, $y, $z) looking at ($lx, $ly, $lz) for ${target.name}.")
+            }
             "clear" -> {
                 val target = camTarget(sender, args.getOrNull(2)) ?: return
                 NetworkHandler.cameraClear(target)
@@ -426,6 +465,47 @@ class LanternCommand : CommandExecutor, TabCompleter {
             }
             else -> camUsage(sender)
         }
+    }
+
+    /** /lantern campath：客户端打点编辑运镜路径（会话在服务端内存，save 落盘）。 */
+    private fun handleCampath(sender: CommandSender, args: Array<out String?>) {
+        val player = sender as? Player ?: run {
+            sender.sendMessage("${ChatColor.RED}Camera path authoring requires an in-game player (use /lantern cam path <id> [player] to play).")
+            return
+        }
+        val service = org.lantern.camera.CameraPathService
+        val message: String = when (args.getOrNull(1)?.lowercase()) {
+            "start" -> {
+                val id = args.getOrNull(2) ?: run {
+                    sender.sendMessage("${ChatColor.RED}Usage: /lantern campath start <id>")
+                    return
+                }
+                service.start(player, id)
+            }
+            "add" -> service.add(player, listOf(args.getOrNull(2), args.getOrNull(3), args.getOrNull(4)))
+            "undo" -> service.undo(player)
+            "clear" -> service.clear(player)
+            "list" -> {
+                service.list(player).forEach { sender.sendMessage("${ChatColor.GOLD}$it") }
+                return
+            }
+            "preview" -> service.preview(player)
+            "play" -> service.playSelf(player, args.getOrNull(2)?.toDoubleOrNull() ?: 1.0)
+            "save" -> service.save(player)
+            "stop" -> service.stopEditing(player)
+            else -> run {
+                campathUsage(sender)
+                return
+            }
+        }
+        sender.sendMessage("${ChatColor.GREEN}$message")
+    }
+
+    private fun campathUsage(sender: CommandSender) {
+        sender.sendMessage("${ChatColor.RED}Usage: /lantern campath start <id> | stop")
+        sender.sendMessage("${ChatColor.RED}       /lantern campath add [t-ticks] [linear|smooth|hold] [fov]")
+        sender.sendMessage("${ChatColor.RED}       /lantern campath undo | clear | list | preview")
+        sender.sendMessage("${ChatColor.RED}       /lantern campath play [speed] | save")
     }
 
     /** cam 子命令的目标玩家：指定名取在线玩家，否则执行者，控制台必须指定。 */
@@ -468,6 +548,8 @@ class LanternCommand : CommandExecutor, TabCompleter {
         sender.sendMessage("${ChatColor.RED}       /lantern cam shake [amplitude] [frequency] [duration] [player]")
         sender.sendMessage("${ChatColor.RED}       /lantern cam fov [degrees] [transition-sec] [player]  (no value = restore)")
         sender.sendMessage("${ChatColor.RED}       /lantern cam offset <pitch> <yaw> [roll] [transition-sec] [player]")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam path <id> [player] [speed]")
+        sender.sendMessage("${ChatColor.RED}       /lantern cam watch <x> <y> <z> <look-x> <look-y> <look-z> [duration] [smooth] [player]")
     }
 
     private fun handleWardrobe(sender: CommandSender, args: Array<out String?>) {

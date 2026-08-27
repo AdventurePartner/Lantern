@@ -343,6 +343,72 @@ object NetworkHandler {
         sendPacket(player, 18, JsonObject().also { it.addProperty("action", "clear") })
     }
 
+    /**
+     * 关键帧运镜（packet 18 path）：全量关键帧下发，客户端插值播放。
+     * 每帧 interp = 上一帧到本帧的运动方式：linear | smooth(catmullrom) | hold（帧动画跳切）。
+     */
+    fun cameraPath(
+        player: Player,
+        frames: List<org.lantern.camera.CameraPathService.Frame>,
+        speed: Double = 1.0,
+        loop: Boolean = false
+    ) {
+        val packet = JsonObject()
+        packet.addProperty("action", "path")
+        packet.addProperty("speed", speed.coerceIn(0.05, 10.0))
+        packet.addProperty("loop", loop)
+        val array = JsonArray()
+        frames.forEach { frame ->
+            val obj = JsonObject()
+            obj.addProperty("t", frame.t)
+            obj.addProperty("x", frame.x)
+            obj.addProperty("y", frame.y)
+            obj.addProperty("z", frame.z)
+            obj.addProperty("yaw", frame.yaw)
+            obj.addProperty("pitch", frame.pitch)
+            frame.fov?.let { obj.addProperty("fov", it) }
+            obj.addProperty("interp", frame.interp)
+            array.add(obj)
+        }
+        packet.add("keyframes", array)
+        sendPacket(player, 18, packet)
+    }
+
+    /**
+     * 固定点观察（packet 18 watch）：相机平移到 pos 观察看向点/跟随实体，
+     * 到期回程。lookEntity 的角度每帧动态计算（实体可移动）。
+     */
+    fun cameraWatch(
+        player: Player,
+        x: Double, y: Double, z: Double,
+        lookX: Double?, lookY: Double?, lookZ: Double?,
+        lookEntity: UUID?,
+        duration: Double = 0.0,
+        smooth: Double = 1.0
+    ) {
+        val packet = JsonObject()
+        packet.addProperty("action", "watch")
+        val pos = JsonObject()
+        pos.addProperty("x", x)
+        pos.addProperty("y", y)
+        pos.addProperty("z", z)
+        packet.add("pos", pos)
+        if (lookEntity != null) {
+            packet.addProperty("entity", lookEntity.toString())
+        } else if (lookX != null && lookY != null && lookZ != null) {
+            val look = JsonObject()
+            look.addProperty("x", lookX)
+            look.addProperty("y", lookY)
+            look.addProperty("z", lookZ)
+            packet.add("look", look)
+        } else {
+            return
+        }
+        packet.addProperty("duration", duration.coerceAtLeast(0.0))
+        packet.addProperty("smooth", smooth.coerceAtLeast(0.0))
+        sendPacket(player, 18, packet)
+    }
+
     /** 对以 origin 为中心 radius 半径内的同世界玩家逐一下发（阶段四动作轨道复用）。 */
     fun cameraControlRadius(origin: org.bukkit.Location, radius: Double, applier: (Player) -> Unit) {
         val radiusSq = radius * radius

@@ -93,8 +93,10 @@ public abstract class CameraMixin {
             this.yRot, this.xRot, partialTick, position.x, position.y, position.z);
         if (pose != null) {
             this.setRotation(pose.getYaw(), pose.getPitch(), pose.getRoll());
+            // path/watch/回程为绝对位置覆写（shake 扰动照常叠加）；其余为相对扰动
+            Vec3 base = pose.getAbsolutePos() != null ? pose.getAbsolutePos() : position;
             this.setPosition(new Vec3(
-                position.x + pose.getDx(), position.y + pose.getDy(), position.z + pose.getDz()));
+                base.x + pose.getDx(), base.y + pose.getDy(), base.z + pose.getDz()));
         }
         // 拾取修正必须在 setup 尾部（本帧位姿定稿后）而非 GameRenderer.pick 尾部：
         // 帧内顺序是 pick 在前 setup 在后，后者只能拿到上一帧相机（详见 CameraPick）

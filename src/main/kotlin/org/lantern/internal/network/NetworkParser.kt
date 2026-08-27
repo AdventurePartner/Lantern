@@ -98,7 +98,7 @@ object NetworkParser {
                     obj.get("offset-y")?.asDouble ?: 0.0,
                     obj.get("distance")?.asDouble ?: 4.0
                 )
-                "lock", "unlock", "shake", "fov", "offset", "clear" ->
+                "lock", "unlock", "shake", "fov", "offset", "path", "watch", "clear" ->
                     cameraActionHandler?.invoke(action, obj)
             }
         }

@@ -36,6 +36,7 @@ class PlayerListener : Listener {
         syncedPlayers.remove(uuid)
         LanternPlugin.instance.channelListener.removePlayer(uuid)
         org.lantern.camera.ShoulderCameraService.removePlayer(uuid)
+        org.lantern.camera.CameraPathService.removePlayer(uuid)
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

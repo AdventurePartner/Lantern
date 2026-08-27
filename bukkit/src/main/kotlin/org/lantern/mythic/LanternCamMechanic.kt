@@ -23,6 +23,8 @@ import org.lantern.network.NetworkHandler
  *   lanterncam{action=lockentity;smooth=0.5;sync=true} @Self        # 视角跟随目标实体并同步真实朝向
  *   lanterncam{action=fov;value=110;transition=0.5} @Trigger        # 临时 FOV（value 缺省 = 恢复）
  *   lanterncam{action=offset;pitch=10;yaw=15} @Target               # 朝向偏移叠加
+ *   lanterncam{action=path;id=boss_intro;speed=1} @PlayersInRadius{r=16}  # 播放打点运镜
+ *   lanterncam{action=watch;x=6;y=3;z=6;duration=3} @Self           # 相机到目标旁 6,3,6 观察 3 秒
  *   lanterncam{action=unlock|clear} @Target
  *
  * 注意：CustomComponentRegistry 通过 (MythicMechanicLoadEvent) 构造器实例化本类（同
@@ -55,6 +57,12 @@ class LanternCamMechanic(
     private val offY = num(0.0, "y")
     private val offZ = num(0.0, "z")
     private val relative = lineConfig.getBoolean(arrayOf("relative", "rel"), true)
+    private val pathId = lineConfig.getString(arrayOf("id"))
+    private val pathSpeed = num(1.0, "speed").coerceIn(0.05, 10.0)
+    private val lookX = num(0.0, "lookx", "lx")
+    private val lookY = num(0.0, "looky", "ly")
+    private val lookZ = num(0.0, "lookz", "lz")
+    private val lookAtTarget = lineConfig.getBoolean(arrayOf("lookentity", "look"), true)
 
     // MythicLineConfig 的 getDouble 重载在各 MM 版本间不稳，统一走字符串解析
     private fun num(def: Double, vararg keys: String): Double =
@@ -66,10 +74,10 @@ class LanternCamMechanic(
         val player = target.bukkitEntity as? Player ?: return SkillResult.INVALID_TARGET
         // MM 技能可能在异步线程执行，发包统一调度回主线程
         Bukkit.getScheduler().runTask(LanternPlugin.instance, Runnable {
+            val base = if (relative) target.bukkitEntity.location else null
             when (action) {
                 "lock" -> {
                     // relative=true 时 x/y/z 为相对目标实体的偏移，否则为世界绝对坐标
-                    val base = if (relative) target.bukkitEntity.location else null
                     NetworkHandler.cameraLock(
                         player,
                         (base?.x ?: 0.0) + offX,
@@ -83,6 +91,26 @@ class LanternCamMechanic(
                 "shake" -> NetworkHandler.cameraShake(player, amplitude, frequency, shakeDuration, decay)
                 "fov" -> NetworkHandler.cameraFov(player, fovValue.takeIf { it > 0 }, transition)
                 "offset" -> NetworkHandler.cameraOffset(player, pitch, yaw, roll, transition)
+                "path" -> {
+                    val id = pathId ?: return@Runnable
+                    org.lantern.camera.CameraPathService.playTo(player, id, pathSpeed)
+                }
+                "watch" -> {
+                    // 相机位于目标实体 + x/y/z 偏移处，默认看向目标实体本身（lookentity=false
+                    // 时看向目标 + lookx/looky/lookz 偏移点）
+                    val px = (base?.x ?: 0.0) + offX
+                    val py = (base?.y ?: 0.0) + offY
+                    val pz = (base?.z ?: 0.0) + offZ
+                    if (lookAtTarget) {
+                        NetworkHandler.cameraWatch(player, px, py, pz, null, null, null, target.bukkitEntity.uniqueId, duration, smooth)
+                    } else {
+                        NetworkHandler.cameraWatch(
+                            player, px, py, pz,
+                            (base?.x ?: 0.0) + lookX, (base?.y ?: 0.0) + lookY, (base?.z ?: 0.0) + lookZ,
+                            null, duration, smooth
+                        )
+                    }
+                }
                 "clear" -> NetworkHandler.cameraClear(player)
             }
         })
