@@ -26,11 +26,20 @@ object AnimationOrchestrator {
 
     data class SoundSpec(val sound: String, val volume: Float, val pitch: Float)
 
+    /**
+     * 相机演出节点：`{at: 40, camera: {action: shake, amplitude: 0.4, radius: 16}}`。
+     * 除 radius/action 外的字段直通 packet 18（如 smooth/duration/sync/value/transition/
+     * pitch/yaw/roll/x/y/z/entity）；action=path 时用 id 引用 cameraPaths 存档。
+     * 对被编排实体 radius 半径内的同世界玩家广播。
+     */
+    data class CameraSpec(val radius: Double, val params: Map<String, Any?>)
+
     data class TrackAction(
         val atTick: Long,
         val sound: SoundSpec?,
         val command: String?,
-        val mmSkill: String?
+        val mmSkill: String?,
+        val camera: CameraSpec?
     )
 
     data class Track(val animation: String, val next: String?, val actions: List<TrackAction>)
@@ -70,12 +79,27 @@ object AnimationOrchestrator {
                             pitch = (s["p"] as? Number)?.toFloat() ?: 1.0f
                         )
                     }
+                    val camera = (map["camera"] as? Map<*, *>)?.let { c ->
+                        val action = c["action"]?.toString() ?: return@let null
+                        val params = LinkedHashMap<String, Any?>()
+                        c.forEach { (key, value) ->
+                            if (key != "action" && key != "radius" && value != null) {
+                                params[key.toString()] = value
+                            }
+                        }
+                        params["action"] = action
+                        CameraSpec(
+                            radius = (c["radius"] as? Number)?.toDouble() ?: 16.0,
+                            params = params
+                        )
+                    }
                     actions.add(
                         TrackAction(
                             atTick = at,
                             sound = sound,
                             command = map["command"]?.toString()?.takeIf { it.isNotBlank() },
-                            mmSkill = (map["mm-skill"] ?: map["mmSkill"])?.toString()?.takeIf { it.isNotBlank() }
+                            mmSkill = (map["mm-skill"] ?: map["mmSkill"])?.toString()?.takeIf { it.isNotBlank() },
+                            camera = camera
                         )
                     )
                 }
@@ -171,6 +195,23 @@ object AnimationOrchestrator {
             }.onFailure {
                 LanternPlugin.instance.logger.warning("mm-skill '$skill' failed: ${it.message}")
             }
+        }
+        action.camera?.let { spec -> executeCamera(entity, spec) }
+    }
+
+    /** 相机演出节点：path 走存档载入的专用广播，其余参数直通 packet 18 广播。 */
+    private fun executeCamera(entity: Entity, spec: CameraSpec) {
+        when (spec.params["action"]) {
+            "path" -> {
+                val id = spec.params["id"]?.toString() ?: return
+                val loaded = org.lantern.camera.CameraPathService.framesOf(id) ?: run {
+                    LanternPlugin.instance.logger.warning("camera track path '$id' missing or has fewer than 2 keyframes")
+                    return
+                }
+                val speed = (spec.params["speed"] as? Number)?.toDouble() ?: 1.0
+                NetworkHandler.cameraPathBroadcast(entity.location, spec.radius, loaded.frames, speed, loaded.loop)
+            }
+            else -> NetworkHandler.cameraBroadcast(entity.location, spec.radius, spec.params)
         }
     }
 

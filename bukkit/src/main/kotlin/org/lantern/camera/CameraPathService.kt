@@ -181,12 +181,22 @@ object CameraPathService {
         if (!validId(id)) return "非法路径 ID '$id'"
         val file = File(dir(), "$id.yml")
         if (!file.isFile) return "找不到运镜路径 '$id'（已存档: ${savedIds().joinToString(", ").ifEmpty { "无" }}）"
-        val frames = loadFrames(file)
-        if (frames.size < 2) return "路径 '$id' 的关键帧不足 2 个"
-        val yml = YamlConfiguration.loadConfiguration(file)
-        val loop = yml.getBoolean("loop", false)
-        NetworkHandler.cameraPath(target, frames, speed, loop)
+        val loaded = framesOf(id) ?: return "路径 '$id' 的关键帧不足 2 个"
+        NetworkHandler.cameraPath(target, loaded.frames, speed, loaded.loop)
         return null
+    }
+
+    class LoadedPath(val frames: List<Frame>, val loop: Boolean)
+
+    /** 读取存档路径（供轨道/命令复用）；不足 2 帧返回 null。 */
+    fun framesOf(id: String): LoadedPath? {
+        if (!validId(id)) return null
+        val file = File(dir(), "$id.yml")
+        if (!file.isFile) return null
+        val frames = loadFrames(file)
+        if (frames.size < 2) return null
+        val yml = YamlConfiguration.loadConfiguration(file)
+        return LoadedPath(frames, yml.getBoolean("loop", false))
     }
 
     /** 兼容两种格式：列表套映射（当前 save 与手改）、映射套映射（早期版本 keyframes.0.t）。 */

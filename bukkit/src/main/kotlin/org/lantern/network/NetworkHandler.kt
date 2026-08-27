@@ -343,16 +343,12 @@ object NetworkHandler {
         sendPacket(player, 18, JsonObject().also { it.addProperty("action", "clear") })
     }
 
-    /**
-     * 关键帧运镜（packet 18 path）：全量关键帧下发，客户端插值播放。
-     * 每帧 interp = 上一帧到本帧的运动方式：linear | smooth(catmullrom) | hold（帧动画跳切）。
-     */
-    fun cameraPath(
-        player: Player,
+    /** path 包构造（cameraPath 与 cameraPathBroadcast 共用）。 */
+    private fun cameraPathPacket(
         frames: List<org.lantern.camera.CameraPathService.Frame>,
-        speed: Double = 1.0,
-        loop: Boolean = false
-    ) {
+        speed: Double,
+        loop: Boolean
+    ): JsonObject {
         val packet = JsonObject()
         packet.addProperty("action", "path")
         packet.addProperty("speed", speed.coerceIn(0.05, 10.0))
@@ -371,7 +367,20 @@ object NetworkHandler {
             array.add(obj)
         }
         packet.add("keyframes", array)
-        sendPacket(player, 18, packet)
+        return packet
+    }
+
+    /**
+     * 关键帧运镜（packet 18 path）：全量关键帧下发，客户端插值播放。
+     * 每帧 interp = 上一帧到本帧的运动方式：linear | smooth(catmullrom) | hold（帧动画跳切）。
+     */
+    fun cameraPath(
+        player: Player,
+        frames: List<org.lantern.camera.CameraPathService.Frame>,
+        speed: Double = 1.0,
+        loop: Boolean = false
+    ) {
+        sendPacket(player, 18, cameraPathPacket(frames, speed, loop))
     }
 
     /**
@@ -409,12 +418,72 @@ object NetworkHandler {
         sendPacket(player, 18, packet)
     }
 
-    /** 对以 origin 为中心 radius 半径内的同世界玩家逐一下发（阶段四动作轨道复用）。 */
-    fun cameraControlRadius(origin: org.bukkit.Location, radius: Double, applier: (Player) -> Unit) {
+    /** Map 参数转 packet 18 JSON：支持 Number/Boolean/String 与 List<Map>（path keyframes）。 */
+    private fun cameraPacket(params: Map<String, Any?>): JsonObject {
+        val packet = JsonObject()
+        params.forEach { (key, value) ->
+            when (value) {
+                is Number -> packet.addProperty(key, value)
+                is Boolean -> packet.addProperty(key, value)
+                is String -> packet.addProperty(key, value)
+                is Map<*, *> -> {
+                    val obj = JsonObject()
+                    value.forEach { (k, v) ->
+                        when (v) {
+                            is Number -> obj.addProperty(k.toString(), v)
+                            is Boolean -> obj.addProperty(k.toString(), v)
+                            is String -> obj.addProperty(k.toString(), v)
+                        }
+                    }
+                    packet.add(key, obj)
+                }
+                is List<*> -> {
+                    val array = JsonArray()
+                    value.filterIsInstance<Map<*, *>>().forEach { raw ->
+                        val obj = JsonObject()
+                        raw.forEach { (k, v) ->
+                            when (v) {
+                                is Number -> obj.addProperty(k.toString(), v)
+                                is Boolean -> obj.addProperty(k.toString(), v)
+                                is String -> obj.addProperty(k.toString(), v)
+                            }
+                        }
+                        array.add(obj)
+                    }
+                    packet.add(key, array)
+                }
+            }
+        }
+        return packet
+    }
+
+    /**
+     * 相机参数半径广播（阶段四动作轨道）：packet 18 只序列化一次，
+     * 对半径内玩家复用同一份字节——同一个包逐玩家重复编码的浪费消除。
+     */
+    fun cameraBroadcast(origin: org.bukkit.Location, radius: Double, params: Map<String, Any?>) {
+        val bytes = serializePacket(18, cameraPacket(params))
         val radiusSq = radius * radius
         origin.world?.players?.forEach { player ->
             if (player.location.distanceSquared(origin) <= radiusSq) {
-                applier(player)
+                sendSerializedPacket(player, bytes)
+            }
+        }
+    }
+
+    /** 打点运镜半径广播：从 cameraPaths 存档载入关键帧，一次编码发给半径内玩家。 */
+    fun cameraPathBroadcast(
+        origin: org.bukkit.Location,
+        radius: Double,
+        frames: List<org.lantern.camera.CameraPathService.Frame>,
+        speed: Double,
+        loop: Boolean
+    ) {
+        val bytes = serializePacket(18, cameraPathPacket(frames, speed, loop))
+        val radiusSq = radius * radius
+        origin.world?.players?.forEach { player ->
+            if (player.location.distanceSquared(origin) <= radiusSq) {
+                sendSerializedPacket(player, bytes)
             }
         }
     }
