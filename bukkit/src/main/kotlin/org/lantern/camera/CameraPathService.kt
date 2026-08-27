@@ -44,20 +44,20 @@ object CameraPathService {
 
     /** 开始/继续编辑：目标路径已有存档则载入。返回结果消息。 */
     fun start(player: Player, id: String): String {
-        if (!validId(id)) return "Invalid path id '$id' (allowed: letters, digits, -, _)"
+        if (!validId(id)) return "非法路径 ID '$id'（仅允许字母、数字、-、_）"
         val file = File(dir(), "$id.yml")
         val frames = if (file.isFile) loadFrames(file) else mutableListOf()
         sessions[player.uniqueId] = Session(id, frames)
         return if (frames.isEmpty()) {
-            "Editing new camera path '$id' — walk to a viewpoint and /lantern campath add"
+            "开始编辑新运镜路径 '$id'——走到机位后执行 /lantern campath add"
         } else {
-            "Editing camera path '$id' (${frames.size} keyframes loaded)"
+            "开始编辑运镜路径 '$id'（已载入 ${frames.size} 个关键帧）"
         }
     }
 
     /** 打一个点：记录当前眼睛位姿。弹性解析：数字第一个=t、第二个=fov，单词=interp。 */
     fun add(player: Player, tokens: List<String?>): String {
-        val session = sessions[player.uniqueId] ?: return "No editing session — /lantern campath start <id> first"
+        val session = sessions[player.uniqueId] ?: return "没有编辑会话——先执行 /lantern campath start <路径ID>"
         var t: Int? = null
         var interp: String? = null
         var fov: Double? = null
@@ -68,36 +68,36 @@ object CameraPathService {
                 number != null && t == null -> t = number.toInt()
                 number != null -> fov = number
                 interp == null -> interp = token.lowercase()
-                else -> return "Unexpected argument '$token'"
+                else -> return "多余参数 '$token'"
             }
         }
         val resolvedInterp = interp ?: "smooth"
-        if (resolvedInterp !in INTERPS) return "Invalid interp '$interp' (linear | smooth | hold)"
+        if (resolvedInterp !in INTERPS) return "无效插值 '$interp'（linear | smooth | hold）"
         val eye = player.eyeLocation
         val nextT = t ?: (session.frames.lastOrNull()?.let { it.t + 20 } ?: 0)
         val frame = Frame(nextT, eye.x, eye.y, eye.z, eye.yaw, eye.pitch, fov, resolvedInterp)
         session.frames.add(frame)
-        return "Keyframe #${session.frames.size} @ t=${frame.t} ($resolvedInterp" +
-            (fov?.let { ", fov=$it" } ?: "") + ") at ${eye.x.toInt()}, ${eye.y.toInt()}, ${eye.z.toInt()}"
+        return "关键帧 #${session.frames.size} @ t=${frame.t}（$resolvedInterp" +
+            (fov?.let { ", fov=$it" } ?: "") + "）位于 ${eye.x.toInt()}, ${eye.y.toInt()}, ${eye.z.toInt()}"
     }
 
     fun undo(player: Player): String {
-        val session = sessions[player.uniqueId] ?: return "No editing session"
+        val session = sessions[player.uniqueId] ?: return "没有编辑会话"
         val removed = session.frames.removeLastOrNull() ?: return "No keyframes to undo"
-        return "Removed keyframe @ t=${removed.t} (${session.frames.size} left)"
+        return "已移除关键帧 @ t=${removed.t}（剩 ${session.frames.size} 帧）"
     }
 
     fun clear(player: Player): String {
-        val session = sessions[player.uniqueId] ?: return "No editing session"
+        val session = sessions[player.uniqueId] ?: return "没有编辑会话"
         session.frames.clear()
-        return "Cleared all keyframes of '${session.id}'"
+        return "已清空 '${session.id}' 的全部关键帧"
     }
 
     fun list(player: Player): List<String> {
         val session = sessions[player.uniqueId] ?: return listOf("No editing session")
-        if (session.frames.isEmpty()) return listOf("Path '${session.id}' is empty")
+        if (session.frames.isEmpty()) return listOf("路径 '${session.id}' 为空")
         return buildList {
-            add("Path '${session.id}' — ${session.frames.size} keyframes:")
+            add("路径 '${session.id}'——${session.frames.size} 个关键帧:")
             session.frames.forEachIndexed { index, frame ->
                 add(
                     "  #${index + 1} t=${frame.t} ${frame.interp}" +
@@ -111,8 +111,8 @@ object CameraPathService {
 
     /** 粒子预览：关键帧火苗点 + 段间直线采样（曲率的真实手感以 play 预演为准）。 */
     fun preview(player: Player): String {
-        val session = sessions[player.uniqueId] ?: return "No editing session"
-        if (session.frames.size < 2) return "Need at least 2 keyframes to preview"
+        val session = sessions[player.uniqueId] ?: return "没有编辑会话"
+        if (session.frames.size < 2) return "至少需要 2 个关键帧才能预览"
         val world = player.world
         session.frames.forEach { frame ->
             world.spawnParticle(Particle.FLAME, frame.x, frame.y, frame.z, 1, 0.0, 0.0, 0.0, 0.0)
@@ -133,20 +133,20 @@ object CameraPathService {
                     Particle.REDSTONE, a.x + dx * u, a.y + dy * u, a.z + dz * u, 1, 0.0, 0.0, 0.0, 0.0, dust)
             }
         }
-        return "Preview shown for ${session.frames.size} keyframes (flame = keyframe, aqua line = segment)"
+        return "已显示 ${session.frames.size} 个关键帧的预览（火苗=关键帧，青色线=段）"
     }
 
     /** 会话内自预演（未保存也能放）。 */
     fun playSelf(player: Player, speed: Double): String {
-        val session = sessions[player.uniqueId] ?: return "No editing session"
-        if (session.frames.size < 2) return "Need at least 2 keyframes to play"
+        val session = sessions[player.uniqueId] ?: return "没有编辑会话"
+        if (session.frames.size < 2) return "至少需要 2 个关键帧才能播放"
         NetworkHandler.cameraPath(player, session.frames, speed)
-        return "Playing path '${session.id}' (${session.frames.size} keyframes, speed=$speed)"
+        return "正在播放路径 '${session.id}'（${session.frames.size} 个关键帧，speed=$speed）"
     }
 
     fun save(player: Player): String {
-        val session = sessions[player.uniqueId] ?: return "No editing session"
-        if (session.frames.isEmpty()) return "Nothing to save"
+        val session = sessions[player.uniqueId] ?: return "没有编辑会话"
+        if (session.frames.isEmpty()) return "没有可保存的内容"
         val yml = YamlConfiguration()
         yml.set("speed", 1.0)
         yml.set("loop", false)
@@ -168,21 +168,21 @@ object CameraPathService {
         }
         yml.set("keyframes", list)
         yml.save(File(dir(), "${session.id}.yml"))
-        return "Saved path '${session.id}' (${session.frames.size} keyframes)"
+        return "已保存路径 '${session.id}'（${session.frames.size} 个关键帧）"
     }
 
     fun stopEditing(player: Player): String {
-        val session = sessions.remove(player.uniqueId) ?: return "No editing session"
-        return "Stopped editing '${session.id}' (${session.frames.size} keyframes in session)"
+        val session = sessions.remove(player.uniqueId) ?: return "没有编辑会话"
+        return "已结束编辑 '${session.id}'（会话内 ${session.frames.size} 帧）"
     }
 
     /** 正式播放存档路径到目标玩家。成功返回 null，失败返回错误消息。 */
     fun playTo(target: Player, id: String, speed: Double): String? {
-        if (!validId(id)) return "Invalid path id '$id'"
+        if (!validId(id)) return "非法路径 ID '$id'"
         val file = File(dir(), "$id.yml")
-        if (!file.isFile) return "Camera path '$id' not found (saved: ${savedIds().joinToString(", ").ifEmpty { "none" }})"
+        if (!file.isFile) return "找不到运镜路径 '$id'（已存档: ${savedIds().joinToString(", ").ifEmpty { "无" }}）"
         val frames = loadFrames(file)
-        if (frames.size < 2) return "Path '$id' has fewer than 2 keyframes"
+        if (frames.size < 2) return "路径 '$id' 的关键帧不足 2 个"
         val yml = YamlConfiguration.loadConfiguration(file)
         val loop = yml.getBoolean("loop", false)
         NetworkHandler.cameraPath(target, frames, speed, loop)
