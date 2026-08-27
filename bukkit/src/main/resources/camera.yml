@@ -32,12 +32,12 @@ shoulder:
     enabled: true
 
     # 微调键位（每按一次走一步；GUI 打开时不触发）
-    # 方向语义 = 画面跟随按键：相机平行反向移动，画面内容朝按键方向平移
+    # 方向语义 = 箭头即相机移动方向：按 ← 相机左移（画面内容右滑），按 ↑ 相机抬高
     swap-key: "o"           # 换肩：offset-x 取反
-    left-key: "left"        # 画面左移（相机右移，玩家模型在画面中右移）
-    right-key: "right"      # 画面右移（相机左移，玩家模型在画面中左移）
-    up-key: "up"            # 画面上移（相机降低，取景抬高）
-    down-key: "down"        # 画面下移（相机抬高，取景压低）
+    left-key: "left"        # 相机左移
+    right-key: "right"      # 相机右移
+    up-key: "up"            # 相机抬高
+    down-key: "down"        # 相机降低
     farther-key: "shift+up" # 拉远
     closer-key: "shift+down" # 拉近
 

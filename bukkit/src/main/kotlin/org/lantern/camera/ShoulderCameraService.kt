@@ -138,14 +138,14 @@ object ShoulderCameraService {
         Bukkit.getScheduler().runTask(LanternPlugin.instance, Runnable {
             if (!player.isOnline) return@Runnable
             val state = stateOf(player.uniqueId)
-            // 方向键语义 = 画面跟随按键（相机反向平行移动）：
-            // 按 ← 画面左移 => 相机右移(offsetX+)；按 ↑ 画面上移 => 相机下移(offsetY-)
+            // 方向键语义 = 相机移动方向（用户 2026-08-27 明确选定）：
+            // 按 ← 相机左移(offsetX-)、按 ↑ 相机抬高(offsetY+)；画面内容朝相反方向滑动
             when (action) {
                 "swap" -> state.offsetX = -state.offsetX
-                "left" -> state.offsetX += stepOffsetX
-                "right" -> state.offsetX -= stepOffsetX
-                "up" -> state.offsetY -= stepOffsetY
-                "down" -> state.offsetY += stepOffsetY
+                "left" -> state.offsetX -= stepOffsetX
+                "right" -> state.offsetX += stepOffsetX
+                "up" -> state.offsetY += stepOffsetY
+                "down" -> state.offsetY -= stepOffsetY
                 "farther" -> state.distance += stepDistance
                 "closer" -> state.distance -= stepDistance
                 else -> return@Runnable
