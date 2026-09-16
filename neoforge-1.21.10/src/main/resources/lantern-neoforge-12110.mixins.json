@@ -12,10 +12,14 @@
     "camera.MinecraftMixin",
     "chat.ChatComponentMixin",
     "network.GeckoLibNetworkingNeoForgeMixin",
+    "AvatarAttachLayerMixin",
     "EntityMixin",
     "EntityRenderDispatcherMixin",
+    "HumanoidArmorLayerMixin",
     "LivingEntityRendererMixin",
-    "PlayerItemInHandLayerMixin"
+    "PlayerItemInHandLayerMixin",
+    "PlayerModelHostPoseMixin",
+    "WingsLayerMixin"
   ],
   "mixins": [],
   "injectors": {

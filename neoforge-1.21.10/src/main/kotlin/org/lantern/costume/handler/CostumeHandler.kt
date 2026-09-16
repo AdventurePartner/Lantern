@@ -59,6 +59,27 @@ object CostumeHandler {
         return definitions[costumeId]?.hostDriven == true
     }
 
+    /**
+     * P1 盔甲适配：取该玩家 hostDriven 整替外观的骨骼处理器（盔甲模型的姿态来源）。
+     * 渲染器按 "uuid:costumeId" 持有 per-UUID 深拷贝骨骼树，本帧姿势在 submit 阶段
+     * 由 AnimationHost 写入，盔甲的 setupAnim 在 flush 阶段读回——同帧内不会被覆盖
+     */
+    @JvmStatic
+    fun hostBones(playerUUID: UUID): software.bernie.geckolib.animatable.processing.AnimationProcessor<*>? {
+        val costumeId = hostFullBodyId(playerUUID) ?: return null
+        return renderers["$playerUUID:$costumeId"]?.renderer?.geoModel?.animationProcessor
+    }
+
+    /** P1 盔甲适配：取 hostDriven 整替外观定义（盔甲需要它的 scale/offset 对齐身体） */
+    @JvmStatic
+    fun hostWrapper(playerUUID: UUID): CostumeModelWrapper? =
+        hostFullBodyId(playerUUID)?.let(definitions::get)
+
+    private fun hostFullBodyId(playerUUID: UUID): String? {
+        val costumeId = playerCostumes[playerUUID]?.get(CostumeSlot.FULL_BODY) ?: return null
+        return if (definitions[costumeId]?.hostDriven == true) costumeId else null
+    }
+
     fun getAssignedCostumes(playerUUID: UUID): Map<CostumeSlot, CostumeModelWrapper> =
         playerCostumes[playerUUID]
             ?.mapNotNull { (slot, costumeId) -> definitions[costumeId]?.let { slot to it } }
