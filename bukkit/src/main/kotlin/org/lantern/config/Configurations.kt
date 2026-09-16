@@ -49,7 +49,11 @@ object Configurations {
         LanternPlugin.instance.saveResource("costumes.yml", "costumes.yml", false) {
             CacheHandler.costumes.clear()
             val data = YamlConfiguration.loadConfiguration(it)
+            CacheHandler.defaultPlayerCostume = data.getString("player-default.costume")
+                ?.takeIf { costume -> costume.isNotEmpty() && data.getConfigurationSection(costume) != null }
             data.getKeys(false).forEach { key ->
+                // player-default 是配置节不是外观条目，跳过（否则空 geo 条目会下发客户端）
+                if (key == "player-default") return@forEach
                 val section = data.getConfigurationSection(key) ?: return@forEach
                 CacheHandler.costumes[key] = CostumeCache(section)
             }

@@ -26,7 +26,21 @@ object AnimationHost {
     /** 提取阶段调用：只计算姿势（存入 player.pose），不写骨骼 */
     @JvmStatic
     fun drivePose(entity: Entity, wrapper: CustomModelWrapper): Map<String, FloatArray>? {
-        val clips = AnimationRepository.clips(wrapper.animationLocation)
+        return drivePose(entity, wrapper.animationLocation, wrapper.animationStates)
+    }
+
+    /**
+     * P1 玩家宿主化：外观模型与实体模型共用同一播放器内核。
+     * Costume 渲染器（hostDriven 外观）以此入口驱动，参数取自 CostumeModelWrapper
+     * 的同名字段——动画库定位与状态表，玩家与替换实体走完全相同的层栈/播控/姿态链
+     */
+    @JvmStatic
+    fun drivePose(
+        entity: Entity,
+        animationLocation: net.minecraft.resources.ResourceLocation,
+        animationStates: org.lantern.model.wrapper.AnimationStateMapping
+    ): Map<String, FloatArray>? {
+        val clips = AnimationRepository.clips(animationLocation)
         if (clips.isNullOrEmpty()) {
             // 动画资产缺失：播控既无法播放也无法到期，清掉残留条目；
             // 返回空姿势让骨骼回退静态初始值，而不是冻结在上一帧
@@ -39,7 +53,7 @@ object AnimationHost {
             clips,
             AnimationControlStore.get(uuid),
             entity,
-            wrapper.animationStates,
+            animationStates,
             spawned.add(uuid)
         )
         return player.pose
@@ -66,5 +80,12 @@ object AnimationHost {
     fun remove(uuid: UUID) {
         players.remove(uuid)
         spawned.remove(uuid)
+    }
+
+    /** 诊断（P1Diag）：输出该实体的状态表与各层实时剪辑 */
+    @JvmStatic
+    fun describe(uuid: UUID): String {
+        val player = players[uuid] ?: return "no-player"
+        return player.describeDiagnostic()
     }
 }

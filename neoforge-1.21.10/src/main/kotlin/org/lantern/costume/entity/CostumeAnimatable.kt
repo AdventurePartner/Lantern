@@ -14,13 +14,16 @@ import software.bernie.geckolib.util.GeckoLibUtil
 import java.util.concurrent.ConcurrentHashMap
 
 class CostumeAnimatable(
-    private val animations: AnimationStateMapping
+    private val animations: AnimationStateMapping,
+    private val hostDriven: Boolean = false
 ) : GeoAnimatable {
     private val cache = GeckoLibUtil.createInstanceCache(this)
     private val loopAnimations = ConcurrentHashMap<String, RawAnimation>()
     private val playAnimations = ConcurrentHashMap<String, RawAnimation>()
 
     override fun registerControllers(controllers: AnimatableManager.ControllerRegistrar) {
+        // hostDriven：AnimationHost 是骨骼唯一写入方，不注册任何谓词控制器
+        if (hostDriven) return
         controllers.add(
             AnimationController<CostumeAnimatable>("costume", 5) { test ->
                 when (requireNotNull(test.getData(CostumeRenderData.ANIMATION_STATE))) {

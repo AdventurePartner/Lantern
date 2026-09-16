@@ -31,6 +31,12 @@ loom {
     forge {
         mixinConfig("lantern-forge-1201.mixins.json")
     }
+    runs {
+        // 默认 client run 的任务是 runClient，会让根目录裸 ./gradlew runClient 匹配到本模块，
+        // 改名后统一由根任务聚合启动 NeoForge 客户端。
+        remove(named("client").get())
+        create("forge1201Client") { client() }
+    }
 }
 
 val shade by configurations.creating {

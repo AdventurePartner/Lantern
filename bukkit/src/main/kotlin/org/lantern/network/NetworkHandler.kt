@@ -594,12 +594,13 @@ object NetworkHandler {
                     val animationsObj = JsonObject()
                     animationsObj.addProperty("file", cache.animationFile)
                     val statesObj = JsonObject()
-                    cache.animationStates.forEach { (state, anim) ->
-                        statesObj.addProperty(state, anim)
+                    cache.animationStates.forEach { (state, element) ->
+                        statesObj.add(state, element)
                     }
                     animationsObj.add("states", statesObj)
                     obj.add("animations", animationsObj)
                 }
+                if (cache.hostDriven) obj.addProperty("host-driven", true)
 
                 obj.addProperty("scale", cache.scale)
                 val offsetObj = JsonObject()
@@ -735,7 +736,8 @@ object NetworkHandler {
         transitionTicks: Int,
         loop: Boolean,
         speed: Float,
-        timeSeconds: Float? = null
+        timeSeconds: Float? = null,
+        uninterruptible: Boolean = false
     ) {
         val packet = JsonObject()
         packet.addProperty("uuid", entityUuid.toString())
@@ -745,21 +747,25 @@ object NetworkHandler {
         packet.addProperty("mode", if (loop) "loop" else "once")
         packet.addProperty("speed", speed)
         timeSeconds?.let { packet.addProperty("time", it) }
+        if (uninterruptible) packet.addProperty("uninterruptible", true)
         sendPacket(player, 15, packet)
     }
 
     /**
      * 对实体播放指定动画（loop 循环直到 stop；once 播完自动回落并上报 finish）。
      * 广播给全体在线玩家，同时驱动服务端编排（动作轨道/事件/链式）。
+     * speed 为负即倒放；uninterruptible 播放期间客户端拒绝新 play 顶替（霸体）。
      */
     fun playAnimation(
         entity: Entity,
         animation: String,
         transitionTicks: Int = 5,
         loop: Boolean = true,
-        speed: Float = 1.0f
+        speed: Float = 1.0f,
+        uninterruptible: Boolean = false
     ) {
-        val safeSpeed = if (speed > 0.01f) speed else 1.0f
+        // 负速度（倒放）合法：绝对值过小才视为无效回退 1.0
+        val safeSpeed = if (kotlin.math.abs(speed) > 0.01f) speed else 1.0f
         // 濒死(假死亡)实体只允许 death 动画：MM ~onTimer 技能不受 setAI(false) 影响，
         // 濒死期间的踩踏等 lanternanim 指令会顶掉正在播放的 die，导致死亡流程断裂
         if (org.lantern.animation.DeathAnimationInterceptor.isDying(entity.uniqueId) &&
@@ -768,7 +774,7 @@ object NetworkHandler {
             return
         }
         Bukkit.getOnlinePlayers().forEach {
-            sendAnimationControl(it, entity.uniqueId, "play", animation, transitionTicks, loop, safeSpeed)
+            sendAnimationControl(it, entity.uniqueId, "play", animation, transitionTicks, loop, safeSpeed, null, uninterruptible)
         }
         org.lantern.animation.AnimationOrchestrator.onPlay(entity, animation, loop)
     }

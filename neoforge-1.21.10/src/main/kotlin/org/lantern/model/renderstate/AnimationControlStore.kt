@@ -18,6 +18,7 @@ object AnimationControlStore {
     /**
      * @param id 单调递增的指令编号，播放器用它区分「重复播放同一动画」与「正在播的旧指令」
      * @param expiresAtMs once 模式的到期时刻（墙钟毫秒）；0 表示不过期（loop 模式，直到 stop）
+     * @param uninterruptible 霸体：播放期间拒绝新的 play 顶替（stop 仍可显式停止）
      */
     data class ForcedAnimation(
         val id: Long,
@@ -25,15 +26,30 @@ object AnimationControlStore {
         val transition: Int,
         val loop: Boolean,
         val speed: Float,
-        val expiresAtMs: Long
+        val expiresAtMs: Long,
+        val uninterruptible: Boolean = false
     )
 
     private val forced = ConcurrentHashMap<UUID, ForcedAnimation>()
     private val paused = ConcurrentHashMap.newKeySet<UUID>()
     private val pendingSeek = ConcurrentHashMap<UUID, Float>()
 
-    fun play(uuid: UUID, animation: String, transition: Int, loop: Boolean, speed: Float, expiresAtMs: Long) {
-        forced[uuid] = ForcedAnimation(idCounter.incrementAndGet(), animation, transition, loop, speed, expiresAtMs)
+    fun play(
+        uuid: UUID,
+        animation: String,
+        transition: Int,
+        loop: Boolean,
+        speed: Float,
+        expiresAtMs: Long,
+        uninterruptible: Boolean = false
+    ) {
+        // 霸体拦截：正在播放的 uninterruptible 动画不被新 play 顶替（同名重播仍放行，
+        // 供服务端刷新 once 到期戳）；显式 stop 不在此路径，始终可停
+        val current = forced[uuid]
+        if (current != null && current.uninterruptible && current.animation != animation) {
+            return
+        }
+        forced[uuid] = ForcedAnimation(idCounter.incrementAndGet(), animation, transition, loop, speed, expiresAtMs, uninterruptible)
         paused.remove(uuid)
         pendingSeek.remove(uuid)
     }

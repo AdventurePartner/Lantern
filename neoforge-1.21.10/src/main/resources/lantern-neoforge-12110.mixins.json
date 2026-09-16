@@ -13,7 +13,9 @@
     "chat.ChatComponentMixin",
     "network.GeckoLibNetworkingNeoForgeMixin",
     "EntityMixin",
-    "EntityRenderDispatcherMixin"
+    "EntityRenderDispatcherMixin",
+    "LivingEntityRendererMixin",
+    "PlayerItemInHandLayerMixin"
   ],
   "mixins": [],
   "injectors": {

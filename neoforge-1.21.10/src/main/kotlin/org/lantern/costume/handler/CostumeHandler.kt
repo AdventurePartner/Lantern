@@ -47,6 +47,18 @@ object CostumeHandler {
 
     fun hasAny(playerUUID: UUID): Boolean = playerCostumes[playerUUID]?.isNotEmpty() == true
 
+    /**
+     * P1 玩家宿主化收尾：该玩家是否套着 hostDriven 的 full_body 整替外观。
+     * LivingEntityRendererMixin 据此把原版身体 tint 置 0（cutout 丢弃，
+     * 盔甲/手持/layers 不受影响）——两具身体重叠的终解
+     */
+    @JvmStatic
+    fun hasHostDrivenFullBody(playerUUID: UUID): Boolean {
+        val slots = playerCostumes[playerUUID] ?: return false
+        val costumeId = slots[CostumeSlot.FULL_BODY] ?: return false
+        return definitions[costumeId]?.hostDriven == true
+    }
+
     fun getAssignedCostumes(playerUUID: UUID): Map<CostumeSlot, CostumeModelWrapper> =
         playerCostumes[playerUUID]
             ?.mapNotNull { (slot, costumeId) -> definitions[costumeId]?.let { slot to it } }
@@ -68,6 +80,13 @@ object CostumeHandler {
 
     fun removePlayer(playerUUID: UUID) {
         playerCostumes.remove(playerUUID)
+        // hostDriven 渲染器键为 "uuid:costumeId"（含骨骼树深拷贝），随实体离场
+        // 一并淘汰防止会话内无上限增长；共享渲染器（key=costumeId）不受影响，
+        // 换维度/重回视距时按 submitForPlayer 的 computeIfAbsent 懒重建恢复
+        val prefix = "$playerUUID:"
+        if (renderers.keys.removeIf { it.startsWith(prefix) }) {
+            Lantern.logger.debug("[Lantern] Evicted costume renderers for player {}", playerUUID)
+        }
     }
 
     fun submitForPlayer(
@@ -88,9 +107,14 @@ object CostumeHandler {
                 }
                 return@forEach
             }
-            val entry = renderers.computeIfAbsent(costumeId) {
-                val animatable = CostumeAnimatable(wrapper.animationStates)
-                RendererEntry(animatable, CostumeRenderer(wrapper, animatable))
+            // hostDriven 外观按玩家分配渲染器（骨骼树深拷贝隔离，多玩家同款不串台）；
+            // 普通装饰外观维持按 costumeId 共享（快照路径的历史行为）
+            val rendererKey = if (wrapper.hostDriven) "${context.playerId}:$costumeId" else costumeId
+            val entry = renderers.computeIfAbsent(rendererKey) {
+                val animatable = CostumeAnimatable(wrapper.animationStates, wrapper.hostDriven)
+                val renderer = CostumeRenderer(wrapper, animatable)
+                if (wrapper.hostDriven) renderer.bindPlayer(context.playerId)
+                RendererEntry(animatable, renderer)
             }
             entry.renderer.submit(
                 poseStack,

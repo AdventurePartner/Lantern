@@ -35,7 +35,7 @@ object NetworkParser {
      * seek 时 seekSeconds 为跳转目标（秒），其他 action 为 -1。
      * 未注册的平台忽略该包。
      */
-    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float) -> Unit)? =
+    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float, uninterruptible: Boolean) -> Unit)? =
         null
 
     /**
@@ -289,6 +289,7 @@ object NetworkParser {
 
             val slot = CostumeSlot.fromString(it.get("slot")?.asString ?: "full_body")
             val boneSyncEnabled = it.get("bone-sync")?.asBoolean ?: true
+            val hostDriven = it.get("host-driven")?.asBoolean ?: false
             val boneMapping = it.getAsJsonObject("bone-mapping")?.let { bm ->
                 BoneMapping(
                     head = bm.get("head")?.asString ?: "head",
@@ -314,7 +315,8 @@ object NetworkParser {
                 textureUrl = textureUrl,
                 slot = slot,
                 boneSyncEnabled = boneSyncEnabled,
-                boneMapping = boneMapping
+                boneMapping = boneMapping,
+                hostDriven = hostDriven
             )
 
             definitions[id] = wrapper
@@ -450,8 +452,9 @@ object NetworkParser {
         val loop = obj.get("mode")?.asString != "once"
         val speed = obj.get("speed")?.asFloat ?: 1.0f
         val seekSeconds = obj.get("time")?.asFloat ?: -1f
+        val uninterruptible = obj.get("uninterruptible")?.asBoolean ?: false
         if (action == "seek" && seekSeconds < 0f) return
-        handler(uuid, action, animation, transition, loop, speed, seekSeconds)
+        handler(uuid, action, animation, transition, loop, speed, seekSeconds, uninterruptible)
     }
 
     private fun reloadResourcePack() {

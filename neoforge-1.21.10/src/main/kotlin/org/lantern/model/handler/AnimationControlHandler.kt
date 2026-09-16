@@ -1,6 +1,7 @@
 package org.lantern.model.handler
 
 import java.util.UUID
+import kotlin.math.abs
 import net.minecraft.client.Minecraft
 import org.lantern.Lantern
 import org.lantern.model.GeckoResourceIds
@@ -29,7 +30,8 @@ object AnimationControlHandler {
         transition: Int,
         loop: Boolean,
         speed: Float,
-        seekSeconds: Float
+        seekSeconds: Float,
+        uninterruptible: Boolean = false
     ) {
         when (action) {
             "stop" -> AnimationControlStore.stop(uuid, animation)
@@ -43,11 +45,18 @@ object AnimationControlHandler {
                     else -> AnimationControlStore.seek(uuid, seekSeconds)
                 }
             }
-            "play" -> play(uuid, animation, transition, loop, speed)
+            "play" -> play(uuid, animation, transition, loop, speed, uninterruptible)
         }
     }
 
-    private fun play(uuid: UUID, animation: String, transition: Int, loop: Boolean, speed: Float) {
+    private fun play(
+        uuid: UUID,
+        animation: String,
+        transition: Int,
+        loop: Boolean,
+        speed: Float,
+        uninterruptible: Boolean
+    ) {
         // play 需要读客户端实体表，调度回主线程避免并发可见性问题
         Minecraft.getInstance().execute {
             val level = Minecraft.getInstance().level ?: return@execute
@@ -60,13 +69,14 @@ object AnimationControlHandler {
                 )
                 return@execute
             }
-            val safeSpeed = if (speed > 0.01f) speed else 1.0f
+            // 负速度（倒放）合法：绝对值过小才视为无效回退 1.0
+            val safeSpeed = if (abs(speed) > 0.01f) speed else 1.0f
             val expiresAtMs = if (loop) {
                 0L
             } else {
                 val lengthMs = resolveAnimationLengthMs(wrapper.animationLocation, animation)
                 if (lengthMs != null) {
-                    System.currentTimeMillis() + (lengthMs / safeSpeed).toLong() + EXPIRY_MARGIN_MS
+                    System.currentTimeMillis() + (lengthMs / abs(safeSpeed)).toLong() + EXPIRY_MARGIN_MS
                 } else {
                     Lantern.logger.debug(
                         "[Lantern] Animation '{}' length unknown for '{}', using fallback expiry",
@@ -75,7 +85,7 @@ object AnimationControlHandler {
                     System.currentTimeMillis() + FALLBACK_ONCE_MAX_MS
                 }
             }
-            AnimationControlStore.play(uuid, animation, transition, loop, safeSpeed, expiresAtMs)
+            AnimationControlStore.play(uuid, animation, transition, loop, safeSpeed, expiresAtMs, uninterruptible)
         }
     }
 

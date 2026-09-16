@@ -80,9 +80,14 @@ class AnimationStateMapping(private val stateTable: Map<String, StateConfig>) {
                     value.isJsonObject -> {
                         val o = value.asJsonObject
                         val animation = o.get("animation")?.takeIf { it.isJsonPrimitive }?.asString ?: continue
-                        val mode = o.get("mode")?.takeIf { it.isJsonPrimitive }?.asString
-                            ?.let { name -> PlayMode.values().firstOrNull { it.name.equals(name, true) } }
-                            ?: PlayMode.LOOP
+                        // playerActions 规范用简名（loop/once/hold），枚举名是
+                        // LOOP/ONCE/HOLD_LAST_FRAME——先按简名映射，再按枚举全名匹配
+                        val mode = when (o.get("mode")?.takeIf { it.isJsonPrimitive }?.asString?.lowercase()) {
+                            "loop" -> PlayMode.LOOP
+                            "once" -> PlayMode.ONCE
+                            "hold", "hold_last_frame" -> PlayMode.HOLD_LAST_FRAME
+                            else -> PlayMode.LOOP
+                        }
                         StateConfig(animation, mode, o.get("transition")?.takeIf { it.isJsonPrimitive }?.asInt ?: 5)
                     }
                     else -> continue
