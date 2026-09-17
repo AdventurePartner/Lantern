@@ -31,6 +31,8 @@ class LanternCommand : CommandExecutor, TabCompleter {
             "reload" -> {
                 Configurations.load()
                 org.lantern.animation.AnimationOrchestrator.load(org.lantern.LanternPlugin.instance)
+                org.lantern.animation.AnimationGroupService.load(org.lantern.LanternPlugin.instance)
+                org.lantern.animation.AnimationGroupService.start(org.lantern.LanternPlugin.instance)
                 NetworkHandler.invalidateCache()
                 PlaceholderService.load(UiConfigurations.getPlaceholderConfigs())
                 Bukkit.getOnlinePlayers().forEach { NetworkHandler.sendPackets(it) }

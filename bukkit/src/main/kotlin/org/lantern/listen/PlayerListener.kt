@@ -52,6 +52,7 @@ class PlayerListener : Listener {
         LanternPlugin.instance.channelListener.removePlayer(uuid)
         org.lantern.camera.ShoulderCameraService.removePlayer(uuid)
         org.lantern.camera.CameraPathService.removePlayer(uuid)
+        org.lantern.animation.AnimationGroupService.forget(uuid)
         org.lantern.animation.AnimationOrchestrator.clearSuppression(uuid)
     }
 

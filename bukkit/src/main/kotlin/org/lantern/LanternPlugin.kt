@@ -26,6 +26,8 @@ class LanternPlugin : AyPlugin() {
         instance = this
         Configurations.load()
         org.lantern.animation.AnimationOrchestrator.load(this)
+        org.lantern.animation.AnimationGroupService.load(this)
+        org.lantern.animation.AnimationGroupService.start(this)
         CustomBlockTracker.load()
         CustomBlockTracker.startAutoSave(this)
         CostumeAssignmentHandler.load()
@@ -58,6 +60,7 @@ class LanternPlugin : AyPlugin() {
     override fun onDisable() {
         PlaceholderService.stopAll()
         org.lantern.animation.AnimationOrchestrator.reset()
+        org.lantern.animation.AnimationGroupService.stop()
         CustomBlockTracker.stopAutoSave()
         CustomBlockTracker.save()
         CostumeAssignmentHandler.stopAutoSave()

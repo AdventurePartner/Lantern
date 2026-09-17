@@ -636,6 +636,15 @@ object NetworkHandler {
         sendSerializedPacket(player, bytes)
     }
 
+    /**
+     * 单个玩家换外观后向全员广播（动画组热切换用）。
+     * 外观是别人也看得见的状态，不能只发给本人
+     */
+    fun sendCostumeAssignmentToAll(playerUUID: UUID, costumeId: String) {
+        val assignments = mapOf(playerUUID to mapOf("full_body" to costumeId))
+        Bukkit.getOnlinePlayers().forEach { sendCostumeAssignment(it, assignments) }
+    }
+
     fun sendCostumeAssignment(
         player: Player,
         assignments: Map<UUID, Map<String, String>>,
