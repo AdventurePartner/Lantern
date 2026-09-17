@@ -193,6 +193,13 @@ object NeoForgeClientEvents {
                 else -> main = part
             }
         }
+        // 只写了修饰键、没写主键时（如 "alt"、"ctrl"），把它本身当主键：
+        // 否则 main 留空、keyCode 落到 UNKNOWN，isDown 首行即返回 false，
+        // 这类配置永远不会触发。带主键的组合（"alt+q"）不受影响
+        if (main.isEmpty() && parts.size == 1) {
+            main = parts[0]
+            modifiers = 0
+        }
         val keyCode = when {
             main.length == 1 && main[0] in 'a'..'z' -> GLFW.GLFW_KEY_A + (main[0] - 'a')
             main.length == 1 && main[0] in '0'..'9' -> GLFW.GLFW_KEY_0 + (main[0] - '0')
@@ -213,9 +220,12 @@ object NeoForgeClientEvents {
             main == "down" -> GLFW.GLFW_KEY_DOWN
             main == "left" -> GLFW.GLFW_KEY_LEFT
             main == "right" -> GLFW.GLFW_KEY_RIGHT
-            main == "ctrl" || main == "control" -> GLFW.GLFW_KEY_LEFT_CONTROL
-            main == "shift" -> GLFW.GLFW_KEY_LEFT_SHIFT
-            main == "alt" -> GLFW.GLFW_KEY_LEFT_ALT
+            main == "ctrl" || main == "control" || main == "left_ctrl" || main == "lctrl" -> GLFW.GLFW_KEY_LEFT_CONTROL
+            main == "right_ctrl" || main == "rctrl" -> GLFW.GLFW_KEY_RIGHT_CONTROL
+            main == "shift" || main == "left_shift" || main == "lshift" -> GLFW.GLFW_KEY_LEFT_SHIFT
+            main == "right_shift" || main == "rshift" -> GLFW.GLFW_KEY_RIGHT_SHIFT
+            main == "alt" || main == "left_alt" || main == "lalt" -> GLFW.GLFW_KEY_LEFT_ALT
+            main == "right_alt" || main == "ralt" -> GLFW.GLFW_KEY_RIGHT_ALT
             main == "super" || main == "win" || main == "meta" || main == "cmd" -> GLFW.GLFW_KEY_LEFT_SUPER
             else -> GLFW.GLFW_KEY_UNKNOWN
         }
