@@ -11,6 +11,8 @@ object CacheHandler {
     val itemIcons: MutableMap<Int, ItemIconCache> = ConcurrentHashMap()
     val costumes: MutableMap<String, CostumeCache> = ConcurrentHashMap()
     val blockModels: MutableMap<String, BlockModelCache> = ConcurrentHashMap()
+    /** 玩家主动动作定义（playerActions.yml），客户端本地按键触发 */
+    val playerActions: MutableMap<String, org.lantern.cache.PlayerActionCache> = ConcurrentHashMap()
 
     /**
      * P1 玩家宿主化：进服自动套上的整替外观 id（costumes.yml 顶层 player-default.costume）。

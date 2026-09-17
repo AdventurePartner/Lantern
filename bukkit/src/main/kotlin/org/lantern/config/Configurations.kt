@@ -46,6 +46,19 @@ object Configurations {
                 CacheHandler.itemIcons[i.toInt()] = ItemIconCache(section)
             }
         }
+        LanternPlugin.instance.saveResource("playerActions.yml", "playerActions.yml", false) {
+            CacheHandler.playerActions.clear()
+            val data = YamlConfiguration.loadConfiguration(it)
+            data.getKeys(false).forEach { key ->
+                val section = data.getConfigurationSection(key) ?: return@forEach
+                val action = org.lantern.cache.PlayerActionCache(section)
+                if (action.valid) {
+                    CacheHandler.playerActions[key] = action
+                } else {
+                    plugin.logger.warning("[Lantern] Skipped invalid player action: $key")
+                }
+            }
+        }
         LanternPlugin.instance.saveResource("costumes.yml", "costumes.yml", false) {
             CacheHandler.costumes.clear()
             val data = YamlConfiguration.loadConfiguration(it)

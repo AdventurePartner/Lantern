@@ -122,6 +122,7 @@ object NetworkHandler {
         sendCostumesPacket(player, CacheHandler.costumes)
         sendCostumeAssignment(player, CostumeAssignmentHandler.getAll())
         sendBlockModels(player, CacheHandler.blockModels)
+        sendPlayerActions(player, CacheHandler.playerActions)
         sendBlockPositions(player)
 
         // 延迟一秒发送重载资源数据包
@@ -598,6 +599,11 @@ object NetworkHandler {
                         statesObj.add(state, element)
                     }
                     animationsObj.add("states", statesObj)
+                    if (cache.upperBodyBones.isNotEmpty()) {
+                        val bones = JsonArray()
+                        cache.upperBodyBones.forEach { bones.add(it) }
+                        animationsObj.add("upper-body-bones", bones)
+                    }
                     obj.add("animations", animationsObj)
                 }
                 if (cache.hostDriven) obj.addProperty("host-driven", true)
@@ -672,6 +678,56 @@ object NetworkHandler {
         Bukkit.getOnlinePlayers().forEach { sendCostumeAssignment(it, all) }
     }
 
+    /**
+     * 下发玩家主动动作定义（packet 19）。触发与播放都在客户端本地完成，
+     * 服务端只提供定义——因此不占播控广播，也没有输入往返延迟。
+     */
+    fun sendPlayerActions(player: Player, actions: Map<String, org.lantern.cache.PlayerActionCache>) {
+        val packet = JsonObject()
+        val array = com.google.gson.JsonArray()
+        actions.forEach { (id, action) ->
+            val entry = JsonObject()
+            entry.addProperty("id", id)
+            entry.addProperty("key", action.key)
+            entry.addProperty("file", action.file)
+            entry.addProperty("transition", action.transition)
+            entry.addProperty("exit-transition", action.exitTransition)
+            entry.addProperty("speed", action.speed)
+            entry.addProperty("cooldown", action.cooldown)
+            entry.addProperty("layer", action.layer)
+            entry.addProperty("uninterruptible", action.uninterruptible)
+            entry.addProperty("exclusive", action.exclusive)
+            entry.addProperty("suppress-vanilla-attack", action.suppressAttackMs)
+            entry.addProperty("invulnerable", action.invulnerableMs)
+            entry.addProperty("airborne", action.airborne)
+            entry.addProperty("require-ground", action.requireGround)
+            entry.addProperty("distance", action.distance)
+            entry.addProperty("dash-duration", action.dashDuration)
+            entry.addProperty("vertical", action.vertical)
+            entry.addProperty("trigger", action.trigger)
+            if (action.costume.isNotBlank()) entry.addProperty("costume", action.costume)
+            val directions = JsonObject()
+            action.directions.forEach { (dir, anim) -> directions.addProperty(dir, anim) }
+            entry.add("directions", directions)
+            if (action.steps.isNotEmpty()) {
+                val steps = com.google.gson.JsonArray()
+                action.steps.forEach { step ->
+                    val o = JsonObject()
+                    o.addProperty("animation", step["animation"].toString())
+                    o.addProperty("cancel-at", (step["cancel-at"] as? Number)?.toDouble() ?: 0.7)
+                    o.addProperty("window", (step["window"] as? Number)?.toLong() ?: 600L)
+                    o.addProperty("transition", (step["transition"] as? Number)?.toInt() ?: 2)
+                    o.addProperty("exit-transition", (step["exit-transition"] as? Number)?.toInt() ?: 3)
+                    steps.add(o)
+                }
+                entry.add("steps", steps)
+            }
+            array.add(entry)
+        }
+        packet.add("actions", array)
+        sendPacket(player, 19, packet)
+    }
+
     fun sendBlockModels(player: Player, blockModels: Map<String, BlockModelCache>) {
         val bytes = cachedBlockModelsBytes ?: run {
             val array = JsonArray()
@@ -728,6 +784,37 @@ object NetworkHandler {
      * 发送动画播控包（packet ID 15）。
      * 客户端对该实体播放/停止指定动画；非 Lantern 模型实体的包会被客户端忽略。
      */
+    /**
+     * 播控广播范围：只发给同世界、且在半径内的玩家。
+     *
+     * 原先是 Bukkit.getOnlinePlayers() 全服广播——每次出招都乘以在线人数，
+     * 200 人同时在线时每秒数万个 JSON 包，MMO 规模下这是硬伤。收包方只有能看见
+     * 该实体的客户端才有意义，视距外的包纯属浪费。半径取渲染视距量级，
+     * 由 config.yml 的 animation-broadcast-radius 配置（0 或负数 = 退回全服广播）。
+     */
+    private inline fun broadcastNear(entity: Entity, send: (Player) -> Unit) {
+        val radius = animationBroadcastRadius
+        if (radius <= 0.0) {
+            Bukkit.getOnlinePlayers().forEach(send)
+            return
+        }
+        val origin = entity.location
+        val world = origin.world ?: return
+        val radiusSq = radius * radius
+        world.players.forEach { viewer ->
+            // 被编排的实体若是玩家本人，无论距离都要收到（自己的动作必须看得见）
+            if (viewer.uniqueId == entity.uniqueId ||
+                viewer.location.distanceSquared(origin) <= radiusSq
+            ) {
+                send(viewer)
+            }
+        }
+    }
+
+    /** 播控广播半径（格），config.yml 可调。取 getter 而非缓存，reload 后立即生效 */
+    private val animationBroadcastRadius: Double
+        get() = LanternPlugin.instance.config.getDouble("animation-broadcast-radius", 96.0)
+
     fun sendAnimationControl(
         player: Player,
         entityUuid: UUID,
@@ -737,7 +824,8 @@ object NetworkHandler {
         loop: Boolean,
         speed: Float,
         timeSeconds: Float? = null,
-        uninterruptible: Boolean = false
+        uninterruptible: Boolean = false,
+        layer: String? = null
     ) {
         val packet = JsonObject()
         packet.addProperty("uuid", entityUuid.toString())
@@ -748,6 +836,7 @@ object NetworkHandler {
         packet.addProperty("speed", speed)
         timeSeconds?.let { packet.addProperty("time", it) }
         if (uninterruptible) packet.addProperty("uninterruptible", true)
+        layer?.takeIf { it.isNotBlank() }?.let { packet.addProperty("layer", it) }
         sendPacket(player, 15, packet)
     }
 
@@ -762,7 +851,8 @@ object NetworkHandler {
         transitionTicks: Int = 5,
         loop: Boolean = true,
         speed: Float = 1.0f,
-        uninterruptible: Boolean = false
+        uninterruptible: Boolean = false,
+        layer: String? = null
     ) {
         // 负速度（倒放）合法：绝对值过小才视为无效回退 1.0
         val safeSpeed = if (kotlin.math.abs(speed) > 0.01f) speed else 1.0f
@@ -773,15 +863,15 @@ object NetworkHandler {
         ) {
             return
         }
-        Bukkit.getOnlinePlayers().forEach {
-            sendAnimationControl(it, entity.uniqueId, "play", animation, transitionTicks, loop, safeSpeed, null, uninterruptible)
+        broadcastNear(entity) {
+            sendAnimationControl(it, entity.uniqueId, "play", animation, transitionTicks, loop, safeSpeed, null, uninterruptible, layer)
         }
         org.lantern.animation.AnimationOrchestrator.onPlay(entity, animation, loop)
     }
 
     /** 停止实体上由 [playAnimation] 播放的指定动画。 */
     fun stopAnimation(entity: Entity, animation: String, transitionTicks: Int = 0) {
-        Bukkit.getOnlinePlayers().forEach {
+        broadcastNear(entity) {
             sendAnimationControl(it, entity.uniqueId, "stop", animation, transitionTicks, false, 1.0f)
         }
         org.lantern.animation.AnimationOrchestrator.onStop(entity, animation)
@@ -789,21 +879,21 @@ object NetworkHandler {
 
     /** 暂停实体当前播控动画（冻结时间轴与 once 到期，直到 resume/stop）。 */
     fun pauseAnimation(entity: Entity, animation: String) {
-        Bukkit.getOnlinePlayers().forEach {
+        broadcastNear(entity) {
             sendAnimationControl(it, entity.uniqueId, "pause", animation, 0, false, 1.0f)
         }
     }
 
     /** 恢复实体被 [pauseAnimation] 暂停的播控动画。 */
     fun resumeAnimation(entity: Entity, animation: String) {
-        Bukkit.getOnlinePlayers().forEach {
+        broadcastNear(entity) {
             sendAnimationControl(it, entity.uniqueId, "resume", animation, 0, false, 1.0f)
         }
     }
 
     /** 跳转实体当前播控动画的时间轴到指定秒（loop 取模，once 钳制到长度内）。 */
     fun seekAnimation(entity: Entity, animation: String, seconds: Float) {
-        Bukkit.getOnlinePlayers().forEach {
+        broadcastNear(entity) {
             sendAnimationControl(it, entity.uniqueId, "seek", animation, 0, false, 1.0f, seconds)
         }
     }

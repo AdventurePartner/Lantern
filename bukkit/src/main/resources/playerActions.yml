@@ -1,0 +1,114 @@
+# 玩家主动动作：按键触发的翻滚、闪避、冲刺等。
+#
+# 触发与播放都在客户端本地完成：按下即播，不经服务端往返，也不占用播控广播。
+# 服务端只负责把定义下发给客户端，动画资产随资源包到达。
+#
+# 配置键说明
+#   key             触发键，与 keys.yml 同一套写法（left_alt、space、ctrl+q ...）
+#   file            动画库文件，相对客户端资源包的 assets/lantern/
+#                   注意：资源路径只允许 a-z 0-9 _ . - /，文件名不能用中文；
+#                   动画名（directions 里引用的）是 json 内部的键，不受此限制
+#   transition      起手过渡 tick（1 tick = 50ms）
+#   exit-transition 收尾过渡 tick：动作播完融回行走/跳跃的时长。
+#                   给太小（1 tick）会在末帧硬切出一帧突变，翻滚这类收势姿态
+#                   与步态差距大的动作建议 3-5
+#   speed           播放速度，负值即倒放
+#   cooldown        冷却毫秒，0 = 不限
+#   distance        水平位移格数，0 = 只播动画不位移
+#   dash-duration   位移持续毫秒，0 = 跟随动画时长（推荐留 0，位移与动画同步收尾）
+#   vertical        触发瞬间的垂直冲量（格/tick），想让翻滚带起跳感就给 0.2 左右
+#   layer           归层：motion = 全身运动层（压住行走）
+#                         combat = 上身出招层（腿保持移动，可边跑边放）
+#   uninterruptible 霸体：播放期间拒绝被同层新动作顶替（无敌帧动作用）
+#   exclusive       独占全身：播放期间压制出招层。翻滚这类整身演出必须开，
+#                   否则上半身会继续挥刀，两套动作各演各的
+#   suppress-vanilla-attack
+#                   动作期间压制原版近战伤害的毫秒数，0 = 不压制。
+#                   动作 RPG 里伤害应由动画时间线的伤害帧决定（animations.yml
+#                   的 actions 挂 mm-skill），而不是原版「点一下立刻结算」
+#   invulnerable    动作期间免疫伤害的毫秒数（无敌帧），0 = 不免疫。
+#                   与上一项方向相反：上一项压制打出去的伤害，这个免疫挨到的伤害。
+#                   闪避靠它才名副其实；虚空与 /kill 不在免疫范围
+#   airborne        是否允许空中触发（跳跃中翻滚）
+#   require-ground  是否必须站在地面
+#   directions      方向 -> 动画名。方向取自玩家的移动按键组合：
+#                     forward / backward / left / right
+#                     forward_left / forward_right / backward_left / backward_right
+#                     none（没按方向键时的原地段）
+#                   斜向没配时自动回落到相邻主方向，再回落 none
+
+# 翻滚:
+#   key: "left_alt"
+#   file: "animations/player/roll.animation.json"
+#   transition: 2
+#   exit-transition: 5
+#   speed: 1.0
+#   cooldown: 800
+  # 无敌帧：0.8s 的翻滚给 500ms，覆盖起手到翻身中段，收势段恢复可被击中
+#   invulnerable: 500
+  # 翻滚位移：0.8s 的动画配 4 格，接近原版疾跑一步半的距离
+#   distance: 4.0
+#   dash-duration: 0
+#   vertical: 0.0
+#   layer: motion
+#   uninterruptible: true
+#   exclusive: true
+#   airborne: true
+#   require-ground: false
+#   directions:
+#     forward: "前翻滚"
+#     backward: "后翻滚"
+#     left: "左翻滚"
+#     right: "右翻滚"
+    # 资产目前只有前后左右四段，斜向各自借用相邻主方向；
+    # 将来补了斜向资产直接把动画名换掉即可
+#     forward_left: "前翻滚"
+#     forward_right: "前翻滚"
+#     backward_left: "后翻滚"
+#     backward_right: "后翻滚"
+#     none: "前翻滚"
+
+# 连招：触发源 attack = 原版挥击边沿（继承原版攻击冷却与命中判定）
+#   steps 按顺序推进，播完最后一段回到第一段
+#   cancel-at  本段播到该进度（0-1）即可被下一段接替，不必等整段播完——
+#              连招不顿挫的来源。主砍段给 0.7、收招长的给 0.9
+#   window     距上次出手多久内的输入还算同一套连招（毫秒），超时回第一段
+#   layer      combat = 上身出招（腿继续移动，可边跑边砍），motion = 全身
+# 没有 steps 时攻击回落到内置的左右交替，行为与之前一致
+# 连击:
+#   trigger: attack
+  # costume 限定生效的外观；留空则作为所有外观的回落连招。
+  # 动画组切换后招式要跟着换，靠这个字段绑定
+#   costume: player_default
+#   file: "animations/player/player_default.animation.json"
+#   layer: combat
+#   steps:
+#     - animation: "左砍"
+#       cancel-at: 0.7
+#       window: 700
+#       transition: 2
+#       exit-transition: 3
+#     - animation: "右砍"
+#       cancel-at: 0.7
+#       window: 700
+#       transition: 2
+#       exit-transition: 3
+#     - animation: "蓄力砍"
+#       cancel-at: 0.9
+#       window: 800
+#       transition: 2
+#       exit-transition: 4
+
+# 重型武器连招：只在 player_heavy 外观下生效。
+# 动画组切到重武器时，攻击自动换成这套；切回来又是上面那套。
+# 重武器连招:
+#   trigger: attack
+#   costume: player_heavy
+#   file: "animations/player/heavy_weapon.animation.json"
+#   layer: combat
+#   steps:
+#     - animation: "重武器劈砍"
+#       cancel-at: 0.8
+#       window: 900
+#       transition: 2
+#       exit-transition: 4

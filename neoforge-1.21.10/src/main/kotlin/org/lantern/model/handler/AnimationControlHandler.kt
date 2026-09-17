@@ -31,7 +31,8 @@ object AnimationControlHandler {
         loop: Boolean,
         speed: Float,
         seekSeconds: Float,
-        uninterruptible: Boolean = false
+        uninterruptible: Boolean = false,
+        toCombatLayer: Boolean = false
     ) {
         when (action) {
             "stop" -> AnimationControlStore.stop(uuid, animation)
@@ -45,7 +46,7 @@ object AnimationControlHandler {
                     else -> AnimationControlStore.seek(uuid, seekSeconds)
                 }
             }
-            "play" -> play(uuid, animation, transition, loop, speed, uninterruptible)
+            "play" -> play(uuid, animation, transition, loop, speed, uninterruptible, toCombatLayer)
         }
     }
 
@@ -55,37 +56,50 @@ object AnimationControlHandler {
         transition: Int,
         loop: Boolean,
         speed: Float,
-        uninterruptible: Boolean
+        uninterruptible: Boolean,
+        toCombatLayer: Boolean
     ) {
         // play 需要读客户端实体表，调度回主线程避免并发可见性问题
         Minecraft.getInstance().execute {
             val level = Minecraft.getInstance().level ?: return@execute
             val entity = level.getEntity(uuid) ?: return@execute
-            val name = entity.customName?.string ?: return@execute
-            val wrapper = RendererHandler.getCustomModelWrapper(name) ?: run {
-                Lantern.logger.debug(
-                    "[Lantern] Animation target '{}' is not a Lantern entity model, ignored",
-                    name
-                )
-                return@execute
+            // 目标动画库：玩家取 hostDriven 外观的动画文件，实体走 entityModels 索引。
+            // 玩家既没有 customName 也不在 entityModels 表里，少了这条分支
+            // 服务端播控（MM 技能等）对玩家整个失效
+            val animationLocation = if (entity is net.minecraft.world.entity.player.Player) {
+                org.lantern.costume.handler.CostumeHandler.hostWrapper(uuid)?.animationLocation ?: run {
+                    Lantern.logger.debug("[Lantern] Player {} has no host-driven costume, animation ignored", uuid)
+                    return@execute
+                }
+            } else {
+                val name = entity.customName?.string ?: return@execute
+                RendererHandler.getCustomModelWrapper(name)?.animationLocation ?: run {
+                    Lantern.logger.debug(
+                        "[Lantern] Animation target '{}' is not a Lantern entity model, ignored",
+                        name
+                    )
+                    return@execute
+                }
             }
             // 负速度（倒放）合法：绝对值过小才视为无效回退 1.0
             val safeSpeed = if (abs(speed) > 0.01f) speed else 1.0f
             val expiresAtMs = if (loop) {
                 0L
             } else {
-                val lengthMs = resolveAnimationLengthMs(wrapper.animationLocation, animation)
+                val lengthMs = resolveAnimationLengthMs(animationLocation, animation)
                 if (lengthMs != null) {
                     System.currentTimeMillis() + (lengthMs / abs(safeSpeed)).toLong() + EXPIRY_MARGIN_MS
                 } else {
                     Lantern.logger.debug(
-                        "[Lantern] Animation '{}' length unknown for '{}', using fallback expiry",
-                        animation, name
+                        "[Lantern] Animation '{}' length unknown for {}, using fallback expiry",
+                        animation, uuid
                     )
                     System.currentTimeMillis() + FALLBACK_ONCE_MAX_MS
                 }
             }
-            AnimationControlStore.play(uuid, animation, transition, loop, safeSpeed, expiresAtMs, uninterruptible)
+            AnimationControlStore.play(
+                uuid, animation, transition, loop, safeSpeed, expiresAtMs, uninterruptible, toCombatLayer
+            )
         }
     }
 

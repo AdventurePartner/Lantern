@@ -27,7 +27,12 @@ object AnimationControlStore {
         val loop: Boolean,
         val speed: Float,
         val expiresAtMs: Long,
-        val uninterruptible: Boolean = false
+        val uninterruptible: Boolean = false,
+        /**
+         * 归层：true = 上身出招层（腿保持行走，可边跑边放），false = 全身运动层。
+         * 服务端技能默认全身——压住移动是技能演出的常态；只控上身的技能显式指定
+         */
+        val toCombatLayer: Boolean = false
     )
 
     private val forced = ConcurrentHashMap<UUID, ForcedAnimation>()
@@ -41,7 +46,8 @@ object AnimationControlStore {
         loop: Boolean,
         speed: Float,
         expiresAtMs: Long,
-        uninterruptible: Boolean = false
+        uninterruptible: Boolean = false,
+        toCombatLayer: Boolean = false
     ) {
         // 霸体拦截：正在播放的 uninterruptible 动画不被新 play 顶替（同名重播仍放行，
         // 供服务端刷新 once 到期戳）；显式 stop 不在此路径，始终可停
@@ -49,7 +55,10 @@ object AnimationControlStore {
         if (current != null && current.uninterruptible && current.animation != animation) {
             return
         }
-        forced[uuid] = ForcedAnimation(idCounter.incrementAndGet(), animation, transition, loop, speed, expiresAtMs, uninterruptible)
+        forced[uuid] = ForcedAnimation(
+            idCounter.incrementAndGet(), animation, transition, loop, speed,
+            expiresAtMs, uninterruptible, toCombatLayer
+        )
         paused.remove(uuid)
         pendingSeek.remove(uuid)
     }

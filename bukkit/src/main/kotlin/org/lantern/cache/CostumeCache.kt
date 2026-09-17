@@ -17,6 +17,12 @@ class CostumeCache(section: ConfigurationSection) {
      * object = {animation, mode: loop|once|hold, transition}——玩家动作的
      * 一次性（jump）与持有（sneak）语义需要 mode，随 P1 玩家宿主化引入
      */
+    /**
+     * 上身骨骼集：出招层在这些骨骼上满权重，其余（腿部）让位给移动层。
+     * 不配则用客户端内置的 15 关节规范默认值；骨架命名与标准人模不同的外观在此声明
+     */
+    val upperBodyBones: List<String> = section.getStringList("animations.upper-body-bones")
+
     val animationStates: Map<String, JsonElement> = run {
         val states = LinkedHashMap<String, JsonElement>()
         val statesSection = section.getConfigurationSection("animations.states")

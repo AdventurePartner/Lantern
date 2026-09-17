@@ -33,9 +33,12 @@ object NetworkParser {
      * packetId 15（动画播控）的处理器，由支持运行时动画控制的客户端平台注册。
      * action: play | stop | pause | resume | seek；
      * seek 时 seekSeconds 为跳转目标（秒），其他 action 为 -1。
+     * toCombatLayer 由 layer 字段决定：combat = 上身出招层（腿保持移动状态），
+     * 缺省 motion = 全身运动层（压住行走）。
+     * 目标可以是实体（entityModels 条目）或玩家（host-driven 外观）。
      * 未注册的平台忽略该包。
      */
-    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float, uninterruptible: Boolean) -> Unit)? =
+    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float, uninterruptible: Boolean, toCombatLayer: Boolean) -> Unit)? =
         null
 
     /**
@@ -58,6 +61,21 @@ object NetworkParser {
      */
     var cameraActionHandler: ((action: String, obj: JsonObject) -> Unit)? = null
 
+    /**
+     * packetId 19 玩家主动动作定义（按键触发的翻滚等），由支持本地动作触发的平台注册。
+     * 载荷整体交给平台侧解析——动作定义引用的剪辑与层语义是平台动画内核的概念。
+     *
+     * 载荷形如 { "actions": [ ... ] }，每项两种形态：
+     *   方向动作 { id, key, file, directions:{forward:.., left:..}, transition,
+     *              exit-transition, cooldown, layer, exclusive, uninterruptible,
+     *              invulnerable, suppress-vanilla-attack, distance, dash-duration,
+     *              vertical, airborne, require-ground }
+     *   连招     { id, trigger:"attack", costume, file, layer,
+     *              steps:[{animation, cancel-at, window, transition, exit-transition}] }
+     * 触发与播放全在客户端本地：出招延迟对动作玩法敏感，服务端只下发定义。
+     */
+    var playerActionHandler: ((obj: JsonObject) -> Unit)? = null
+
     fun parse(packetId: Int, obj: JsonObject) {
         when (packetId) {
             1 -> parseCharacters(obj)
@@ -77,6 +95,7 @@ object NetworkParser {
             15 -> parseAnimationControl(obj)
             17 -> parseMolangVariables(obj)
             18 -> parseCameraControl(obj)
+            19 -> playerActionHandler?.invoke(obj)
             99 -> reloadResourcePack()
         }
     }
@@ -273,7 +292,9 @@ object NetworkParser {
                 animationLocation = IdentifierBridge.of(Lantern.MOD_ID, animPath)
 
                 val statesObj = animationsObj.getAsJsonObject("states")
-                animationStates = AnimationStateMapping.fromStatesJson(statesObj)
+                // 上身骨骼集随外观下发：换外观即换骨架，遮罩要跟着走
+                val upperBones = animationsObj.getAsJsonArray("upper-body-bones")
+                animationStates = AnimationStateMapping.fromStatesJson(statesObj, upperBones)
             } else {
                 animationLocation = IdentifierBridge.of(
                     Lantern.MOD_ID, "animations/costume/default.animation.json"
@@ -453,8 +474,10 @@ object NetworkParser {
         val speed = obj.get("speed")?.asFloat ?: 1.0f
         val seekSeconds = obj.get("time")?.asFloat ?: -1f
         val uninterruptible = obj.get("uninterruptible")?.asBoolean ?: false
+        // 归层：combat = 上身出招层（腿继续走），缺省 motion = 全身
+        val toCombatLayer = obj.get("layer")?.asString.equals("combat", ignoreCase = true)
         if (action == "seek" && seekSeconds < 0f) return
-        handler(uuid, action, animation, transition, loop, speed, seekSeconds, uninterruptible)
+        handler(uuid, action, animation, transition, loop, speed, seekSeconds, uninterruptible, toCombatLayer)
     }
 
     private fun reloadResourcePack() {

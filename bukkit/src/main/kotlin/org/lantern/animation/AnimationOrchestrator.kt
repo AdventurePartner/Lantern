@@ -14,13 +14,31 @@ import org.lantern.config.Configurations
 import org.lantern.network.NetworkHandler
 
 /**
- * 动画编排器（DragonAnimation 的 AnimationPipeline + Controller 模式）：
+ * 动画编排器（时间线流水线 + 控制器模式）：
  *
  * - 动作轨道：animations.yml 里按「模型 key → 动画名」声明 tick 时刻的
  *   sound / command / mm-skill 动作，播放时由服务端调度执行；
  * - 生命周期事件：Start / Finish / Interrupt 三个 Bukkit 事件；
  * - 链式编排：轨道的 next 字段，播完自动接续；
  * - 打断语义：新播放覆盖旧动画时触发 InterruptEvent 并取消未执行的动作。
+ *
+ * animations.yml 的「模型 key」两种来源：
+ *   实体 —— entityModels.yml 的条目名（按实体自定义名反查）；
+ *   玩家 —— costumes.yml 的外观条目名（按玩家已分配的 full_body 外观取，
+ *           回落 player-default.costume）。
+ *
+ * 所以给玩家技能挂伤害帧、特效帧就是这样写：
+ *
+ *   player_default:              # 外观条目名
+ *     左砍:                       # 该外观动画库里的动画名
+ *       actions:
+ *         - {at: 5,  sound: {s: minecraft:entity.player.attack.sweep}}
+ *         - {at: 8,  mm-skill: SwordDamage}
+ *         - {at: 10, camera: {action: shake, amplitude: 0.3, radius: 16}}
+ *       next: 右砍                # 播完自动接续（可选）
+ *
+ * at 是动画起播后的 tick 偏移。动作在服务端调度执行，因此伤害判定、命令、
+ * 技能触发都发生在服务端——客户端只负责把动画演出来。
  */
 object AnimationOrchestrator {
 
@@ -160,7 +178,50 @@ object AnimationOrchestrator {
         Bukkit.getPluginManager().callEvent(LanternAnimationInterruptEvent(entity, animation))
     }
 
+    /** 客户端上报的「原版攻击压制」窗口到期时刻（玩家 UUID -> 毫秒时间戳） */
+    private val attackSuppression = ConcurrentHashMap<UUID, Long>()
+
+    /** 该玩家此刻是否处于压制窗口内（伤害监听器查询） */
+    fun isAttackSuppressed(uuid: UUID): Boolean = isWithin(attackSuppression, uuid)
+
+    /** 动作无敌帧窗口（玩家 UUID -> 到期毫秒时间戳） */
+    private val invulnerability = ConcurrentHashMap<UUID, Long>()
+
+    /** 该玩家此刻是否处于无敌帧内 */
+    fun isInvulnerable(uuid: UUID): Boolean = isWithin(invulnerability, uuid)
+
+    private fun isWithin(table: ConcurrentHashMap<UUID, Long>, uuid: UUID): Boolean {
+        val until = table[uuid] ?: return false
+        if (System.currentTimeMillis() >= until) {
+            table.remove(uuid)
+            return false
+        }
+        return true
+    }
+
+    fun clearSuppression(uuid: UUID) {
+        attackSuppression.remove(uuid)
+        invulnerability.remove(uuid)
+    }
+
     fun onClientFinished(uuidRaw: String, animation: String, event: String) {
+        // 客户端本地动作（翻滚/连招）起播时上报，携带压制窗口：动作期间的原版
+        // 近战输出交由动画轨道的伤害帧决定，不再「点一下立刻结算」
+        if (event.startsWith("suppress:")) {
+            val millis = event.removePrefix("suppress:").toLongOrNull() ?: return
+            if (millis <= 0) return
+            val uuid = runCatching { UUID.fromString(uuidRaw) }.getOrNull() ?: return
+            attackSuppression[uuid] = System.currentTimeMillis() + millis
+            return
+        }
+        // 无敌帧：翻滚闪避这类动作的免伤窗口，同样由客户端起播时上报
+        if (event.startsWith("invuln:")) {
+            val millis = event.removePrefix("invuln:").toLongOrNull() ?: return
+            if (millis <= 0) return
+            val uuid = runCatching { UUID.fromString(uuidRaw) }.getOrNull() ?: return
+            invulnerability[uuid] = System.currentTimeMillis() + millis
+            return
+        }
         if (event != "finish") return
         val uuid = runCatching { UUID.fromString(uuidRaw) }.getOrNull() ?: return
         val finished = active.remove(uuid) ?: return
@@ -216,9 +277,25 @@ object AnimationOrchestrator {
     }
 
     private fun resolveModelKey(entity: Entity): String? {
+        // 玩家不在 entityModels.yml 里（那张表按实体自定义名索引），编排轨道要对玩家
+        // 生效就得按外观 id 索引：animations.yml 用 costume 条目名（如 player_default）
+        // 作模型 key，与 costumes.yml 对齐。没有这一条，玩家技能动画的时间线打点
+        // （伤害帧/特效帧/音效/镜头）全部不执行——动画只是好看，打不出东西
+        if (entity is org.bukkit.entity.Player) {
+            return playerModelKey(entity)
+        }
         val name = entity.customName ?: return null
         val stripped = ChatColor.stripColor(name) ?: name.toString()
         return nameToModelKey[stripped]
+    }
+
+    /** 玩家的编排索引键：已分配的 full_body 外观，回落服务端默认外观 */
+    private fun playerModelKey(player: org.bukkit.entity.Player): String? {
+        org.lantern.handler.CostumeAssignmentHandler.get(player.uniqueId)?.let { slots ->
+            slots["full_body"]?.let { return it }
+            slots.values.firstOrNull()?.let { return it }
+        }
+        return org.lantern.handler.CacheHandler.defaultPlayerCostume
     }
 
     /** 状态的动画名 + 切换过渡 tick（供事件驱动播放，取 yml 自定义或默认表） */

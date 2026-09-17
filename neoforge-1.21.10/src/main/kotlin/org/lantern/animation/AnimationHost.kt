@@ -18,6 +18,15 @@ object AnimationHost {
 
     private val players = ConcurrentHashMap<UUID, AnimationPlayer>()
 
+    /**
+     * 每个实体上一次被驱动的帧标识。
+     *
+     * 同一个玩家可能同时佩戴多个外观槽，渲染时每个外观各调一次渲染器，
+     * 于是同一个播放器在一帧内被驱动多次——边沿（起跳/落地/挥击）会被重复消费，
+     * dt 也被瓜分成几份。这里按帧判重：本帧首次才真正推进，后续调用直接复用姿势
+     */
+    private val lastDrivenFrame = ConcurrentHashMap<UUID, Long>()
+
     // 已触发过 spawn 的实体集合：跨 reset() 存活，只有实体离场（remove）才清除——
     // /lantern reload 会清空 players 重建，若以 player 生命周期判定 spawn，
     // 全部在线实体会在重载后同时重播出生动画；spawn 语义是实体生命周期内首次渲染
@@ -49,13 +58,20 @@ object AnimationHost {
         }
         val uuid = entity.uuid
         val player = players.computeIfAbsent(uuid) { AnimationPlayer(it) }
-        player.drive(
-            clips,
-            AnimationControlStore.get(uuid),
-            entity,
-            animationStates,
-            spawned.add(uuid)
-        )
+        // 帧标识 = 游戏刻 × 1000 + 帧内插值的千分位，同一渲染帧内恒定
+        val level = entity.level()
+        val frameId = level.gameTime * 1000L +
+            (net.minecraft.client.Minecraft.getInstance().deltaTracker.getGameTimeDeltaPartialTick(false) * 1000f).toLong()
+        val firstThisFrame = lastDrivenFrame.put(uuid, frameId) != frameId
+        if (firstThisFrame) {
+            player.drive(
+                clips,
+                AnimationControlStore.get(uuid),
+                entity,
+                animationStates,
+                spawned.add(uuid)
+            )
+        }
         return player.pose
     }
 
@@ -69,9 +85,28 @@ object AnimationHost {
         org.lantern.animation.applyPoseToBones(processor, pose, initial)
     }
 
+    /**
+     * 外部注入一次性动作（按键触发的翻滚等）。
+     * 播放器只在该实体渲染过之后才存在——未渲染时静默失败，调用方据此回落
+     */
+    @JvmStatic
+    fun triggerAction(
+        uuid: UUID,
+        clip: ClipData,
+        transitionSeconds: Float,
+        exitSeconds: Float,
+        speed: Float,
+        uninterruptible: Boolean,
+        exclusive: Boolean,
+        toCombatLayer: Boolean
+    ): Boolean = players[uuid]?.triggerAction(
+        clip, transitionSeconds, exitSeconds, speed, uninterruptible, exclusive, toCombatLayer
+    ) ?: false
+
     @JvmStatic
     fun reset() {
         players.clear()
+        lastDrivenFrame.clear()
     }
 
     /** 实体离开世界时释放其播放器状态（移动检测、活跃剪辑等）；
@@ -80,6 +115,7 @@ object AnimationHost {
     fun remove(uuid: UUID) {
         players.remove(uuid)
         spawned.remove(uuid)
+        lastDrivenFrame.remove(uuid)
     }
 
     /** 诊断（P1Diag）：输出该实体的状态表与各层实时剪辑 */

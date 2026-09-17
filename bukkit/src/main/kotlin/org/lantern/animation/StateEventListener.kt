@@ -39,6 +39,37 @@ class StateEventListener : Listener {
         NetworkHandler.playAnimation(entity, entry.animation, entry.transition, loop = false)
     }
 
+    /**
+     * 动作无敌帧：窗口内玩家免疫伤害。
+     *
+     * 监听的是 EntityDamageEvent 而非 ByEntity——闪避要能躲开弹道、爆炸、火焰这些
+     * 非直接攻击的来源。虚空与 /kill 例外，否则玩家会卡在世界外无法死亡
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onInvulnerableDamage(event: org.bukkit.event.entity.EntityDamageEvent) {
+        val player = event.entity as? org.bukkit.entity.Player ?: return
+        val cause = event.cause
+        if (cause == org.bukkit.event.entity.EntityDamageEvent.DamageCause.VOID ||
+            cause == org.bukkit.event.entity.EntityDamageEvent.DamageCause.CUSTOM
+        ) return
+        if (AnimationOrchestrator.isInvulnerable(player.uniqueId)) {
+            event.isCancelled = true
+        }
+    }
+
+    /**
+     * 原版攻击压制：动作播放窗口内取消玩家的近战输出。
+     * 优先级 HIGHEST 且不忽略已取消事件——要在伤害真正结算前拦下来，
+     * 与下面 MONITOR 的动画触发分属两个阶段
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onSuppressedAttack(event: EntityDamageByEntityEvent) {
+        val damager = event.damager as? org.bukkit.entity.Player ?: return
+        if (AnimationOrchestrator.isAttackSuppressed(damager.uniqueId)) {
+            event.isCancelled = true
+        }
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onDamageByEntity(event: EntityDamageByEntityEvent) {
         // 只处理本体出手：抛射物命中走 pull_bow 客户端姿态，不在此发包

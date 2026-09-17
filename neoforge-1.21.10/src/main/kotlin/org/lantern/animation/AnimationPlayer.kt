@@ -36,10 +36,14 @@ import kotlin.math.min
 /**
  * Lantern 自托管动画播放器（每实体一个）。
  *
- * 层栈模型（P0，取代单剪辑判定链）：
- * 四层自下而上合成 LOCOMOTION(walk/idle) < POSTURE(姿态链) < ACTION(播控/一次性) < DEATH，
- * 每层单动画槽位（换片顶旧），层内交叉淡化沿用单剪辑时代的 fade 机制，
- * 层清空即进入退出淡化（末段姿态按最近一次进入过渡时长衰减露出下层）。
+ * 层栈模型：五层自下而上合成
+ * LOCOMOTION(walk/idle) < ACTION_MOTION(跳跃/落地/服务端播控) < POSTURE(姿态链)
+ * < ACTION_COMBAT(上身出招) < DEATH。
+ * 每层单动画槽位（换片顶旧），层内换片交叉淡化，层的整体进出由可见度包络承担。
+ *
+ * 出招与运动分两层是「跳跃中攻击」「跑动中攻击」成立的前提：合在一层时单槽位
+ * 无论怎么仲裁都只能二选一。配合 ACTION_COMBAT 的上身骨骼遮罩，
+ * 腿归运动层、上身归出招层，两者天然并存。
  *
  * 层间合成：OVERRIDE 按骨骼控制集覆盖——上层动画「控制到的骨骼」覆盖下层，
  * 未控骨骼穿透（动画 json 的 bones 节点即控制集）；ADDING 数值逐轴叠加。
@@ -74,21 +78,60 @@ class AnimationPlayer(private val uuid: UUID) {
         const val TELEPORT_DISTANCE_SQ = 25.0
         // 剪辑长度未知时一次性动作的持有上限（兜底防锁死；landing 语义上限 0.5s 由剪辑长度天然满足）
         const val LOCAL_ACTION_FALLBACK_MS = 500L
-        // 姿态状态最小驻留（龙核"别打断当前"防抖的内核化）：判定边界抖动（潜行微移的
+        // 姿态状态最小驻留（「别打断当前状态」防抖的内核化）：判定边界抖动（潜行微移的
         // moving 边界、水边、空中边沿）会让 POSTURE 层换片再换回，进入型过渡动画
         // （蹲下过程 hold）每次被重新选中都从头播——驻留期内保持当前状态不切换
         const val POSTURE_DWELL_MS = 150L
     }
 
-    /** 层种类，ordinal 即合成顺序（低 -> 高） */
-    private enum class LayerKind { LOCOMOTION, POSTURE, ACTION, DEATH }
+    /**
+     * 层种类，ordinal 即合成顺序（低 -> 高）。
+     *
+     * ACTION 拆成两层是「跳跃中攻击」「跑动中攻击」成立的前提：单槽位无论怎么仲裁
+     * 都只能二选一——让攻击顶掉跳跃则起跳看不见，让跳跃挡住攻击则挥砍看不见。
+     * 拆开后 ACTION_MOTION 管全身运动（跳跃/落地/服务端播控），ACTION_COMBAT 管
+     * 上身出招，各占各的槽位天然并存。
+     *
+     * 层序理由：运动动作压过行走；上身姿态（持盾/拉弓）压过运动动作的手臂；
+     * 出招压过一切姿态。
+     */
+    private enum class LayerKind { LOCOMOTION, ACTION_MOTION, POSTURE, ACTION_COMBAT, HEAD, DEATH }
+
+    /**
+     * 上身骨骼集：ACTION_COMBAT 层在这些骨骼上满权重，其余按腿部归属让位给下层。
+     * 由服务端状态表下发（见 AnimationStateMapping.upperBodyBones），
+     * 每帧从当前状态表刷新——换外观就换骨架，遮罩要跟着走
+     */
+    private var upperBodyBones: Set<String> = AnimationStateMapping.DEFAULT_UPPER_BODY_BONES
+
+    /**
+     * 腿部归属系数：0 = 出招动画的腿完整播放，1 = 腿完全交还给下层（行走/跳跃）。
+     *
+     * 出招层的腿部不能硬裁剪：攻击资产里躯干前倾与腿部蹬地是协同编制的，
+     * 无条件丢弃腿部轨道会让上下半身脱节，静止出招更会整条腿被锁死在待机姿态。
+     * 所以按「下层是否真的需要这条腿」插值——原地出招腿跟着动作走，
+     * 跑动/跳跃中出招才把腿让出去，两端之间 150ms 平滑过渡避免起步停步时突变
+     */
+    private var legHandoff = 0f
 
     /** 层间混合模式：OVERRIDE 按控制集覆盖（未控骨骼穿透）；ADDING 数值逐轴叠加 */
     private enum class BlendType { OVERRIDE, ADDING }
 
     /**
-     * 单层状态：结构上是单剪辑时代的字段组搬运（clip/time/loops + fade 组），
-     * 加上层属性（blend/weight）与退出淡化标记。
+     * 单层状态。两套淡化机制职责分离（P0 修复的核心）：
+     *
+     * - **层内换片交叉淡化**（fadeClip 组）：同层旧片 -> 新片，双方都属于本层，
+     *   在层内部把姿势混合后再交给层合成。
+     * - **层可见度包络**（envelope 组）：本层整体在合成中的占比，空层切入 0->1、
+     *   清层 1->0。它作用在层合成的权重上，因此「本层没有控制的骨骼」完全不参与，
+     *   下层保持原样。
+     *
+     * 旧实现把空层切入也做成层内淡化（以上一帧**全合成**姿态为起点），跨层的量被
+     * 用在层内：攻击这类窄控制面动画切入时，快照里的腿骨只存在于 fade 起点侧，
+     * 被按 (1-w) 衰减后又以满权重覆盖下层的行走腿——过渡期腿被拉直、过渡结束
+     * 突然跳回步态，即「运动中出招卡脚」。包络淡入没有这个问题：
+     * 攻击不控的骨骼根本不在本层姿势里，层合成时原样穿透。
+     *
      * blendSeconds 记录最近一次进入过渡，层清空时作为退出淡化时长。
      */
     private class LayerState(val kind: LayerKind) {
@@ -98,26 +141,38 @@ class AnimationPlayer(private val uuid: UUID) {
         var loops = true
 
         var blend: BlendType = BlendType.OVERRIDE
+        /** 层静态权重（配置驱动，预留给按状态配 weight；当前恒 1） */
         var weight = 1f
         var blendSeconds = 0.25f
 
-        // 层内交叉淡化：换片时旧片继续推进并在过渡时长内淡出；
-        // 退出淡化是它的特例——clip 已清空、只剩 fade 侧按权重衰减。
-        // fadeFromPose：空层切入时的淡入起点（上一帧全合成姿态快照）——
-        // 攻击/跳跃/拉弓从空层切入原本是零过渡硬切
+        // 层内交叉淡化：换片时旧片继续推进并在过渡时长内淡出
         var fadeClip: ClipData? = null
         var fadeTime = 0f
+        /** 旧片进入淡出时的播放速度——步速调制下两片必须各按各的速度推进，否则混合期相位发散 */
+        var fadeSpeed = 1f
         var fadeElapsed = -1f
         var fadeDuration = 0.25f
         var fadeLoops = true
-        var fadeFromPose: Map<String, FloatArray>? = null
-        var exiting = false
+
+        // 层可见度包络：0 = 完全不参与合成，1 = 满权重
+        var envelope = 0f
+        var envelopeTarget = 0f
+        /** 包络变化速率（每秒），由过渡时长换算；<=0 视为瞬时 */
+        var envelopeRate = 0f
     }
 
-    private val layers = LayerKind.entries.map { LayerState(it) }
+    private val layers = LayerKind.entries.map { layer ->
+        LayerState(layer).apply {
+            // 头部层是唯一的叠加层：视角跟随要加在既有姿态之上，而不是覆盖它——
+            // 覆盖会让走路时的头部摆动整个消失，只剩僵硬的视角朝向
+            if (layer == LayerKind.HEAD) blend = BlendType.ADDING
+        }
+    }
     private val locomotion get() = layers[LayerKind.LOCOMOTION.ordinal]
+    private val actionMotion get() = layers[LayerKind.ACTION_MOTION.ordinal]
     private val posture get() = layers[LayerKind.POSTURE.ordinal]
-    private val action get() = layers[LayerKind.ACTION.ordinal]
+    private val actionCombat get() = layers[LayerKind.ACTION_COMBAT.ordinal]
+    private val head get() = layers[LayerKind.HEAD.ordinal]
     private val death get() = layers[LayerKind.DEATH.ordinal]
 
     private var channelId = -1L
@@ -125,15 +180,45 @@ class AnimationPlayer(private val uuid: UUID) {
     private var dead = false
     private var lastNanos = 0L
 
-    // 本地一次性动作（jump/landing/spawn）：边沿触发，播完回落；被播控覆盖时由截止时间兜底释放
-    private var localAction: StateConfig? = null
-    private var localActionDeadline = 0L
+    /**
+     * 本地一次性动作的两个独立槽位，分别对应两个 ACTION 层。
+     * 运动槽（jump/sprint_jump/landing/spawn）与出招槽（attack_*）互不抢占，
+     * 于是跳跃与挥砍可以同时进行——腿走跳跃、上身走攻击。
+     *
+     * restart 标记：本次是新触发（而非连续帧沿用），让该层重启时间轴——
+     * 同一动画连续两次触发（连击两刀同片）必须从头播，不能被「同片早退」吞掉
+     */
+    private class ActionSlot {
+        /** 直接持剪辑而非状态名：外部注入的动作（按键触发的翻滚等）来自独立动画文件，
+         *  不在 costume 的状态表里、按名查不到——持剪辑让两种来源走同一条路 */
+        var clip: ClipData? = null
+        var transitionSeconds = 0.1f
+        var loops = false
+        var speed = 1f
+        var deadline = 0L
+        var restart = false
+        /** 霸体：播放期间拒绝被同槽的新动作顶替（翻滚这类无敌帧动作需要） */
+        var uninterruptible = false
+        /**
+         * 独占全身：播放期间压制出招层。翻滚这类动作是整个身体的位移演出，
+         * 上半身若还在挥刀就成了两套动作各演各的——出招层比运动层高，
+         * 不显式压制就会盖掉翻滚的上半身
+         */
+        var exclusive = false
+        /**
+         * 本动作播完后的退出过渡秒数。
+         * 跳跃类末帧≈站立、必须快速让位（否则落地后与下层跌落定格叠加，观感是又播一遍），
+         * 所以内部状态动作沿用 50ms；翻滚这类末帧姿态与步态差距大的外部动作，
+         * 50ms 硬切会露出一帧突变，由配置自带退出时长
+         */
+        var exitSeconds = 0.05f
+    }
+
+    private val motionSlot = ActionSlot()
+    private val combatSlot = ActionSlot()
 
     var pose: Map<String, FloatArray> = emptyMap()
         private set
-
-    /** 上一帧的全合成姿态：空层切入（攻击/跳跃/拉弓）时作为淡入起点 */
-    private var lastComposedPose: Map<String, FloatArray> = emptyMap()
 
     /** 诊断（P1Diag）：状态表 + 各层实时剪辑 + 运动判定实测 */
     fun describeDiagnostic(): String {
@@ -174,8 +259,29 @@ class AnimationPlayer(private val uuid: UUID) {
     private var wasSwinging = false
     private var prevAttackAnim = 0f
     private var attackToggle = false
-    private var queuedAttack: String? = null
+    /** 待处理的攻击输入（只记有无，左右在起播瞬间才决定——见 tryStartAttack） */
+    private var queuedAttack = false
     private var queuedAttackExpireMs = 0L
+
+    /**
+     * 求值上下文的 query 表与 anim_time 变量句柄。
+     * 采样每一层时把 anim_time 换成该层自己的时间轴——全局取「最高非空层」会在
+     * 层切换的那一帧突然跳到另一条时间线上，依赖 anim_time 的表达式关键帧
+     * （呼吸、摆动这类）会随之抖一下
+     */
+    private var evalQueries: Reference2DoubleOpenHashMap<Variable>? = null
+    private val animTimeVariable = MathParser.getVariableFor(MolangQueries.ANIM_TIME)
+
+    /** 连招段位（-1 = 未进入连招）与上次出手时刻，用于取消窗口与输入窗口判定 */
+    private var comboIndex = -1
+    private var comboLastTriggerMs = 0L
+    /** 上一轮生效的连招 id：换组即重置段位，避免用新组的招式接旧组的段 */
+    private var comboSetId: String? = null
+
+    /** 当前外观下生效的连招（随动画组切换而变） */
+    private fun currentCombo() = org.lantern.action.PlayerActionStore.attackCombo(
+        org.lantern.costume.handler.CostumeHandler.hostCostumeId(uuid)
+    )
 
     fun drive(
         clips: Map<String, ClipData>,
@@ -187,14 +293,22 @@ class AnimationPlayer(private val uuid: UUID) {
         val now = System.nanoTime()
         val dt = if (lastNanos == 0L) 0f else min((now - lastNanos) / 1_000_000_000f, 0.25f)
         lastNanos = now
+        upperBodyBones = states.upperBodyBones
         val living = entity as? LivingEntity
-        val isMoving = computeMotion(entity.x, entity.y, entity.z)
+        val isMoving = computeMotion(entity.x, entity.y, entity.z, entity.onGround())
         // 攀爬中位移实测的垂直速度（约 2.36 格/秒）会越过起跳/跌落阈值——
-        // 梯子/藤蔓上强制清空中状态并拦截边沿，否则爬梯被演成连续跳跃
+        // 梯子/藤蔓上强制清空中状态并拦截边沿，否则爬梯被演成连续跳跃。
+        // 创造飞行同理且更甚：按空格上升的垂直速度远超起跳阈值，会被读成连续起跳，
+        // 下降超过 600ms 还会进跌落——飞行期间整条空中判定必须停用
         val onClimb = living?.onClimbable() == true
-        if (onClimb) {
+        val flying = (living as? Player)?.abilities?.flying == true
+        if (onClimb || flying) {
             airborne = false
             wasRising = false
+            everFell = false
+            airSinceMs = 0L
+            jumpEdge = false
+            landingEdge = false
         }
 
         // --- 死亡状态（进入时锁定，停末帧） ---
@@ -213,8 +327,9 @@ class AnimationPlayer(private val uuid: UUID) {
         //     "动画播完仍僵立收招"的空窗（Boss 已在走路而画面停在站姿） ---
         if (!paused && forced != null && !forced.loop) {
             val forcedClip = clips[forced.animation]
+            val forcedLayer = if (forced.toCombatLayer) actionCombat else actionMotion
             val timelineEnded = forcedClip != null && forcedClip.length > 0f &&
-                channelId == forced.id && action.clip === forcedClip && action.time >= forcedClip.length
+                channelId == forced.id && forcedLayer.clip === forcedClip && forcedLayer.time >= forcedClip.length
             val timestampExpired = forced.expiresAtMs > 0 &&
                 System.currentTimeMillis() >= forced.expiresAtMs
             if (timelineEnded || timestampExpired) {
@@ -236,67 +351,79 @@ class AnimationPlayer(private val uuid: UUID) {
         //     物理滞空期间持有末帧：跳跃动画时长与滞空有偏差（触发延迟），播完即清层
         //     会在落地前露出"跌落"定格（收腿姿态闪现=观感"跳跃播了一次半"）——
         //     跳跃末帧≈站立，覆盖到真落地再快切即无空窗 ---
-        localAction?.let { act ->
-            val clip = clips[act.animation]
-            val timelineEnded = clip != null && clip.length > 0f &&
-                action.clip === clip && action.time >= clip.length
-            if (clip == null || (timelineEnded && !airborne) || System.currentTimeMillis() >= localActionDeadline) {
-                localAction = null
+        // 运动槽：物理滞空期间持有末帧（跳跃动画时长与滞空有偏差），真落地才释放
+        motionSlot.clip?.let { clip ->
+            val timelineEnded = clip.length > 0f &&
+                actionMotion.clip === clip && actionMotion.time >= clip.length
+            // 空中持有末帧只对跳跃类成立：翻滚这类自带时长的动作播完即收，
+            // 否则空中翻滚会一直挂到落地
+            val holdInAir = airborne && !motionSlot.uninterruptible
+            if ((timelineEnded && !holdInAir) || System.currentTimeMillis() >= motionSlot.deadline) {
+                motionSlot.clip = null
+                motionSlot.uninterruptible = false
+                motionSlot.exclusive = false
+            }
+        }
+        // 出招槽：时间轴播完即释放，不受滞空影响
+        combatSlot.clip?.let { clip ->
+            val timelineEnded = clip.length > 0f &&
+                actionCombat.clip === clip && actionCombat.time >= clip.length
+            if (timelineEnded || System.currentTimeMillis() >= combatSlot.deadline) {
+                combatSlot.clip = null
+                combatSlot.uninterruptible = false
             }
         }
 
         // --- 排队攻击消费：当前刀进度达 70% 即可接刀（收势段可取消——combo
         //     cancel_at 语义；主砍段始终完整）。不排队则冷却一到就打断换片，
         //     每刀腰斩成快进；等播完则节奏偏慢（这批砍击不是蓄力重型） ---
-        queuedAttack?.let { key ->
+        if (queuedAttack) {
             val expired = System.currentTimeMillis() >= queuedAttackExpireMs
-            val curClip = action.clip
-            val isAttackClip = curClip != null &&
-                (curClip.name == states.config("attack_left")?.animation ||
-                    curClip.name == states.config("attack_right")?.animation)
-            val canChain = localAction == null ||
-                (isAttackClip && curClip != null && action.time >= curClip.length * 0.7f)
-            if (canChain) {
-                resolveState(states, clips, key)?.let { startLocalAction(it.second, clips) }
-                queuedAttack = null
-            } else if (expired) {
-                queuedAttack = null
+            val curClip = actionCombat.clip
+            // 当前刀进度达 70% 即可接刀（收势段可取消——combo cancel_at 语义）
+            val canChain = combatSlot.clip == null ||
+                (curClip != null && actionCombat.time >= curClip.length * 0.7f)
+            val consumed = canChain && if (currentCombo() != null) {
+                advanceCombo()
+            } else {
+                tryStartAttack(states, clips)
             }
+            if (consumed || expired) queuedAttack = false
         }
 
         // --- 边沿触发：spawn（实体生命周期内首次渲染）/ jump（起跳）/ landing（落地）。
         //     jump/landing 排除水中与骑乘：游泳上浮、载具颠簸同样产生垂直速度边沿，
         //     且 ACTION 层高于姿态链，swim/riding 姿态拦不住误触发 ---
         if (firstRender) {
-            states.config("spawn")?.let { startLocalAction(it, clips) }
+            states.config("spawn")?.let { startMotionAction(it, clips) }
         }
-        val edgeAllowed = living != null && !living.isInWater && !living.isPassenger && !onClimb
+        val edgeAllowed = living != null && !living.isInWater && !living.isPassenger && !onClimb && !flying
         if (jumpEdge) {
             jumpEdge = false
             if (edgeAllowed && living != null) {
-                // 疾跑中起跳优先 sprint_jump（龙核 sprint-jump 触发器），回退 jump
+                // 疾跑中起跳优先 sprint_jump，未配置则回退 jump
                 val jumpConfig = (if (living.isSprinting) {
                     resolveState(states, clips, "sprint_jump", "jump")
                 } else {
                     resolveState(states, clips, "jump")
                 })?.second
-                jumpConfig?.let { startLocalAction(it, clips) }
+                jumpConfig?.let { startMotionAction(it, clips) }
             }
         }
         if (landingEdge) {
             landingEdge = false
             if (edgeAllowed) {
-                states.config("landing")?.let { startLocalAction(it, clips) }
+                states.config("landing")?.let { startMotionAction(it, clips) }
                 // 物理落地即收势：跳跃类一次性动作的"展体落地"尾段快进掉——
                 // 起跳触发有采样延迟，尾段约 0.15s 会拖到物理落地之后在地面播放，
                 // 与空中段劈成两截（"起跳播一次、落地又一次"的观感来源）
-                val la = localAction
+                val la = motionSlot.clip
                 if (la != null) {
-                    val isJumpAnim = la.animation == states.config("jump")?.animation ||
-                        la.animation == states.config("sprint_jump")?.animation
+                    val isJumpAnim = la.name == states.config("jump")?.animation ||
+                        la.name == states.config("sprint_jump")?.animation
                     if (isJumpAnim) {
-                        action.clip?.let { c ->
-                            if (c.length > 0.08f) action.time = max(action.time, c.length - 0.08f)
+                        actionMotion.clip?.let { c ->
+                            if (c.length > 0.08f) actionMotion.time = max(actionMotion.time, c.length - 0.08f)
                         }
                     }
                     // 落地瞬间强制同步 LOCOMOTION：若仍停在跌落，直接零过渡换地面兜底，
@@ -316,22 +443,30 @@ class AnimationPlayer(private val uuid: UUID) {
         val swinging = living?.swinging == true
         val attackAnimNow = living?.attackAnim ?: 0f
         val swingEdge = !wasSwinging && swinging
-        val swingRestart = swinging && attackAnimNow < prevAttackAnim - 0.4f
+        // attackAnim = swingTime / getCurrentSwingDuration()，挥击期间单调递增，
+        // 任何下降都只可能是重挥重置，所以阈值只需躲开浮点相等、不需要留大余量。
+        // 原先的 0.4 是按「最早重挥出现在进度 0.5 处」取的，但 duration 受急迫效果
+        // 缩短（急迫 II 为 3 tick），跳变只有 0.33，整段连击的边沿会被漏掉
+        val swingRestart = swinging && attackAnimNow < prevAttackAnim - 0.05f
         if (swingEdge || swingRestart) {
-            attackToggle = !attackToggle
-            val key = if (attackToggle) "attack_right" else "attack_left"
             // 当前刀未播完时排队而非打断——冷却节奏(0.625s)快于刀长(0.75s)，
-            // 直接换片会把每刀腰斩成"快进连播"
-            val attackClip = action.clip
-            val attackInProgress = localAction != null && attackClip != null &&
-                (attackClip.name == states.config("attack_left")?.animation ||
-                    attackClip.name == states.config("attack_right")?.animation) &&
-                action.time < attackClip.length
-            if (attackInProgress) {
-                queuedAttack = key
-                queuedAttackExpireMs = System.currentTimeMillis() + 500L
+            // 直接换片会把每刀腰斩成"快进连播"。出招槽独立于运动槽，
+            // 所以起跳/落地不再吞掉攻击输入（跳跃中挥砍两者并存）
+            val attackClip = actionCombat.clip
+            val attackInProgress = combatSlot.clip != null && attackClip != null &&
+                actionCombat.time < attackClip.length
+            // 配了连招就走段位推进，否则回落左右交替（旧行为，向后兼容）
+            val taken = if (currentCombo() != null) {
+                advanceCombo()
             } else {
-                resolveState(states, clips, key)?.let { startLocalAction(it.second, clips) }
+                !attackInProgress && tryStartAttack(states, clips)
+            }
+            if (!taken) {
+                // 队列只记「有一次待处理的输入」，不记左右——左右在真正起播时才决定，
+                // 否则疯狂点击时单格队列被反复覆盖，落到哪一边全看点击时序，
+                // 表现就是连续几次同一边
+                queuedAttack = true
+                queuedAttackExpireMs = System.currentTimeMillis() + 500L
             }
         }
         wasSwinging = swinging
@@ -348,33 +483,78 @@ class AnimationPlayer(private val uuid: UUID) {
             pinLastFrame = true
         )
 
-        // ACTION 层：播控 > 本地一次性动作；都无时清层
+        // 服务端播控按指令归层：combat = 上身出招层（腿保持移动，可边跑边放技能），
+        // 缺省进全身运动层（压住行走，技能演出的常态）
+        val forcedToCombat = activeForced?.toCombatLayer == true
+        val forcedForMotion = if (forcedToCombat) null else activeForced
+
+        // ACTION_MOTION 层（全身运动）：服务端播控 > 本地运动动作；都无时清层
         when {
-            activeForced != null -> {
+            forcedForMotion != null -> {
                 // 同名动画再次下发（新 id）= 重放：重置时间轴从头播，
                 // 否则 target===clip 早退会让第二次播放被顶旧片且立即误报 finish
-                val restart = activeForced.id != channelId
-                if (restart) channelId = activeForced.id
+                val restart = forcedForMotion.id != channelId
+                if (restart) channelId = forcedForMotion.id
                 setLayerTarget(
-                    action, clips[activeForced.animation],
+                    actionMotion, clips[forcedForMotion.animation],
                     // 播控切入的过渡时长由服务端指令指定（tick × 50ms）；0 = 立即切换（如死亡）。
                     // 协议默认 5 tick = 0.25s，与行走层淡化时长一致，技能动画观感不变
-                    activeForced.transition * 0.05f,
-                    loops = activeForced.loop, speed = activeForced.speed,
+                    forcedForMotion.transition * 0.05f,
+                    loops = forcedForMotion.loop, speed = forcedForMotion.speed,
                     forceRestart = restart
                 )
             }
-            localAction != null -> {
-                val act = localAction!!
+            motionSlot.clip != null -> {
                 setLayerTarget(
-                    action, clips[act.animation],
-                    act.transition * 0.05f,
-                    loops = act.playMode == PlayMode.LOOP, speed = 1f
+                    actionMotion, motionSlot.clip,
+                    motionSlot.transitionSeconds,
+                    loops = motionSlot.loops, speed = motionSlot.speed,
+                    forceRestart = motionSlot.restart
                 )
+                motionSlot.restart = false
             }
             // 清层淡出压到 50ms：一次性动作（跳跃等）末帧≈站立，快速让位；
             // 长淡出会在落地后与下层"跌落"定格姿态叠加约半秒——观感即"落地又播一遍"
-            else -> setLayerTarget(action, null, min(action.blendSeconds, 0.05f), loops = false, speed = 1f)
+            else -> setLayerTarget(actionMotion, null, motionSlot.exitSeconds, loops = false, speed = 1f)
+        }
+
+        // ACTION_COMBAT 层（上身出招）：与运动层并行，互不抢占
+        if (forcedToCombat && activeForced != null) {
+            // 上身技能：压过本地出招，腿部继续由下层的移动状态驱动
+            val restart = activeForced.id != channelId
+            if (restart) channelId = activeForced.id
+            setLayerTarget(
+                actionCombat, clips[activeForced.animation],
+                activeForced.transition * 0.05f,
+                loops = activeForced.loop, speed = activeForced.speed,
+                forceRestart = restart
+            )
+        } else if (combatSlot.clip != null) {
+            setLayerTarget(
+                actionCombat, combatSlot.clip,
+                combatSlot.transitionSeconds,
+                loops = combatSlot.loops, speed = combatSlot.speed,
+                forceRestart = combatSlot.restart
+            )
+            combatSlot.restart = false
+        } else {
+            setLayerTarget(actionCombat, null, combatSlot.exitSeconds, loops = false, speed = 1f)
+        }
+
+        // HEAD 层（叠加）：配了 head 状态即常驻。动画内用 query.pitch / query.yaw
+        // 取视角角度，于是「头随视角、身体照常走路」纯配置即可成立。
+        // 死亡时停掉——尸体不该还在东张西望
+        val headPick = if (dead) null else states.config("head")?.let { cfg ->
+            clips[cfg.animation]?.let { cfg to it }
+        }
+        if (headPick != null) {
+            setLayerTarget(
+                head, headPick.second,
+                headPick.first.transition * 0.05f,
+                loops = headPick.first.playMode == PlayMode.LOOP, speed = 1f
+            )
+        } else {
+            setLayerTarget(head, null, head.blendSeconds, loops = false, speed = 1f)
         }
 
         // POSTURE 层：上身姿态链（use 弓/盾/食、hold_* 持物——窄控制面，
@@ -420,9 +600,13 @@ class AnimationPlayer(private val uuid: UUID) {
             // 清层瞬间下层必须已就位——任何残留淡化窗口都会让收腿定格裸露
             //（落地后闪现即观感"跳跃播了一次半"）
             val prevIsFalling = locomotion.clip?.name == states.config("falling")?.animation
+            // 过渡时长按配置走。原先硬钳 150ms 是相位发散时期的补丁——那会儿换片
+            // 混合是两套步态各走各的速度，长过渡必然顿挫；carryPhase 对齐相位、
+            // fade 侧跟随速度之后，混合期本身已经平滑，上限交回 clampBlend
+            // （全局 1000ms 且不超过目标剪辑的 80%）
             setLayerTarget(
                 locomotion, clip,
-                if (prevIsFalling) 0f else min(config.transition * 0.05f, 0.15f),
+                if (prevIsFalling) 0f else config.transition * 0.05f,
                 loops = config.playMode == PlayMode.LOOP, speed = speed,
                 carryPhase = true
             )
@@ -430,8 +614,8 @@ class AnimationPlayer(private val uuid: UUID) {
 
         // --- seek：跳转 ACTION 层时间轴（秒）。暂停状态下同样生效（定格到新帧） ---
         AnimationControlStore.consumeSeek(uuid)?.let { seconds ->
-            action.clip?.let { clip ->
-                action.time = if (action.loops && clip.length > 0f) {
+            actionMotion.clip?.let { clip ->
+                actionMotion.time = if (actionMotion.loops && clip.length > 0f) {
                     ((seconds % clip.length) + clip.length) % clip.length
                 } else {
                     seconds.coerceIn(0f, clip.length)
@@ -443,15 +627,35 @@ class AnimationPlayer(private val uuid: UUID) {
         if (!paused) {
             for (layer in layers) {
                 layer.clip?.let { layer.time = advance(it, layer.time, dt * layer.speed, layer.loops) }
-                layer.fadeClip?.let { layer.fadeTime = advance(it, layer.fadeTime, dt, layer.fadeLoops) }
+                // fade 侧按旧片自己的速度推进：步速调制下两片速度不同，
+                // 统一用 1× 会让混合期相位发散（carryPhase 只对齐了切入那一瞬）
+                layer.fadeClip?.let {
+                    layer.fadeTime = advance(it, layer.fadeTime, dt * layer.fadeSpeed, layer.fadeLoops)
+                }
                 if (layer.fadeElapsed >= 0f) {
                     layer.fadeElapsed += dt
                     if (layer.fadeElapsed >= layer.fadeDuration) {
                         layer.fadeClip = null
-                        layer.fadeFromPose = null
                         layer.fadeElapsed = -1f
-                        layer.exiting = false
                     }
+                }
+                // 可见度包络趋近目标；降到 0 即释放剪辑（此时本层已完全让位给下层）
+                if (layer.envelope != layer.envelopeTarget) {
+                    layer.envelope = if (layer.envelopeRate <= 0f) {
+                        layer.envelopeTarget
+                    } else {
+                        val step = layer.envelopeRate * dt
+                        if (layer.envelopeTarget > layer.envelope) {
+                            min(layer.envelope + step, layer.envelopeTarget)
+                        } else {
+                            max(layer.envelope - step, layer.envelopeTarget)
+                        }
+                    }
+                }
+                if (layer.envelope <= 0f && layer.envelopeTarget == 0f) {
+                    layer.clip = null
+                    layer.fadeClip = null
+                    layer.fadeElapsed = -1f
                 }
             }
         }
@@ -462,27 +666,34 @@ class AnimationPlayer(private val uuid: UUID) {
             death.time = death.clip?.length ?: 0f
             death.fadeClip = null
             death.fadeElapsed = -1f
-            death.exiting = false
         }
 
         // --- 采样 + 层合成 ---
         // 表达式关键帧在此求值：query.* 来自 Lantern 构建的 per-entity queryValues，
         // variable.* 来自 packet 17 注入的 per-entity 变量（ThreadLocal 上下文）
+        // 腿部归属：下层有实质腿部动作时（移动中、或跳跃等运动动作在播）才把腿让出去，
+        // 原地出招保持动作完整。150ms 一阶平滑，起步停步不突变
+        val motionLayerActive = actionMotion.clip != null && actionMotion.envelope > 0.01f
+        val legTarget = if (movingCached || motionLayerActive) 1f else 0f
+        legHandoff += (legTarget - legHandoff) * min(dt / 0.15f, 1f)
+
         val evalState = buildEvalState(entity, living)
         val vars = MolangVariableStore.resolve(uuid, evalState)
         pose = MolangContext.evaluate(vars) {
             var composed: Map<String, FloatArray>? = null
             for (layer in layers) {
-                val layerPose = sampleLayer(layer, evalState) ?: continue
                 val w = layerWeight(layer)
-                composed = when (layer.blend) {
-                    BlendType.OVERRIDE -> blendPoses(composed ?: emptyMap(), layerPose, w)
-                    BlendType.ADDING -> addPoses(composed ?: emptyMap(), layerPose, w)
+                if (w <= 0f) continue
+                val sampled = sampleLayer(layer, evalState) ?: continue
+                composed = if (layer.kind == LayerKind.ACTION_COMBAT) {
+                    blendCombat(composed ?: emptyMap(), sampled, w, legHandoff)
+                } else when (layer.blend) {
+                    BlendType.OVERRIDE -> blendPoses(composed ?: emptyMap(), sampled, w)
+                    BlendType.ADDING -> addPoses(composed ?: emptyMap(), sampled, w)
                 }
             }
             composed ?: emptyMap()
         }
-        lastComposedPose = pose
     }
 
     /**
@@ -502,8 +713,23 @@ class AnimationPlayer(private val uuid: UUID) {
         carryPhase: Boolean = false,
         forceRestart: Boolean = false
     ) {
+        // 清层：剪辑不立即丢弃，让包络降到 0——期间本层仍按末帧/循环采样，
+        // 占比逐渐让位给下层。包络归零后才真正释放（时间推进段处理）
+        if (target == null) {
+            if (layer.clip != null && layer.envelopeTarget != 0f) {
+                val clamped = clampBlend(blendSeconds, layer.clip)
+                layer.envelopeTarget = 0f
+                layer.envelopeRate = if (clamped > 0f) 1f / clamped else 0f
+            }
+            return
+        }
         if (target === layer.clip && !forceRestart) {
             layer.speed = speed
+            // 淡出途中被重新选中：掉头淡回满权重，不重启时间轴
+            if (layer.envelopeTarget != 1f) {
+                layer.envelopeTarget = 1f
+                layer.envelopeRate = if (layer.blendSeconds > 0f) 1f / layer.blendSeconds else 0f
+            }
             return
         }
         val prevClip = layer.clip
@@ -513,61 +739,96 @@ class AnimationPlayer(private val uuid: UUID) {
         val clamped = clampBlend(blendSeconds, target)
         layer.blendSeconds = clamped
         if (layer.clip != null && clamped > 0f) {
+            // 层内换片：旧片转入 fade 侧，按它自己的速度继续推进
             layer.fadeClip = layer.clip
             layer.fadeTime = layer.time
+            layer.fadeSpeed = layer.speed
             layer.fadeElapsed = 0f
             layer.fadeDuration = clamped
             layer.fadeLoops = layer.loops
-            layer.exiting = target == null
-        } else if (layer.clip == null && target != null && clamped > 0f) {
-            // 空层切入：以上一帧全合成姿态为淡入起点（姿态连续，不再是硬切）
-            layer.fadeFromPose = lastComposedPose
-            layer.fadeElapsed = 0f
-            layer.fadeDuration = clamped
-            layer.exiting = false
         } else {
             layer.fadeClip = null
             layer.fadeElapsed = -1f
-            layer.exiting = false
         }
+        // 空层切入（含淡出未尽时的重新占用）：包络从当前值升到 1，
+        // 本层未控制的骨骼全程不受影响
+        layer.envelopeTarget = 1f
+        layer.envelopeRate = if (clamped > 0f) 1f / clamped else 0f
+        if (clamped <= 0f) layer.envelope = 1f
         layer.clip = target
         // 真死亡后的任何切换钉死末帧：无论从哪条路径切入 death 剪辑，
         // 都不从第 0 帧重播（消除"站起来一下再死"）
         layer.time = when {
-            pinLastFrame && target != null -> target.length
-            carryPhase && target != null && loops && target.length > 0f -> phase * target.length
+            pinLastFrame -> target.length
+            carryPhase && loops && target.length > 0f -> phase * target.length
             else -> 0f
         }
         layer.loops = loops
         layer.speed = speed
     }
 
-    /** 采样单层：主片与 fade 侧按过渡进度交叉淡化；退出中只出 fade 侧。
-     *  空层切入的 fadeFromPose（上一帧合成姿态快照）同样作为 fade 侧淡入 */
+    /** 采样单层：主片与 fade 侧（层内换片的旧片）按过渡进度交叉淡化。
+     *  层的整体进出不在这里处理——那是可见度包络的职责，作用在层合成权重上 */
     private fun sampleLayer(
         layer: LayerState,
         state: AnimationState<*>
     ): Map<String, FloatArray>? {
-        val main = layer.clip?.let { samplePose(it, layer.time, layer.loops, state) }
-        return when {
-            main != null && layer.fadeClip != null && layer.fadeElapsed >= 0f ->
-                blendPoses(
-                    samplePose(layer.fadeClip!!, layer.fadeTime, layer.fadeLoops, state),
-                    main, layer.fadeElapsed / layer.fadeDuration, crossfade = true
-                )
-            main != null && layer.fadeFromPose != null && layer.fadeElapsed >= 0f ->
-                blendPoses(layer.fadeFromPose!!, main, layer.fadeElapsed / layer.fadeDuration, crossfade = true)
-            main != null -> main
-            else -> layer.fadeClip?.let {
-                if (layer.fadeElapsed >= 0f) samplePose(it, layer.fadeTime, layer.fadeLoops, state) else null
-            }
+        // 该层的表达式关键帧用该层自己的时间轴求值
+        evalQueries?.put(animTimeVariable, layer.time.toDouble())
+        val main = layer.clip?.let { samplePose(it, layer.time, layer.loops, state) } ?: return null
+        val fade = layer.fadeClip
+        return if (fade != null && layer.fadeElapsed >= 0f && layer.fadeDuration > 0f) {
+            blendPoses(
+                samplePose(fade, layer.fadeTime, layer.fadeLoops, state),
+                main, layer.fadeElapsed / layer.fadeDuration, crossfade = true
+            )
+        } else {
+            main
         }
     }
 
-    /** 层合成权重：静态权重 × 退出衰减（退出淡化进度内 1 -> 0） */
-    private fun layerWeight(layer: LayerState): Float {
-        if (!layer.exiting || layer.fadeDuration <= 0f) return layer.weight
-        return layer.weight * (1f - layer.fadeElapsed / layer.fadeDuration).coerceIn(0f, 1f)
+    /** 层合成权重 = 静态权重 × 可见度包络（空层切入 0->1、清层 1->0） */
+    private fun layerWeight(layer: LayerState): Float =
+        layer.weight * layer.envelope.coerceIn(0f, 1f)
+
+    /**
+     * 出招层合成：旋转按部位分权，位移与缩放整体跟随腿部归属。
+     *
+     * 位移不能分层——它表达的是整体重心。攻击资产靠「躯干与腿同幅下沉」表现蹲身发力
+     * （body 与 rightLeg 的 pos.y 同为 -4.5），而 geo 里 body 与双腿是 waist 下的
+     * 兄弟节点，body 下沉不会带动腿。若躯干取出招的位移、腿取下层的位移，
+     * 躯干会整体下移而腿留在原位——躯干下端直接插进髋关节以下，即「严重的分离感」。
+     * 所以位移一律按腿部归属系数取：原地出招整体下蹲完整，跑动中出招躯干只前倾不下沉。
+     *
+     * 旋转可以分层：body 与双腿的枢轴同在髋部，躯干绕髋前倾时连接点重合，不产生缝隙。
+     */
+    private fun blendCombat(
+        base: Map<String, FloatArray>,
+        layerPose: Map<String, FloatArray>,
+        w: Float,
+        handoff: Float
+    ): Map<String, FloatArray> {
+        val legW = w * (1f - handoff)
+        val out = HashMap<String, FloatArray>(base.size + layerPose.size)
+        out.putAll(base)
+        for ((name, b) in layerPose) {
+            val rotW = if (name in upperBodyBones) w else legW
+            val a = out[name]
+            out[name] = FloatArray(9) { i ->
+                // 0..2 旋转按部位；3..5 位移、6..8 缩放一律跟随腿部归属（整体重心不可分层）
+                val wi = if (i < 3) rotW else legW
+                val av = a?.get(i)
+                when {
+                    av == null -> if (b[i].isNaN()) b[i] else b[i] * wi
+                    wi <= 0f -> av
+                    av.isNaN() -> b[i]
+                    b[i].isNaN() -> av
+                    i < 3 -> lerpAngle(av, b[i], wi)
+                    else -> av + (b[i] - av) * wi
+                }
+            }
+        }
+        return out
     }
 
     /**
@@ -581,9 +842,9 @@ class AnimationPlayer(private val uuid: UUID) {
             queries.put(MathParser.getVariableFor(name), value)
         }
 
-        // ANIM_TIME 取最高有内容层的时间轴（表达式关键帧主要在播控/技能动画里 -> ACTION 层优先命中）
-        val evalTime = layers.lastOrNull { it.clip != null }?.time ?: 0f
-        q(MolangQueries.ANIM_TIME, evalTime.toDouble())
+        // anim_time 先填一个兜底值，真正取值在 sampleLayer 里按层覆写
+        q(MolangQueries.ANIM_TIME, (layers.lastOrNull { it.clip != null }?.time ?: 0f).toDouble())
+        evalQueries = queries
         q(MolangQueries.IS_MOVING, if (movingCached) 1.0 else 0.0)
         q(MolangQueries.GROUND_SPEED, groundSpeed.toDouble())
         q(MolangQueries.VERTICAL_SPEED, verticalSpeed.toDouble())
@@ -608,6 +869,11 @@ class AnimationPlayer(private val uuid: UUID) {
             q(MolangQueries.SCALE, living.scale.toDouble())
             q(MolangQueries.HEAD_X_ROTATION, living.xRot.toDouble())
             q(MolangQueries.HEAD_Y_ROTATION, living.yRot.toDouble())
+            // 别名：GeckoLib 的标准名是 head_x_rotation / head_y_rotation，
+            // 而不少既有资产惯用更短的 query.pitch / query.yaw。两套名字都认，
+            // 同一份资产拿过来直接能跑，不必为了改名重导一遍动画
+            q("query.pitch", living.xRot.toDouble())
+            q("query.yaw", living.yRot.toDouble())
             q(MolangQueries.BODY_Y_ROTATION, living.yBodyRot.toDouble())
             q(MolangQueries.YAW_SPEED, (living.yRot - living.yRotO).toDouble())
             q(MolangQueries.DEATH_TICKS, if (dead) death.time * 20.0 else 0.0)
@@ -697,7 +963,7 @@ class AnimationPlayer(private val uuid: UUID) {
     }
 
     /**
-     * 驻留防抖（龙核 Trigger "别打断当前" 条件的内核化）：候选状态 ≠ 当前状态且
+     * 驻留防抖（「别打断当前状态」条件的内核化）：候选状态 ≠ 当前状态且
      * 当前驻留不满 POSTURE_DWELL_MS 时保持当前状态——判定边界抖动不再让过渡动画
      * 反复重播；旧状态无剪辑时穿透，不因防抖卡死。
      * [dwellKey] true=LOCOMOTION 组 / false=POSTURE 组，两组独立计时
@@ -739,21 +1005,161 @@ class AnimationPlayer(private val uuid: UUID) {
         return null
     }
 
-    /** 触发本地一次性动作；剪辑缺失不占槽位，让判定链继续穿透 */
-    private fun startLocalAction(config: StateConfig, clips: Map<String, ClipData>) {
-        val clip = clips[config.animation] ?: return
-        val lengthMs = (clip.length * 1000f).toLong()
-        localAction = config
-        localActionDeadline = System.currentTimeMillis() +
-            (if (lengthMs > 0) lengthMs + 300L else LOCAL_ACTION_FALLBACK_MS)
+    /**
+     * 连招段位推进。
+     *
+     * 两个正交的窗口（对标系统两家的语义并存）：
+     * - cancelAt：当前段播到该进度即可被下一段接替，不必等整段播完——连招不顿挫的来源；
+     * - window：距上次出手超过该时长即视为一套连招结束，下次回到第一段。
+     *
+     * @return 是否真的接上了下一段（没接上则由调用方排队）
+     */
+    private fun advanceCombo(): Boolean {
+        val combo = currentCombo() ?: return false
+        val steps = combo.steps
+        if (steps.isEmpty()) return false
+        // 换了连招组（动画组切换）：段位归零，否则会拿新组的招式接着旧组的段号
+        if (comboSetId != combo.id) {
+            comboSetId = combo.id
+            comboIndex = -1
+        }
+        val now = System.currentTimeMillis()
+        val slot = if (combo.toCombatLayer) combatSlot else motionSlot
+        val layer = if (combo.toCombatLayer) actionCombat else actionMotion
+
+        // 当前段还没到取消点：不接，交给排队
+        val current = steps.getOrNull(comboIndex)
+        if (slot.clip != null && current != null) {
+            val playing = layer.clip
+            if (playing != null && playing.length > 0f &&
+                layer.time < playing.length * current.cancelAt
+            ) {
+                return false
+            }
+        }
+
+        // 超出输入窗口即回到第一段
+        val window = current?.windowMs ?: 0L
+        val index = if (comboIndex < 0 || (window > 0L && now - comboLastTriggerMs > window)) {
+            0
+        } else {
+            (comboIndex + 1) % steps.size
+        }
+        val step = steps[index]
+        val clip = org.lantern.action.PlayerActionStore.comboClip(combo, step) ?: return false
+        val started = occupy(
+            slot, clip,
+            step.transitionTicks * 0.05f,
+            loops = false,
+            speed = 1f,
+            uninterruptible = combo.uninterruptible,
+            exitSeconds = step.exitTicks * 0.05f,
+            exclusive = false
+        )
+        if (!started) return false
+        comboIndex = index
+        comboLastTriggerMs = now
+        return true
     }
+
+    /** 触发运动动作（jump/sprint_jump/landing/spawn）；剪辑缺失不占槽位，判定链继续穿透 */
+    private fun startMotionAction(config: StateConfig, clips: Map<String, ClipData>): Boolean =
+        occupy(motionSlot, config, clips)
+
+    /** 触发出招动作（attack_*）；与运动槽独立，起跳期间照常可出招 */
+    private fun startCombatAction(config: StateConfig, clips: Map<String, ClipData>): Boolean =
+        occupy(combatSlot, config, clips)
+
+    /**
+     * 起播下一刀并交替左右。
+     *
+     * 左右在**真正起播的瞬间**才决定，而不是在挥击边沿：单格输入队列会被后来的边沿
+     * 覆盖，若边沿处就把左右定死，疯狂点击时落到哪一边全看点击时序，表现为连续几次
+     * 同一边。起播时决定则播放序列严格交替，与点击快慢无关。
+     * 只有成功占用槽位才翻转，否则状态键缺失会白白吃掉一次交替。
+     */
+    private fun tryStartAttack(states: AnimationStateMapping, clips: Map<String, ClipData>): Boolean {
+        val key = if (!attackToggle) "attack_right" else "attack_left"
+        val entry = resolveState(states, clips, key) ?: return false
+        if (!startCombatAction(entry.second, clips)) return false
+        attackToggle = !attackToggle
+        return true
+    }
+
+    private fun occupy(slot: ActionSlot, config: StateConfig, clips: Map<String, ClipData>): Boolean {
+        val clip = clips[config.animation] ?: return false
+        return occupy(slot, clip, config.transition * 0.05f, config.playMode == PlayMode.LOOP, 1f, false, 0.05f, false)
+    }
+
+    /** 占用动作槽（状态表触发与外部注入共用）；霸体动作播放期间拒绝被顶替 */
+    private fun occupy(
+        slot: ActionSlot,
+        clip: ClipData,
+        transitionSeconds: Float,
+        loops: Boolean,
+        speed: Float,
+        uninterruptible: Boolean,
+        exitSeconds: Float,
+        exclusive: Boolean
+    ): Boolean {
+        if (slot.clip != null && slot.uninterruptible) return false
+        // 出招撞上独占中的全身动作：直接放弃，也不排队（翻滚完不该补播一刀）
+        if (slot === combatSlot && motionSlot.clip != null && motionSlot.exclusive) return false
+        val lengthMs = (clip.length * 1000f).toLong()
+        slot.clip = clip
+        slot.transitionSeconds = transitionSeconds
+        slot.loops = loops
+        slot.speed = speed
+        slot.exclusive = exclusive
+        slot.uninterruptible = uninterruptible
+        slot.exitSeconds = exitSeconds
+        slot.restart = true
+        // 独占动作起播即清掉正在进行的出招，避免上半身残留半截挥砍
+        if (slot === motionSlot && exclusive) {
+            combatSlot.clip = null
+            combatSlot.uninterruptible = false
+            queuedAttack = false
+        }
+        slot.deadline = System.currentTimeMillis() +
+            (if (lengthMs > 0) lengthMs + 300L else LOCAL_ACTION_FALLBACK_MS)
+        return true
+    }
+
+    /**
+     * 外部注入一次性动作（按键触发的翻滚等）。剪辑由调用方从独立动画库取好，
+     * 不经状态表，因此与 costume 绑定的动画文件解耦。
+     * @param toCombatLayer true=上身出招层，false=全身运动层
+     */
+    fun triggerAction(
+        clip: ClipData,
+        transitionSeconds: Float,
+        exitSeconds: Float,
+        speed: Float,
+        uninterruptible: Boolean,
+        exclusive: Boolean,
+        toCombatLayer: Boolean
+    ): Boolean = occupy(
+        if (toCombatLayer) combatSlot else motionSlot,
+        clip, transitionSeconds, false, speed, uninterruptible, exitSeconds, exclusive
+    )
 
     /**
      * 位移实测的运动检测（水平移动 + 垂直速度），60ms 采样窗口 + 滞回，
      * 同时维护空中状态与 jump/landing 边沿。返回当前移动判定
      */
-    private fun computeMotion(x: Double, y: Double, z: Double): Boolean {
+    private fun computeMotion(x: Double, y: Double, z: Double, physicallyGrounded: Boolean): Boolean {
         val now = System.currentTimeMillis()
+        // 物理落地信号先于采样窗口处理：连跳（按住空格）的触地窗口短于 45ms 采样间隔，
+        // 纯位移判定会整个错过，airborne 一直挂着 -> 第二跳的 jumpEdge 因 !airborne
+        // 前置条件不成立而永不触发。onGround 本地玩家每 tick 更新、远程由移动包同步，
+        // 作为「退出空中」的信号宁可早不可晚
+        if (physicallyGrounded && airborne && everFell) {
+            landingEdge = true
+            airborne = false
+            everFell = false
+            airSinceMs = 0L
+            wasRising = false
+        }
         val last = lastPos
         if (last == null) {
             lastPos = doubleArrayOf(x, y, z)
@@ -911,6 +1317,8 @@ private fun samplePose(
                     when {
                         a[i].isNaN() -> b[i]
                         b[i].isNaN() -> a[i]
+                        // 0..2 是旋转：必须按最短弧插值，见 lerpAngle
+                        i < 3 -> lerpAngle(a[i], b[i], w)
                         else -> a[i] + (b[i] - a[i]) * w
                     }
                 }
@@ -926,7 +1334,26 @@ private fun samplePose(
         return out
     }
 
-    /** 按系数缩放姿势各轴（NaN 轴保持 NaN = 未控轴继续穿透回落静态值） */
+    /**
+ * 角度插值，走最短弧。
+ *
+ * 姿势里的旋转是连续累积的欧拉角，不取模——动画内部要靠它表达「转一整圈」
+ * （翻滚资产的 body 从 22° 连续转到 382°，几何上回到原位但数值差 360）。
+ * 混合时若直接线性插值，382° 融向下层的 20° 会沿着数值方向倒退一整圈，
+ * 在过渡时长内反向翻转，观感就是动作播完突然「重置」。
+ * 把角度差归一到 [-PI, PI] 即走真实的最短路径；差值本就在该区间内的
+ * 普通动画完全不受影响。
+ */
+private fun lerpAngle(from: Float, to: Float, w: Float): Float {
+    val twoPi = (Math.PI * 2.0).toFloat()
+    var delta = to - from
+    if (delta > Math.PI || delta < -Math.PI) {
+        delta -= Math.floor((delta + Math.PI) / twoPi.toDouble()).toFloat() * twoPi
+    }
+    return from + delta * w
+}
+
+/** 按系数缩放姿势各轴（NaN 轴保持 NaN = 未控轴继续穿透回落静态值） */
     private fun scaleAxes(v: FloatArray, k: Float): FloatArray =
         FloatArray(9) { i -> if (v[i].isNaN()) v[i] else v[i] * k }
 
@@ -951,7 +1378,8 @@ private fun addPoses(base: Map<String, FloatArray>, addend: Map<String, FloatArr
         }
     }
     for ((name, b) in addend) {
-        if (name !in out) out[name] = b
+        // 基线没有该骨骼时同样要按权重缩放：直接取满值会让叠加层在淡入期就整幅生效
+        if (name !in out) out[name] = scaleAxes(b, w)
     }
     return out
 }
@@ -971,7 +1399,7 @@ private fun sampleTrack(frames: List<Keyframe>, time: Float, state: AnimationSta
     val t = (time - a.time) / span
 
     // 区间端点：prev.post -> next.pre；catmullrom 控制点取 pre 值
-    //（ModelEngine 反编译实证：PrePostInterpolator start=prev.post, end=next.pre）
+    //（区间端点语义实证：start=prev.post, end=next.pre）
     val start = a.value.eval(state)
     val end = (b.pre ?: b.value).eval(state)
 
@@ -1009,6 +1437,12 @@ private fun spline(t: Float, p0: Float, p1: Float, p2: Float, p3: Float): Float 
  * [initial] 为该渲染器克隆骨骼的静态初始姿势（见 GenericGeoModel），剪辑未驱动的
  * 骨骼/轴回落到它——由调用方预计算，避免每帧重新装配
  */
+private val boneNameLowerCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+/** 骨骼名小写缓存：动画轨道以小写为键，骨骼名数量有限，避免每帧逐骨分配字符串 */
+private fun lowerBoneName(name: String): String =
+    boneNameLowerCache.getOrPut(name) { name.lowercase() }
+
 fun applyPoseToBones(
     processor: AnimationProcessor<*>,
     pose: Map<String, FloatArray>?,
@@ -1018,7 +1452,7 @@ fun applyPoseToBones(
     if (bones.isEmpty() || pose == null) return
     for (bone in bones) {
         val init = initial[bone.name] ?: continue
-        val v = pose[bone.name]
+        val v = pose[lowerBoneName(bone.name)]
         bone.updateRotation(
             if (v == null || v[0].isNaN()) init[0] else v[0],
             if (v == null || v[1].isNaN()) init[1] else v[1],

@@ -35,7 +35,7 @@ class ExprVec3(val x: MathValue, val y: MathValue, val z: MathValue) {
     )
 }
 
-/** pre = 关键帧前值（段落起点语义，ModelEngine 反编译实证：区间端点 prev.post -> next.pre） */
+/** pre = 关键帧前值（段落起点语义，区间端点实证：prev.post -> next.pre） */
 data class Keyframe(val time: Float, val value: ExprVec3, val pre: ExprVec3?, val lerpMode: String?)
 
 class BoneTracks(
@@ -70,7 +70,10 @@ object BedrockAnimationParser {
             for ((boneName, boneElement) in bonesObj.entrySet()) {
                 if (!boneElement.isJsonObject) continue
                 val bone = boneElement.asJsonObject
-                bones[boneName] = BoneTracks(
+                // 骨骼名统一小写作键：不同资产作者的大小写风格不一（有的写
+                // Body/RightArm，本项目资产用 body/rightArm），集合相同却匹配不上会
+                // 整段动画无效。写骨时同样按小写查找，两端一致即大小写不敏感
+                bones[boneName.lowercase()] = BoneTracks(
                     rotation = parseTrack(bone, "rotation"),
                     position = parseTrack(bone, "position"),
                     scale = parseTrack(bone, "scale")

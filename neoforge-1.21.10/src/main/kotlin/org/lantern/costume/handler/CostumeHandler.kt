@@ -70,6 +70,13 @@ object CostumeHandler {
         return renderers["$playerUUID:$costumeId"]?.renderer?.geoModel?.animationProcessor
     }
 
+    /**
+     * 该玩家当前生效的 hostDriven 整替外观 id。
+     * 连招按外观限定时用它选组——切了动画组，招式也得跟着换
+     */
+    @JvmStatic
+    fun hostCostumeId(playerUUID: UUID): String? = hostFullBodyId(playerUUID)
+
     /** P1 盔甲适配：取 hostDriven 整替外观定义（盔甲需要它的 scale/offset 对齐身体） */
     @JvmStatic
     fun hostWrapper(playerUUID: UUID): CostumeModelWrapper? =

@@ -28,6 +28,8 @@ import java.util.function.Consumer
 
 object NeoForgeClientEvents {
     private val pressedKeys = mutableSetOf<String>()
+    /** 玩家主动动作的按下集（按动作 id 跟踪，与 keys.yml 通道分开） */
+    private val actionPressedKeys = mutableSetOf<String>()
     private val parsedKeys = mutableMapOf<String, ParsedKey>()
     private var wasMouseDown = false
 
@@ -62,6 +64,9 @@ object NeoForgeClientEvents {
             return
         }
         handleKeyboardInput(client)
+        handlePlayerActions(client)
+        // 翻滚等动作的位移逐 tick 驱动，与动画同步收尾
+        org.lantern.action.PlayerActionStore.tickDash()
         handleMouseInput(client)
     }
 
@@ -75,6 +80,8 @@ object NeoForgeClientEvents {
         LayoutCache.clear()
         FocusManager.blur()
         pressedKeys.clear()
+        actionPressedKeys.clear()
+        org.lantern.action.PlayerActionStore.clearDash()
         parsedKeys.clear()
         wasMouseDown = false
         // 相机演出状态（lock/shake/fov/offset）不跨服残留
@@ -134,6 +141,34 @@ object NeoForgeClientEvents {
         wasMouseDown = leftDown
         UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { root ->
             EventDispatcher.updateHover(root, mouseX, mouseY)
+        }
+    }
+
+    /**
+     * 玩家主动动作的按键轮询（翻滚等）：按下边沿本地触发，不发包、不等服务端。
+     * 与 keys.yml 的通道分开跟踪按下集，两者绑同一个键时互不干扰
+     */
+    private fun handlePlayerActions(client: Minecraft) {
+        val definitions = org.lantern.action.PlayerActionStore.definitions()
+        if (definitions.isEmpty()) return
+        if (client.player == null) return
+        val window = client.getWindow().handle()
+        // 界面打开时不触发：此时按键属于 UI 输入
+        if (client.screen != null) {
+            actionPressedKeys.clear()
+            return
+        }
+        definitions.forEach { def ->
+            val key = parsedKeys.getOrPut(def.keySpec) { parseKeySpec(def.keySpec) }
+            val isDown = isDown(window, key)
+            val wasDown = def.id in actionPressedKeys
+            if (isDown == wasDown) return@forEach
+            if (isDown) {
+                actionPressedKeys.add(def.id)
+                org.lantern.action.PlayerActionStore.trigger(def)
+            } else {
+                actionPressedKeys.remove(def.id)
+            }
         }
     }
 

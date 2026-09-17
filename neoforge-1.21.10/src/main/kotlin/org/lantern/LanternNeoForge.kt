@@ -47,6 +47,7 @@ class LanternNeoForge(modBus: IEventBus) {
         NetworkParser.molangVariableHandler = org.lantern.animation.MolangVariableStore::update
         // packet 18 相机（shoulder + 演出指令）：NetworkParser 统一调度到主线程后更新渲染状态
         NetworkParser.cameraActionHandler = org.lantern.camera.control.CameraControl::handle
+        NetworkParser.playerActionHandler = org.lantern.action.PlayerActionStore::load
         modBus.addListener(
             AddPackFindersEvent::class.java,
             Consumer<AddPackFindersEvent>(LanternDynamicPackSource::register)
