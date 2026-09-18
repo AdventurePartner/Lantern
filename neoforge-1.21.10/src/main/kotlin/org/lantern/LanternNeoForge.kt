@@ -48,6 +48,10 @@ class LanternNeoForge(modBus: IEventBus) {
         // packet 18 相机（shoulder + 演出指令）：NetworkParser 统一调度到主线程后更新渲染状态
         NetworkParser.cameraActionHandler = org.lantern.camera.control.CameraControl::handle
         NetworkParser.playerActionHandler = org.lantern.action.PlayerActionStore::load
+        // packet 20：只写 ConcurrentHashMap，与 packet 17 同理，网络线程直接执行
+        NetworkParser.entityBindHandler = org.lantern.bind.BindStore::handle
+        // packet 21 同理
+        NetworkParser.inputLockHandler = org.lantern.input.InputLockStore::handle
         modBus.addListener(
             AddPackFindersEvent::class.java,
             Consumer<AddPackFindersEvent>(LanternDynamicPackSource::register)

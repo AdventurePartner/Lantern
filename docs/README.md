@@ -88,5 +88,6 @@ chat-channels:
 - [生物模型](entity-models.md)
 - [玩家外观](player-costumes.md)
 - [玩家动作](player-actions.md)
+- [载体绑定与输入锁](bind-and-input-lock.md)
 - [按键绑定](keys.md)
 - [图片文字、物品图标和资源包](assets-and-icons.md)

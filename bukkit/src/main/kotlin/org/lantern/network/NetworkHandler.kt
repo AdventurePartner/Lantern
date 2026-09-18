@@ -124,6 +124,8 @@ object NetworkHandler {
         sendBlockModels(player, CacheHandler.blockModels)
         sendPlayerActions(player, CacheHandler.playerActions)
         sendBlockPositions(player)
+        // 登录补发：绑定按宿主位置做半径广播，中途进服的玩家没收到过任何一条
+        org.lantern.bind.BindRegistry.syncTo(player)
 
         // 延迟一秒发送重载资源数据包
         val reloadRunnable = Runnable { sendReloadResourceManagerPacket(player) }
@@ -823,6 +825,85 @@ object NetworkHandler {
     /** 播控广播半径（格），config.yml 可调。取 getter 而非缓存，reload 后立即生效 */
     private val animationBroadcastRadius: Double
         get() = LanternPlugin.instance.config.getDouble("animation-broadcast-radius", 96.0)
+
+    /**
+     * 能看见该实体的观察者列表（同世界 + 半径内，外加实体本人）。
+     *
+     * 与 [broadcastNear] 同一套范围判定，但返回列表而不是直接发包——
+     * 载体绑定需要知道「这一轮谁在范围内」来做进出补发，光有回调拿不到这个集合
+     */
+    fun nearbyViewers(entity: Entity): List<Player> {
+        val radius = animationBroadcastRadius
+        if (radius <= 0.0) return Bukkit.getOnlinePlayers().toList()
+        val origin = entity.location
+        val world = origin.world ?: return emptyList()
+        val radiusSq = radius * radius
+        return world.players.filter { viewer ->
+            viewer.uniqueId == entity.uniqueId || viewer.location.distanceSquared(origin) <= radiusSq
+        }
+    }
+
+    /** 该观察者此刻是否在实体的广播范围内 */
+    fun isNearby(entity: Entity, viewer: Player): Boolean {
+        val radius = animationBroadcastRadius
+        if (radius <= 0.0) return true
+        if (viewer.uniqueId == entity.uniqueId) return true
+        val origin = entity.location
+        if (viewer.world != origin.world) return false
+        return viewer.location.distanceSquared(origin) <= radius * radius
+    }
+
+    /**
+     * 下发载体绑定（packet 20）。
+     *
+     * 绑定是纯客户端渲染层行为：载体的服务端坐标、碰撞、AI 都不受影响，
+     * 只是渲染时被画到宿主的插值位置上。因此这里没有任何实体状态要改，
+     * 只是把一条描述发给能看见宿主的客户端
+     */
+    fun sendBind(player: Player, bind: org.lantern.bind.BindRegistry.Bind) {
+        val packet = JsonObject()
+        packet.addProperty("follower", bind.follower.toString())
+        packet.addProperty("host", bind.host.toString())
+        val offset = JsonArray()
+        offset.add(bind.offsetX)
+        offset.add(bind.offsetY)
+        offset.add(bind.offsetZ)
+        packet.add("offset", offset)
+        packet.addProperty("rotate", bind.rotate)
+        packet.addProperty("visible", bind.visible)
+        packet.addProperty("durationMs", if (bind.expireAtMs > 0) bind.expireAtMs - System.currentTimeMillis() else 0L)
+        sendPacket(player, 20, packet)
+    }
+
+    /** 解绑（packet 20，无 host 字段即解绑） */
+    fun sendUnbind(player: Player, followerUuid: UUID) {
+        val packet = JsonObject()
+        packet.addProperty("follower", followerUuid.toString())
+        sendPacket(player, 20, packet)
+    }
+
+    /**
+     * 下发玩家输入锁（packet 21）。压制在客户端完成——输入本来就产生于客户端，
+     * 服务端事后纠正位置只会把玩家拽回去，那是橡皮筋不是锁
+     */
+    fun sendInputLock(player: Player, id: String, locks: Collection<String>, durationMs: Long) {
+        val packet = JsonObject()
+        packet.addProperty("id", id)
+        val array = JsonArray()
+        locks.forEach { array.add(it) }
+        packet.add("locks", array)
+        packet.addProperty("durationMs", durationMs)
+        sendPacket(player, 21, packet)
+    }
+
+    /** 解锁（packet 21）；id 为 null 时清除该玩家全部来源 */
+    fun sendInputUnlock(player: Player, id: String?) {
+        val packet = JsonObject()
+        packet.addProperty("clear", true)
+        id?.let { packet.addProperty("id", it) }
+        sendPacket(player, 21, packet)
+    }
+
 
     fun sendAnimationControl(
         player: Player,

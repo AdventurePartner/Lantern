@@ -30,6 +30,8 @@ class LanternCommand : CommandExecutor, TabCompleter {
         when (args.getOrNull(0)?.lowercase()) {
             "reload" -> {
                 Configurations.load()
+                // 重载会让客户端全清播控（entityModels 包触发 RendererHandler.reload），
+                // 服务端登记表跟着清，否则在播的实体全部卡在"演出中"
                 org.lantern.animation.AnimationOrchestrator.load(org.lantern.LanternPlugin.instance)
                 org.lantern.animation.AnimationGroupService.load(org.lantern.LanternPlugin.instance)
                 org.lantern.animation.AnimationGroupService.start(org.lantern.LanternPlugin.instance)
@@ -64,6 +66,11 @@ class LanternCommand : CommandExecutor, TabCompleter {
             "campath" -> handleCampath(sender, args)
             "costume" -> handleCostume(sender, args)
             "wardrobe" -> handleWardrobe(sender, args)
+            "bind" -> handleBind(sender, args)
+            "unbind" -> handleUnbind(sender, args)
+            "binds" -> handleBindList(sender)
+            "lock" -> handleLock(sender, args)
+            "unlock" -> handleUnlock(sender, args)
             "help" -> showHelp(sender)
             null -> showHelp(sender)
             else -> {
@@ -81,8 +88,10 @@ class LanternCommand : CommandExecutor, TabCompleter {
         args: Array<out String?>
     ): List<String> {
         return when (args.size) {
-            1 -> listOf("reload", "open", "give", "anim", "var", "cam", "campath", "costume", "wardrobe", "help")
-                .filter { it.startsWith(args[0] ?: "", ignoreCase = true) }
+            1 -> listOf(
+                "reload", "open", "give", "anim", "skill", "var", "cam", "campath", "costume", "wardrobe",
+                "bind", "unbind", "binds", "lock", "unlock", "help"
+            ).filter { it.startsWith(args[0] ?: "", ignoreCase = true) }
             2 -> when (args[0]?.lowercase()) {
                 "open" -> UiConfigurations.getScreens()
                     .mapNotNull { it.get("id")?.asString }
@@ -97,7 +106,12 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "costume" -> listOf("equip", "unequip")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
-                "wardrobe" -> Bukkit.getOnlinePlayers().map { it.name }
+                "wardrobe", "lock", "unlock" -> Bukkit.getOnlinePlayers().map { it.name }
+                    .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
+                // bind 的第一个参数是宿主 UUID：在线玩家的 UUID 是最常用的宿主
+                "bind" -> Bukkit.getOnlinePlayers().map { it.uniqueId.toString() }
+                    .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
+                "unbind" -> org.lantern.bind.BindRegistry.all().map { it.follower.toString() }
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 else -> emptyList()
             }
@@ -113,6 +127,8 @@ class LanternCommand : CommandExecutor, TabCompleter {
             }
             3 -> when (args[0]?.lowercase()) {
                 "open", "give", "costume" -> Bukkit.getOnlinePlayers().map { it.name }
+                    .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+                "lock" -> org.lantern.input.InputLockManager.ACTIONS
                     .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
                 "cam" -> when (args[1]?.lowercase()) {
                     "set" -> listOf("offset-x", "offset-y", "distance")
@@ -626,6 +642,177 @@ class LanternCommand : CommandExecutor, TabCompleter {
         sender.sendMessage("${ChatColor.DARK_AQUA}装扮")
         helpLine(sender, "lantern costume equip", "<玩家> <槽位> <装扮ID>", "装备装扮")
         helpLine(sender, "lantern costume unequip", "<玩家> [槽位]", "卸下装扮")
+        sender.sendMessage("${ChatColor.DARK_AQUA}载体与输入")
+        helpLine(sender, "lantern bind", "<宿主UUID> <载体UUID> [x y z] [rotate] [visible] [毫秒]", "把载体渲染到宿主身上")
+        helpLine(sender, "lantern unbind", "<载体UUID>", "解除载体绑定")
+        helpLine(sender, "lantern binds", "", "列出当前全部绑定")
+        helpLine(sender, "lantern lock", "<玩家> <动作,动作> <毫秒>", "压住玩家输入（move/jump/sneak/turn/attack/use）")
+        helpLine(sender, "lantern unlock", "<玩家>", "解除玩家的全部输入锁")
+    }
+
+
+    // ============ 载体绑定 ============
+
+    /**
+     * /lantern bind <宿主UUID> <载体UUID> [x y z] [rotate] [visible] [持续毫秒]
+     *
+     * 参数序是**宿主在前、载体在后**。MM 里 summon 载体后这样调：
+     *   cmd{c="lantern bind <caster.uuid> <target.uuid> 0 1.5 0 true false";delay=1} @MIR{r=25;t=载体名;limit=1;sort=NEAREST}
+     * delay 是必须的：summon 当帧实体还没落地到实体表，取不到 UUID。
+     *
+     * 不做成 MM mechanic：mechanic 的 targeter 只能表达一个目标，绑定要两个，
+     * 命令形态已经覆盖全部用法
+     */
+    private fun handleBind(sender: CommandSender, args: Array<out String?>) {
+        val hostRaw = args.getOrNull(1)
+        val followerRaw = args.getOrNull(2)
+        if (hostRaw == null || followerRaw == null) {
+            bindUsage(sender)
+            return
+        }
+        val hostUuid = parseUuid(hostRaw) ?: run {
+            sender.sendMessage("${ChatColor.RED}宿主 UUID 格式不合法: $hostRaw")
+            uuidHint(sender, hostRaw)
+            return
+        }
+        val followerUuid = parseUuid(followerRaw) ?: run {
+            sender.sendMessage("${ChatColor.RED}载体 UUID 格式不合法: $followerRaw")
+            uuidHint(sender, followerRaw)
+            return
+        }
+        val offsetX = args.getOrNull(3)?.toDoubleOrNull() ?: 0.0
+        val offsetY = args.getOrNull(4)?.toDoubleOrNull() ?: 0.0
+        val offsetZ = args.getOrNull(5)?.toDoubleOrNull() ?: 0.0
+        val rotate = args.getOrNull(6)?.toBoolean() ?: true
+        val visible = args.getOrNull(7)?.toBoolean() ?: false
+        val durationMs = args.getOrNull(8)?.toLongOrNull() ?: 0L
+
+        val failure = org.lantern.bind.BindRegistry.bind(
+            hostUuid, followerUuid, offsetX, offsetY, offsetZ, rotate, visible, durationMs
+        )
+        if (failure != null) {
+            sender.sendMessage("${ChatColor.RED}绑定失败: $failure")
+            return
+        }
+        sender.sendMessage(
+            "${ChatColor.GREEN}已绑定载体 $followerUuid -> 宿主 $hostUuid" +
+                "（偏移 $offsetX/$offsetY/$offsetZ，rotate=$rotate，visible=$visible，" +
+                "${if (durationMs > 0) "${durationMs}ms" else "持续"}）。"
+        )
+    }
+
+    private fun handleUnbind(sender: CommandSender, args: Array<out String?>) {
+        val followerRaw = args.getOrNull(1) ?: run {
+            bindUsage(sender)
+            return
+        }
+        val followerUuid = parseUuid(followerRaw) ?: run {
+            sender.sendMessage("${ChatColor.RED}载体 UUID 格式不合法: $followerRaw")
+            return
+        }
+        if (org.lantern.bind.BindRegistry.unbind(followerUuid, "command")) {
+            sender.sendMessage("${ChatColor.GREEN}已解绑载体 $followerUuid。")
+        } else {
+            sender.sendMessage("${ChatColor.RED}该载体没有绑定记录: $followerUuid")
+        }
+    }
+
+    private fun handleBindList(sender: CommandSender) {
+        val all = org.lantern.bind.BindRegistry.all()
+        if (all.isEmpty()) {
+            sender.sendMessage("${ChatColor.GRAY}当前没有任何载体绑定。")
+            return
+        }
+        helpHeader(sender, "载体绑定（${all.size}）")
+        val now = System.currentTimeMillis()
+        all.forEach { bind ->
+            val remain = if (bind.expireAtMs > 0) "${bind.expireAtMs - now}ms" else "持续"
+            sender.sendMessage(
+                "${ChatColor.DARK_GRAY}▪ ${ChatColor.DARK_AQUA}${bind.follower}" +
+                    " ${ChatColor.GRAY}-> ${ChatColor.WHITE}${bind.host}" +
+                    " ${ChatColor.GRAY}偏移 ${bind.offsetX}/${bind.offsetY}/${bind.offsetZ}" +
+                    " rotate=${bind.rotate} visible=${bind.visible} $remain"
+            )
+        }
+    }
+
+    private fun parseUuid(raw: String): java.util.UUID? =
+        runCatching { java.util.UUID.fromString(raw) }.getOrNull()
+
+    /**
+     * UUID 解析失败时的追加提示。
+     *
+     * 从 MM 的 cmd 调过来时，形如 `<target.uuid>` 的字面量意味着那一行的 targeter
+     * 没有命中实体——MM 会把整条命令按「无目标」再执行一次，占位符原样发过来。
+     * 光报「格式不合法」会让人去查 UUID 本身，实际要查的是 targeter
+     */
+    private fun uuidHint(sender: CommandSender, raw: String) {
+        if (!raw.startsWith("<") || !raw.endsWith(">")) return
+        sender.sendMessage(
+            "${ChatColor.GRAY}  这是没被替换的占位符，说明那一行的 targeter 没选中实体。" +
+                "改用 lanternbind 机制（直接拿实体，不经字符串替换），" +
+                "或用 summon 的 onsummonskill 回调把召唤出的载体设成目标。"
+        )
+    }
+
+    private fun bindUsage(sender: CommandSender) {
+        helpHeader(sender, "载体绑定")
+        helpLine(
+            sender, "lantern bind", "<宿主UUID> <载体UUID> [x y z] [rotate] [visible] [持续毫秒]",
+            "把载体渲染到宿主身上（宿主在前，载体在后）"
+        )
+        helpLine(sender, "lantern unbind", "<载体UUID>", "解除该载体的绑定")
+        helpLine(sender, "lantern binds", "", "列出当前全部绑定")
+        sender.sendMessage("${ChatColor.GRAY}  rotate=true 时 x/y/z 是宿主朝向的局部坐标（x=右 y=上 z=前）")
+        sender.sendMessage("${ChatColor.GRAY}  visible=true 时宿主脱离视野载体仍渲染；持续毫秒 0 = 直到实体消失")
+    }
+
+    // ============ 玩家输入锁 ============
+
+    /** /lantern lock <玩家> <动作,动作> <毫秒> */
+    private fun handleLock(sender: CommandSender, args: Array<out String?>) {
+        val playerName = args.getOrNull(1)
+        val actionsRaw = args.getOrNull(2)
+        val millis = args.getOrNull(3)?.toLongOrNull()
+        if (playerName == null || actionsRaw == null || millis == null) {
+            lockUsage(sender)
+            return
+        }
+        val target = Bukkit.getPlayer(playerName) ?: run {
+            sender.sendMessage("${ChatColor.RED}玩家 '$playerName' 不存在。")
+            return
+        }
+        val requested = actionsRaw.split(',')
+        val applied = org.lantern.input.InputLockManager.lock(target, "command", requested, millis)
+        if (applied.isEmpty()) {
+            sender.sendMessage(
+                "${ChatColor.RED}没有可用动作或时长非法。可用: ${org.lantern.input.InputLockManager.ACTIONS.joinToString()}"
+            )
+            return
+        }
+        sender.sendMessage("${ChatColor.GREEN}已锁定 ${target.name} 的 ${applied.joinToString()} ${millis}ms。")
+    }
+
+    private fun handleUnlock(sender: CommandSender, args: Array<out String?>) {
+        val playerName = args.getOrNull(1) ?: run {
+            lockUsage(sender)
+            return
+        }
+        val target = Bukkit.getPlayer(playerName) ?: run {
+            sender.sendMessage("${ChatColor.RED}玩家 '$playerName' 不存在。")
+            return
+        }
+        org.lantern.input.InputLockManager.clear(target)
+        sender.sendMessage("${ChatColor.GREEN}已解除 ${target.name} 的全部输入锁。")
+    }
+
+    private fun lockUsage(sender: CommandSender) {
+        helpHeader(sender, "输入锁")
+        helpLine(sender, "lantern lock", "<玩家> <动作,动作> <毫秒>", "压住玩家的指定输入")
+        helpLine(sender, "lantern unlock", "<玩家>", "解除该玩家的全部输入锁")
+        sender.sendMessage(
+            "${ChatColor.GRAY}  动作: ${org.lantern.input.InputLockManager.ACTIONS.joinToString()}"
+        )
     }
 
     private fun handleWardrobe(sender: CommandSender, args: Array<out String?>) {

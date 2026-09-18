@@ -76,6 +76,29 @@ object NetworkParser {
      */
     var playerActionHandler: ((obj: JsonObject) -> Unit)? = null
 
+    /**
+     * packetId 20 载体绑定（bind / unbind），由实现了渲染重定向的客户端平台注册。
+     *
+     * 绑定态 { follower, host, offset:[x,y,z], rotate, visible, durationMs }；
+     * 解绑只带 { follower }（无 host 字段即解绑）。
+     * 语义纯客户端渲染层：载体的服务端坐标、碰撞、移动逻辑一概不动，
+     * 只是渲染时把它画到宿主的插值位置上。
+     */
+    var entityBindHandler: ((obj: JsonObject) -> Unit)? = null
+
+    /**
+     * packetId 21 玩家输入锁，由实现了输入压制的客户端平台注册。
+     *
+     * 加锁 { id, locks:["move","jump",...], durationMs }；
+     * 解锁 { clear:true, id? }（省略 id = 清除该玩家全部锁）。
+     * 多来源按 id 分别记账、并集生效，各自到期。
+     */
+    var inputLockHandler: ((obj: JsonObject) -> Unit)? = null
+
+    /**
+     * 分发表。未匹配的 packetId 自然落空（when 语句无 else 分支）——
+     * 老客户端收到新增包号即为静默跳过，wire 兼容靠这一点维持，勿改成穷举分支
+     */
     fun parse(packetId: Int, obj: JsonObject) {
         when (packetId) {
             1 -> parseCharacters(obj)
@@ -96,6 +119,8 @@ object NetworkParser {
             17 -> parseMolangVariables(obj)
             18 -> parseCameraControl(obj)
             19 -> playerActionHandler?.invoke(obj)
+            20 -> entityBindHandler?.invoke(obj)
+            21 -> inputLockHandler?.invoke(obj)
             99 -> reloadResourcePack()
         }
     }

@@ -2,8 +2,12 @@ package org.lantern.platform
 
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.screens.ChatScreen
+import net.minecraft.world.entity.player.Input
+import net.minecraft.world.phys.Vec2
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
+import net.neoforged.neoforge.client.event.InputEvent
+import net.neoforged.neoforge.client.event.MovementInputUpdateEvent
 import net.neoforged.neoforge.client.event.ScreenEvent
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent
@@ -13,6 +17,7 @@ import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatChannelTabsRenderer
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.handler.TextureHandler
+import org.lantern.internal.mixin.accessor.ClientInputAccessor
 import org.lantern.internal.placeholder.PlaceholderStore
 import org.lantern.internal.storage.ScreenType
 import org.lantern.internal.storage.UiScreenStorage
@@ -54,6 +59,72 @@ object NeoForgeClientEvents {
             ScreenEvent.MouseButtonPressed.Pre::class.java,
             Consumer<ScreenEvent.MouseButtonPressed.Pre>(::onMousePressed)
         )
+        // 输入锁的移动/跳跃/潜行压制点。
+        // 不放在 ClientTickEvent 里：KeyboardInput.tick 每 tick 重新从按键状态
+        // 覆写 keyPresses 与 moveVector，tick 回调里写进去的值下一 tick 就被抹掉。
+        // MovementInputUpdateEvent 恰好在 input.tick() 之后、移动被消费之前触发
+        NeoForge.EVENT_BUS.addListener(
+            MovementInputUpdateEvent::class.java,
+            Consumer<MovementInputUpdateEvent>(::onMovementInput)
+        )
+        // attack / use 压制：三条路径（startAttack、continueAttack、startUseItem）
+        // 都经由这一个可取消事件，取消即等于该键没按下——挥击不发生，连招也不会起
+        NeoForge.EVENT_BUS.addListener(
+            InputEvent.InteractionKeyMappingTriggered::class.java,
+            Consumer<InputEvent.InteractionKeyMappingTriggered>(::onInteractionKey)
+        )
+    }
+
+    /**
+     * 输入锁：移动 / 跳跃 / 潜行。
+     *
+     * keyPresses 和 moveVector 必须一起清：前者决定跳跃、潜行与冲刺判定，
+     * 后者才是真正驱动位移的量（LocalPlayer.applyInput 用它算 xxa/zza）。
+     * 只清一个的话锁形同虚设
+     */
+    private fun onMovementInput(event: MovementInputUpdateEvent) {
+        val locks = org.lantern.input.InputLockStore.activeLocks()
+        if (locks.isEmpty()) return
+        val lockMove = "move" in locks
+        val lockJump = "jump" in locks
+        val lockSneak = "sneak" in locks
+        if (!lockMove && !lockJump && !lockSneak) return
+
+        val input = event.input
+        val keys = input.keyPresses
+        input.keyPresses = Input(
+            !lockMove && keys.forward(),
+            !lockMove && keys.backward(),
+            !lockMove && keys.left(),
+            !lockMove && keys.right(),
+            !lockJump && keys.jump(),
+            !lockSneak && keys.shift(),
+            keys.sprint()
+        )
+        if (lockMove) {
+            (input as ClientInputAccessor).`lantern$setMoveVector`(Vec2.ZERO)
+        }
+    }
+
+    /**
+     * 输入锁：攻击键与使用键。
+     *
+     * 取消事件只跳过攻击/使用的结算，Minecraft.startAttack 之后仍按 shouldSwingHand()
+     * 决定要不要 swing()——挥手照发的话，swinging 上升沿一到，连招照样起。
+     * 所以取消的同时必须把挥手也关掉，锁才是真的锁
+     */
+    private fun onInteractionKey(event: InputEvent.InteractionKeyMappingTriggered) {
+        val locks = org.lantern.input.InputLockStore.activeLocks()
+        if (locks.isEmpty()) return
+        if (event.isAttack && "attack" in locks) {
+            event.isCanceled = true
+            event.setSwingHand(false)
+            return
+        }
+        if (event.isUseItem && "use" in locks) {
+            event.isCanceled = true
+            event.setSwingHand(false)
+        }
     }
 
     private fun onClientTick(event: ClientTickEvent.Post) {
@@ -82,6 +153,10 @@ object NeoForgeClientEvents {
         pressedKeys.clear()
         actionPressedKeys.clear()
         org.lantern.action.PlayerActionStore.clearDash()
+        // 绑定是会话内状态，换服必须归零，否则新服的实体会带着旧绑定渲染
+        org.lantern.bind.BindStore.clear()
+        // 输入锁同理，不跨服残留
+        org.lantern.input.InputLockStore.clear()
         parsedKeys.clear()
         wasMouseDown = false
         // 相机演出状态（lock/shake/fov/offset）不跨服残留
@@ -90,11 +165,13 @@ object NeoForgeClientEvents {
 
     private fun onEntityLeaveLevel(event: EntityLeaveLevelEvent) {
         if (event.level.isClientSide) {
+            }
             CostumeHandler.removePlayer(event.entity.uuid)
             // 淘汰 Lantern 实体模型的 per-UUID 状态，防止长期游玩内存无上限增长；
             // 渲染器懒重建，实体换维度重新进入视距时会自动恢复
             RendererHandler.evict(event.entity.uuid)
             AnimationHost.remove(event.entity.uuid)
+            org.lantern.bind.BindStore.remove(event.entity.uuid)
             AnimationControlStore.stop(event.entity.uuid, null)
             org.lantern.animation.MolangVariableStore.remove(event.entity.uuid)
         }

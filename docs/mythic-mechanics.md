@@ -1,13 +1,13 @@
 # Lantern MythicMobs 机制指南
 
-> Lantern 向 MythicMobs 注册的三个自定义机制：`lanternanim`（动画播控）、`lanternvar`（molang 变量）、`lanterncam`（相机演出）。
+> Lantern 向 MythicMobs 注册的五个自定义机制：`lanternanim`（动画播控）、`lanternvar`（molang 变量）、`lanterncam`（相机演出）、`lanternlock`（输入锁）、`lanternbind`（载体绑定）。
 > 前置：服务端安装 MythicMobs 5.x（softdepend，未安装时插件正常加载、机制不可用）。启动日志出现
-> `MythicMobs integration enabled (mechanics: lanternanim / lanim, lanternvar / lvar, lanterncam)` 即注册成功。
+> `MythicMobs integration enabled (mechanics: lanternanim / lanim, lanternvar / lvar, lanterncam, lanternlock / llock, lanternbind / lbind)` 即注册成功。
 
 通用约定：
 
-- 三个机制都是**目标实体机制**（ITargetedEntitySkill），目标由 MythicMobs targeter 决定——`@Self`、`@Trigger`、`@PlayersInRadius{r=10}`、`@NearestPlayer{r=20}` 等全部可用；
-- `lanternanim`/`lanternvar` 作用于**任意 LivingEntity**；`lanterncam` 仅对**玩家**生效（非玩家目标自动跳过该目标）；
+- 五个机制都是**目标实体机制**（ITargetedEntitySkill），目标由 MythicMobs targeter 决定——`@Self`、`@Trigger`、`@PlayersInRadius{r=10}`、`@NearestPlayer{r=20}` 等全部可用；
+- `lanternanim`/`lanternvar`/`lanternbind` 作用于**任意实体**；`lanterncam`/`lanternlock` 仅对**玩家**生效（非玩家目标自动跳过该目标）；
 - 技能可能在异步线程执行，机制内部已调度回主线程；
 - 参数写法 `参数=值`，别名见各表；未写的参数用默认值。
 
@@ -154,6 +154,68 @@ skills:
 
 ---
 
+## 3.5 lanternlock（输入锁，别名 llock）
+
+一段时间内压住目标玩家的输入。受击硬直、施法前摇、演出期间不许乱跑，都用它。
+
+```yaml
+skills:
+  - lanternlock{actions=move,jump;time=2000} @Self
+  - lanternlock{actions=move;time=3500} @PlayersInRadius{r=16}
+```
+
+| 参数 | 别名 | 默认 | 说明 |
+|---|---|---|---|
+| `actions` | `a` | move | 逗号组合：`move` / `jump` / `sneak` / `turn` / `attack` / `use` |
+| `time` | `t` | 1000 | 毫秒。经验值 = 动画时长 + 一点余量 |
+
+压制发生在客户端（输入本来就产生于客户端），不是服务端把人拽回来，所以没有橡皮筋。
+多个来源按并集生效、各自到期——受击硬直不会被同时存在的施法前摇提前解掉。
+
+典型的受击硬直是三层叠加：受击动画 + 输入锁 + 防重复施放条件。
+
+```yaml
+重击:
+  skills:
+    - lanternanim{a=重击;m=once;t=2} @Self
+    - lanternlock{actions=move,turn;time=1200} @Self
+    - damage{a=20} @PlayersInRadius{r=4}
+```
+
+完整说明见[载体绑定与输入锁](bind-and-input-lock.md)。
+
+---
+
+## 3.6 lanternbind（载体绑定，别名 lbind）
+
+把一只实体渲染到另一只实体身上。绑定只改渲染，载体的服务端坐标、碰撞、AI 都不动。
+
+```yaml
+挂个杯子:
+  Skills:
+  - summon{type=杯子载体;amount=1;r=0;onsummonskill=杯子绑定} @Self
+
+杯子绑定:
+  Skills:
+  - lanternbind{as=host;offset=0.4,1.3,0.2;rotate=true;duration=0}
+```
+
+| 参数 | 别名 | 默认 | 说明 |
+|---|---|---|---|
+| `as` | `role` | follower | `follower` = caster 是载体、target 是宿主；`host` = 反过来 |
+| `offset` | `o` | 0,0,0 | `rotate=true` 时是宿主朝向的局部坐标（x=右 y=上 z=前） |
+| `rotate` | `r` | true | 载体整体 yaw 跟随宿主 |
+| `visible` | `v` | false | 宿主脱离视野时载体仍渲染 |
+| `duration` | `d` | 0 | 毫秒，0 = 直到宿主或载体消失 |
+
+用 `summon` 的 `onsummonskill` 回调而不是 `cmd` + `<target.uuid>`：回调把刚召唤出来的
+实体直接设成技能目标，不经字符串替换，也不需要 `delay` 等实体落地。占位符那条路
+在 targeter 落空时会把字面量原样发出去，绑定静默失效。
+
+完整说明见[载体绑定与输入锁](bind-and-input-lock.md)。
+
+---
+
 ## 4. 机制 vs 动作轨道，怎么选
 
 | 场景 | 推荐 |
@@ -167,4 +229,6 @@ skills:
 - 启动日志无 `MythicMobs integration enabled` → MM 未装或加载顺序问题（装了 MM 后首次启动需再重启一次）；
 - `lanternanim` 无反应 → 实体自定义名与 entityModels.yml `name` 不一致（去色后必须完全相同）；
 - `lanterncam{a=path}` 无反应 → 存档不存在或关键帧不足 2 个，看服务端日志 warning；
+- `lanternlock` 无反应 → 目标不是玩家，或客户端 mod 版本过旧（老客户端会跳过未知包号）；
+- `lantern bind` 报实体不存在 → summon 后没给 `delay`，召唤当帧实体还没落进实体表；
 - 表达式不生效 → 变量名区分大小写；表达式在客户端求值，确认客户端 mod 已更新到对应版本。
