@@ -32,7 +32,7 @@ class StateConfig(
  * 特殊状态 head：配了就常驻在叠加层（ADDING），用于「头随视角」。
  * 该动画应当只控 head 骨、用 molang 取视角角度，例如动画 json 里写
  * "head": { "rotation": ["query.pitch", "query.yaw", 0] }，
- * 配置侧则是 head: {animation: 头颅, mode: loop}。
+ * 配置侧则在 states 的 head 下配 animation 与 mode 两字段。
  * 用叠加而非覆盖，走路时资产自带的头部摆动才不会被抹掉。
  *
  * 旧字段访问（idle/walk/attack/hurt/death）保留为派生属性，
@@ -83,7 +83,7 @@ class AnimationStateMapping(
          * 解析 packet 2 下发的 states JSON 对象为状态表。
          *
          * 值两种形态：string（纯动画名，播放语义 LOOP/5tick——五个旧 key 的下发格式）
-         * 或 object {animation, mode: loop|once|hold, transition}（新状态的完整语义，
+         * 或 object（animation、mode（loop|once|hold）、transition 三字段，新状态的完整语义，
          * 由服务端解析 yml 时按默认语义表展开，客户端不做二次默认）。
          * null 整体缺省时等价 default()
          */

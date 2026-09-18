@@ -14,7 +14,7 @@ class CostumeCache(section: ConfigurationSection) {
     /**
      * 状态表（双形态，客户端 AnimationStateMapping.fromStatesJson 对应解析）：
      * string = 纯动画名（LOOP/5tick，旧格式）；
-     * object = {animation, mode: loop|once|hold, transition}——玩家动作的
+     * object = animation + mode（loop/once/hold）+ transition 三字段——玩家动作的
      * 一次性（jump）与持有（sneak）语义需要 mode，随 P1 玩家宿主化引入
      */
     /**

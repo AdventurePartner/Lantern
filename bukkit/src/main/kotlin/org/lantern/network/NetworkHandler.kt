@@ -186,7 +186,7 @@ object NetworkHandler {
                         val animationsObj = JsonObject()
                         animationsObj.addProperty("file", animationsSection.getString("file"))
 
-                        // 解析 states：任意状态 key，值支持动画名简写或 {animation,mode,transition} 展开
+                        // 解析 states：任意状态 key，值支持动画名简写或展开（animation/mode/transition 三字段）
                         if (animationsSection.contains("states")) {
                             val statesSection = animationsSection.getConfigurationSection("states")
                             if (statesSection != null) {
@@ -1096,7 +1096,7 @@ object NetworkHandler {
     /**
      * states 配置节 -> 下发 JSON。值两种写法：
      * 简写 `sprint: run`（按默认语义表展开为完整 object）
-     * 展开 `jump: {animation: jump, mode: once, transition: 3}`
+     * 展开：jump 下配 animation/mode/transition 三个字段
      * 例外：旧五 key 的简写保持 string 下发，协议对旧客户端不变
      */
     private fun buildStatesJson(statesSection: org.bukkit.configuration.ConfigurationSection): JsonObject {

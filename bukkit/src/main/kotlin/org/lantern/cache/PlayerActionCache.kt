@@ -40,9 +40,15 @@ import org.bukkit.configuration.ConfigurationSection
  *     file: "animations/player/player_default.animation.json"
  *     layer: combat
  *     steps:
- *       - {animation: "左砍",   cancel-at: 0.7, window: 700}
- *       - {animation: "右砍",   cancel-at: 0.7, window: 700}
- *       - {animation: "蓄力砍", cancel-at: 0.9, window: 800}
+ *       - animation: "左砍"
+ *         cancel-at: 0.7
+ *         window: 700
+ *       - animation: "右砍"
+ *         cancel-at: 0.7
+ *         window: 700
+ *       - animation: "蓄力砍"
+ *         cancel-at: 0.9
+ *         window: 800
  *
  * 动画文件路径相对客户端资源包的 assets/lantern/，且只能用 a-z 0-9 _ . - /
  * （资源路径规则），动画名是 json 内部的键、不受此限制。

@@ -32,9 +32,16 @@ import org.lantern.network.NetworkHandler
  *   player_default:              # 外观条目名
  *     左砍:                       # 该外观动画库里的动画名
  *       actions:
- *         - {at: 5,  sound: {s: minecraft:entity.player.attack.sweep}}
- *         - {at: 8,  mm-skill: SwordDamage}
- *         - {at: 10, camera: {action: shake, amplitude: 0.3, radius: 16}}
+ *         - at: 5
+ *           sound:
+ *             s: minecraft:entity.player.attack.sweep
+ *         - at: 8
+ *           mm-skill: SwordDamage
+ *         - at: 10
+ *           camera:
+ *             action: shake
+ *             amplitude: 0.3
+ *             radius: 16
  *       next: 右砍                # 播完自动接续（可选）
  *
  * at 是动画起播后的 tick 偏移。动作在服务端调度执行，因此伤害判定、命令、
@@ -45,7 +52,7 @@ object AnimationOrchestrator {
     data class SoundSpec(val sound: String, val volume: Float, val pitch: Float)
 
     /**
-     * 相机演出节点：`{at: 40, camera: {action: shake, amplitude: 0.4, radius: 16}}`。
+     * 相机演出节点：track action 下配 `at` 与 `camera`（camera 内含 action/amplitude/radius 等字段）。
      * 除 radius/action 外的字段直通 packet 18（如 smooth/duration/sync/value/transition/
      * pitch/yaw/roll/x/y/z/entity）；action=path 时用 id 引用 cameraPaths 存档。
      * 对被编排实体 radius 半径内的同世界玩家广播。
@@ -440,7 +447,7 @@ object AnimationOrchestrator {
     }
 
     /** 实体对应模型某状态的播放条目（无模型或未配置该状态返回 null），供事件驱动播放。
-     *  兼容简写 `heal: anim` 与展开 `heal: {animation: anim, transition: N}` 两种 yml 写法 */
+     *  兼容简写 `heal: anim` 与展开（heal 下配 animation 与 transition）两种 yml 写法 */
     fun stateEntryOf(entity: Entity, state: String): StateEntry? {
         val key = resolveModelKey(entity) ?: return null
         val path = "$key.animations.states.$state"
