@@ -61,6 +61,7 @@ class LanternPlugin : AyPlugin() {
 
     override fun onDisable() {
         PlaceholderService.stopAll()
+        org.lantern.animation.AnimationOrchestrator.shutdown()
         org.lantern.animation.AnimationGroupService.stop()
         org.lantern.bind.BindRegistry.reset()
         org.lantern.input.InputLockManager.reset()

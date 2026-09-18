@@ -26,9 +26,14 @@ import org.lantern.network.NetworkHandler
  *   lanternanim{anim=roar;seek=1.5} @Self                      时间轴跳到 1.5 秒
  *   lanternanim{anim=slash;layer=combat} @Self                 上身层播放（腿保持移动）
  *   lanternanim{anim=roll;speed=-1} @Self                      倒放
+ *   lanternanim{anim=神剑极阵;m=once;file=animations/player/sword_immortal.animation.json} @Self
+ *                                                              指定剪辑所在的动画库
  *
  * layer 取值：motion（缺省，全身层，压住行走）/ combat（上身层，可边跑边放）。
  * speed 支持负值即倒放；绝对值过小（<0.01）视为无效并回退 1.0。
+ * file：剪辑所在动画库（相对客户端 assets/lantern/）。技能动画务必配它——
+ *       不配就从目标**当前外观**绑定的库里找，外观随主手物品切换，
+ *       换个物品技能就空放。exit：播完清层的退出过渡 tick，缺省同起手过渡。
  *
  * 目标可以是实体，也可以是玩家：
  *   实体 —— 自定义名须等于 entityModels.yml 的 key；
@@ -66,22 +71,29 @@ class LanternAnimMechanic(
     private val layer: String? = lineConfig.getString(arrayOf("layer", "l"))
     private val seek: Float? = lineConfig.getString(arrayOf("seek", "sk"))?.toFloatOrNull()
     private val pause: Boolean? = lineConfig.getString(arrayOf("pause", "p"))?.toBooleanStrictOrNull()
+    /** 剪辑所在动画库；技能动画与外观解耦的关键字段 */
+    private val libraryFile: String? = lineConfig.getString(arrayOf("file", "lib"))?.takeIf { it.isNotBlank() }
+    /** 播完清层的退出过渡 tick；缺省沿用起手过渡 */
+    private val exitTicks: Int? = lineConfig.getString(arrayOf("exit", "x"))?.toIntOrNull()?.coerceAtLeast(0)
 
     override fun castAtEntity(data: SkillMetadata, target: AbstractEntity): SkillResult {
         val anim = animation ?: return SkillResult.INVALID_CONFIG
         val entity = target.bukkitEntity ?: return SkillResult.INVALID_TARGET
-        // MM 技能可能在异步线程执行，发包统一调度回主线程。
+        // MM 技能可能在异步线程执行，发包统一调度回主线程；已经在主线程就直接执行——
+        // 无条件 runTask 会推后一 tick，恰好让每秒一次的换组巡检抢在播控前面跑。
         // 动作优先级：remove=停止 > seek > pause > 播放
-        Bukkit.getScheduler().runTask(LanternPlugin.instance, Runnable {
+        MythicIntegration.onMainThread {
             when {
                 remove -> NetworkHandler.stopAnimation(entity, anim, transition)
                 seek != null -> NetworkHandler.seekAnimation(entity, anim, seek)
                 pause != null ->
                     if (pause) NetworkHandler.pauseAnimation(entity, anim)
                     else NetworkHandler.resumeAnimation(entity, anim)
-                else -> NetworkHandler.playAnimation(entity, anim, transition, loop, speed, layer = layer)
+                else -> NetworkHandler.playAnimation(
+                    entity, anim, transition, loop, speed, layer = layer, file = libraryFile, exitTicks = exitTicks
+                )
             }
-        })
+        }
         return SkillResult.SUCCESS
     }
 }

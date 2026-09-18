@@ -54,6 +54,7 @@ class PlayerListener : Listener {
         org.lantern.camera.CameraPathService.removePlayer(uuid)
         org.lantern.animation.AnimationGroupService.forget(uuid)
         org.lantern.animation.AnimationOrchestrator.clearSuppression(uuid)
+        org.lantern.animation.AnimationOrchestrator.forget(uuid)
         // 绑定的已同步集合摘掉该观察者：重新进服时会重新收到现存绑定
         org.lantern.bind.BindRegistry.forgetViewer(uuid)
         // 输入锁是会话内状态，不跨登录保留

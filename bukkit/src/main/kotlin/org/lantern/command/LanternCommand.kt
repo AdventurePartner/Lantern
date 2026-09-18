@@ -32,6 +32,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 Configurations.load()
                 // 重载会让客户端全清播控（entityModels 包触发 RendererHandler.reload），
                 // 服务端登记表跟着清，否则在播的实体全部卡在"演出中"
+                org.lantern.animation.AnimationOrchestrator.reset()
                 org.lantern.animation.AnimationOrchestrator.load(org.lantern.LanternPlugin.instance)
                 org.lantern.animation.AnimationGroupService.load(org.lantern.LanternPlugin.instance)
                 org.lantern.animation.AnimationGroupService.start(org.lantern.LanternPlugin.instance)
@@ -61,6 +62,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
             }
             "give" -> handleGive(sender, args)
             "anim" -> handleAnim(sender, args)
+            "skill" -> handleSkill(sender, args)
             "var" -> handleVar(sender, args)
             "cam" -> handleCam(sender, args)
             "campath" -> handleCampath(sender, args)
@@ -635,6 +637,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
         sender.sendMessage("${ChatColor.DARK_AQUA}动画")
         helpLine(sender, "lantern anim play", "<动画名> [过渡tick] [loop|once] [速度]", "播放动画")
         helpLine(sender, "lantern anim stop", "<动画名> [过渡tick]", "停止动画")
+        helpLine(sender, "lantern skill", "<玩家> <技能名>", "对玩家施放 MythicMobs 技能")
         helpLine(sender, "lantern var", "<键名> <值|del>", "设置/删除 molang 变量")
         sender.sendMessage("${ChatColor.DARK_AQUA}相机")
         helpLine(sender, "lantern cam", "", "越肩与演出指令（回车查看全部子命令）")
@@ -650,6 +653,41 @@ class LanternCommand : CommandExecutor, TabCompleter {
         helpLine(sender, "lantern unlock", "<玩家>", "解除玩家的全部输入锁")
     }
 
+    // ============ MM 技能施放 ============
+
+    /**
+     * /lantern skill <玩家> <技能名>
+     *
+     * 对玩家施放 MythicMobs 技能（caster = 该玩家）。这是按键放技能的服务端入口：
+     * keys.yml 按键 -> console 命令 -> 本命令，对应灾厄外部按键插件的触发模式。
+     * MM 5 免费版没有物品 Skills 手持触发（items 的 Skills 字段不被读取），
+     * 技能触发不要往物品上挂
+     */
+    private fun handleSkill(sender: CommandSender, args: Array<out String?>) {
+        val playerRaw = args.getOrNull(1)
+        val skill = args.getOrNull(2)
+        if (playerRaw == null || skill == null) {
+            helpLine(sender, "lantern skill", "<玩家> <技能名>", "对玩家施放 MythicMobs 技能")
+            return
+        }
+        val player = Bukkit.getPlayerExact(playerRaw) ?: run {
+            sender.sendMessage("${ChatColor.RED}玩家不在线: $playerRaw")
+            return
+        }
+        val result = runCatching {
+            io.lumine.mythic.bukkit.MythicBukkit.inst().apiHelper.castSkill(player, skill)
+        }
+        val failure = result.exceptionOrNull()
+        if (failure != null) {
+            org.lantern.LanternPlugin.instance.logger.warning("skill '$skill' failed: ${failure.message}")
+            sender.sendMessage("${ChatColor.RED}技能 '$skill' 施放异常（技能不存在或 MM 未加载）。")
+        } else if (result.getOrNull() == true) {
+            sender.sendMessage("${ChatColor.GREEN}已对 ${player.name} 施放技能 '$skill'。")
+        } else {
+            // castSkill 返回 false 是条件不通过（冷却中、aura 未消），不是配置错
+            sender.sendMessage("${ChatColor.GRAY}技能 '$skill' 条件未满足，未施放。")
+        }
+    }
 
     // ============ 载体绑定 ============
 

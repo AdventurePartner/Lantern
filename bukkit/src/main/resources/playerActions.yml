@@ -31,6 +31,12 @@
 #                   闪避靠它才名副其实；虚空与 /kill 不在免疫范围
 #   airborne        是否允许空中触发（跳跃中翻滚）
 #   require-ground  是否必须站在地面
+#   server-checked  服务端把关开关，缺省 false。
+#                   false = 按键即播，零往返延迟（默认，也是这套系统的立身之本）；
+#                   true  = 客户端不本地播放，改上报请求，服务端抛
+#                           LanternPlayerActionRequestEvent 供附属扣能量/耐力、
+#                           查冷却后决定放不放；没装附属时服务端照常播出。
+#                   代价是多一个来回的出招延迟，只给确实需要资源结算的招式开
 #   directions      方向 -> 动画名。方向取自玩家的移动按键组合：
 #                     forward / backward / left / right
 #                     forward_left / forward_right / backward_left / backward_right
@@ -55,6 +61,8 @@
 #   exclusive: true
 #   airborne: true
 #   require-ground: false
+  # 翻滚不扣资源，保持本地零延迟触发。要接耐力系统时把下一行取消注释
+#   server-checked: false
 #   directions:
 #     forward: "前翻滚"
 #     backward: "后翻滚"

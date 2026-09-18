@@ -39,7 +39,9 @@ class LanternNeoForge(modBus: IEventBus) {
 
         NeoForgePacketNetwork.register(modBus)
         NeoForgeClientEvents.register()
-        NetworkParser.animationControlHandler = AnimationControlHandler::handle
+        NetworkParser.animationControlHandler = { uuid, action, animation, transition, loop, speed, seek, uninterruptible, toCombat, library, seq, exit ->
+            AnimationControlHandler.handle(uuid, action, animation, transition, loop, speed, seek, uninterruptible, toCombat, library, seq, exit)
+        }
         NetworkParser.animationEventSender = { uuid, animation, event ->
             NeoForgePacketNetwork.sendAnimationEvent(uuid, animation, event)
         }

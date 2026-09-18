@@ -36,9 +36,12 @@ object NetworkParser {
      * toCombatLayer 由 layer 字段决定：combat = 上身出招层（腿保持移动状态），
      * 缺省 motion = 全身运动层（压住行走）。
      * 目标可以是实体（entityModels 条目）或玩家（host-driven 外观）。
+     * library：可选，剪辑所在动画库（file 字段）；null = 用目标当前绑定的库。
+     * seq：服务端实例序号（-1 = 无），finish 回带用于按实例匹配。
+     * exitTicks：播完清层的退出过渡 tick（-1 = 沿用起手过渡）。
      * 未注册的平台忽略该包。
      */
-    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float, uninterruptible: Boolean, toCombatLayer: Boolean) -> Unit)? =
+    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float, uninterruptible: Boolean, toCombatLayer: Boolean, library: ResourceLocation?, seq: Long, exitTicks: Int) -> Unit)? =
         null
 
     /**
@@ -501,8 +504,19 @@ object NetworkParser {
         val uninterruptible = obj.get("uninterruptible")?.asBoolean ?: false
         // 归层：combat = 上身出招层（腿继续走），缺省 motion = 全身
         val toCombatLayer = obj.get("layer")?.asString.equals("combat", ignoreCase = true)
+        // 指令自带动画库：技能剪辑不再绑死在目标当前的外观库上
+        // 共享源码要同时编给 1.20.1，不能用 ResourceLocation.parse；带命名空间的自己切
+        val library = obj.get("file")?.asString?.takeIf { it.isNotBlank() }?.let { path ->
+            runCatching {
+                val colon = path.indexOf(':')
+                if (colon > 0) IdentifierBridge.of(path.substring(0, colon), path.substring(colon + 1))
+                else IdentifierBridge.of(Lantern.MOD_ID, path)
+            }.getOrNull()
+        }
+        val seq = obj.get("seq")?.asLong ?: -1L
+        val exitTicks = obj.get("exit")?.asInt ?: -1
         if (action == "seek" && seekSeconds < 0f) return
-        handler(uuid, action, animation, transition, loop, speed, seekSeconds, uninterruptible, toCombatLayer)
+        handler(uuid, action, animation, transition, loop, speed, seekSeconds, uninterruptible, toCombatLayer, library, seq, exitTicks)
     }
 
     private fun reloadResourcePack() {

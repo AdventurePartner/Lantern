@@ -118,6 +118,16 @@ class PlayerActionCache(section: ConfigurationSection) {
         } ?: emptyMap()
 
     /**
+     * 服务端把关开关。
+     *
+     * false（缺省）= 客户端按键即播，零往返延迟，服务端只下发定义；
+     * true = 客户端不本地播放，改上报请求，服务端抛
+     * LanternPlayerActionRequestEvent 供附属（能量/耐力/冷却）决定放不放，
+     * 没有附属时服务端照常播出。代价是多一个 RTT 的出招延迟
+     */
+    val serverChecked: Boolean = section.getBoolean("server-checked", false)
+
+    /**
      * 触发源：key（按键，缺省）或 attack（原版挥击边沿，用于连招）。
      * 连招走挥击边沿而不是自定按键，是为了继承原版的攻击冷却与命中判定
      */

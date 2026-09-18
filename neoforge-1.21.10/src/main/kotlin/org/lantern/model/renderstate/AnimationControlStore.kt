@@ -32,11 +32,25 @@ object AnimationControlStore {
          * 归层：true = 上身出招层（腿保持行走，可边跑边放），false = 全身运动层。
          * 服务端技能默认全身——压住移动是技能演出的常态；只控上身的技能显式指定
          */
-        val toCombatLayer: Boolean = false
+        val toCombatLayer: Boolean = false,
+        /**
+         * 剪辑所在的动画库；null = 用目标当前外观/模型绑定的库。
+         *
+         * 技能动画绑死在外观库上是「换个物品技能就空放」的根源：外观随主手物品切换，
+         * 库一换剪辑就没了。指令自带库之后，技能剪辑与外观彻底解耦——
+         * 与本地动作（playerActions 的 file 字段）同一套思路
+         */
+        val library: net.minecraft.resources.ResourceLocation? = null,
+        /** 服务端实例序号，finish 回带它让服务端按实例而不是按名匹配；-1 = 老协议无序号 */
+        val seq: Long = -1L,
+        /** 播完清层时的退出过渡秒数（服务端指令给定，不再借用上一个本地动作的收尾时长） */
+        val exitSeconds: Float = 0.05f
     )
 
     private val forced = ConcurrentHashMap<UUID, ForcedAnimation>()
     private val paused = ConcurrentHashMap.newKeySet<UUID>()
+    /** 暂停时刻（墙钟毫秒），恢复时把停掉的时长补回 once 到期戳 */
+    private val pausedAtMs = ConcurrentHashMap<UUID, Long>()
     private val pendingSeek = ConcurrentHashMap<UUID, Float>()
 
     fun play(
@@ -47,7 +61,10 @@ object AnimationControlStore {
         speed: Float,
         expiresAtMs: Long,
         uninterruptible: Boolean = false,
-        toCombatLayer: Boolean = false
+        toCombatLayer: Boolean = false,
+        library: net.minecraft.resources.ResourceLocation? = null,
+        seq: Long = -1L,
+        exitSeconds: Float = 0.05f
     ) {
         // 霸体拦截：正在播放的 uninterruptible 动画不被新 play 顶替（同名重播仍放行，
         // 供服务端刷新 once 到期戳）；显式 stop 不在此路径，始终可停
@@ -57,9 +74,10 @@ object AnimationControlStore {
         }
         forced[uuid] = ForcedAnimation(
             idCounter.incrementAndGet(), animation, transition, loop, speed,
-            expiresAtMs, uninterruptible, toCombatLayer
+            expiresAtMs, uninterruptible, toCombatLayer, library, seq, exitSeconds
         )
         paused.remove(uuid)
+        pausedAtMs.remove(uuid)
         pendingSeek.remove(uuid)
     }
 
@@ -67,12 +85,14 @@ object AnimationControlStore {
     fun stop(uuid: UUID, animation: String?): Boolean {
         if (animation == null) {
             paused.remove(uuid)
+            pausedAtMs.remove(uuid)
             pendingSeek.remove(uuid)
             return forced.remove(uuid) != null
         }
         val entry = forced[uuid] ?: return false
         if (entry.animation != animation || !forced.remove(uuid, entry)) return false
         paused.remove(uuid)
+        pausedAtMs.remove(uuid)
         pendingSeek.remove(uuid)
         return true
     }
@@ -81,11 +101,22 @@ object AnimationControlStore {
 
     /** 暂停当前播控动画（冻结时间轴与 once 到期）；无播控记录时忽略 */
     fun pause(uuid: UUID) {
-        if (forced.containsKey(uuid)) paused.add(uuid)
+        if (forced.containsKey(uuid) && paused.add(uuid)) {
+            pausedAtMs[uuid] = System.currentTimeMillis()
+        }
     }
 
+    /**
+     * 恢复。once 的到期戳是墙钟，暂停期间照走——不补回停掉的时长，
+     * 暂停超过剩余时长再恢复会在当帧直接到期，动画从暂停点凭空消失
+     */
     fun resume(uuid: UUID) {
-        paused.remove(uuid)
+        if (!paused.remove(uuid)) return
+        val pausedAt = pausedAtMs.remove(uuid) ?: return
+        val entry = forced[uuid] ?: return
+        if (entry.expiresAtMs <= 0L) return
+        val shifted = entry.copy(expiresAtMs = entry.expiresAtMs + (System.currentTimeMillis() - pausedAt))
+        forced.replace(uuid, entry, shifted)
     }
 
     fun isPaused(uuid: UUID): Boolean = paused.contains(uuid)
@@ -101,6 +132,7 @@ object AnimationControlStore {
     fun reset() {
         forced.clear()
         paused.clear()
+        pausedAtMs.clear()
         pendingSeek.clear()
     }
 }

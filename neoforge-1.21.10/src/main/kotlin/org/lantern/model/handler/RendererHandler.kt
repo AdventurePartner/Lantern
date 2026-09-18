@@ -28,6 +28,7 @@ object RendererHandler {
         wrappers.clear()
         renderers.clear()
         AnimationControlStore.reset()
+        AnimationControlHandler.resetDiagnostics()
         AnimationRepository.reset()
         org.lantern.animation.AnimationHost.reset()
         version++

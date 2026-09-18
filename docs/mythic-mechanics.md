@@ -31,6 +31,12 @@ skills:
 | `mode` | `m` | loop | `loop` 循环直到停止；`once` 播一次自动回落并上报 finish |
 | `speed` | `sp` | 1.0 | 播放速度倍率（>0.01） |
 | `remove` | `r` | false | true = 停止该动画（stop 语义），此时 anim 为要停止的动画名 |
+| `file` | `lib` | （空） | 剪辑所在的动画库，相对客户端 `assets/lantern/`。**给玩家放技能动画必须配**——不配就从玩家**当前外观**的库里找，外观随主手物品切换，换个物品技能就空放 |
+| `exit` | `x` | 同 `time` | 播完清层的退出过渡 tick |
+
+```yaml
+- lanternanim{anim=剑仙神剑极阵;m=once;t=3;file=animations/player/sword_immortal.animation.json} @self
+```
 
 行为要点：
 

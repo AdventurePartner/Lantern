@@ -192,6 +192,22 @@ file: "animations/player/roll.animation.json"
 
 ---
 
+## 技能动画不要绑在外观库上
+
+`animationGroups.yml` 会按手里的物品换外观，外观一换动画库就换了。技能动画如果只放在某套外观的库里，玩家切个物品再放技能，客户端就找不到这段——技能空放，日志里是：
+
+```
+[Lantern] 动画 '剑仙神剑极阵' 不在动画库 lantern:animations/player/player_default.animation.json 里，播控被丢弃
+```
+
+给 `lanternanim` 配 `file=` 指向剪辑所在的库，技能就和外观彻底脱钩：
+
+```yml
+- lanternanim{anim=剑仙神剑极阵;m=once;t=3;file=animations/player/sword_immortal.animation.json} @self
+```
+
+---
+
 ## 伤害帧与特效帧
 
 动作播出来了，但伤害、音效、粒子要自己挂，写在 `animations.yml`：
@@ -296,8 +312,21 @@ player_default:
 
 ---
 
+## 交给服务端把关
+
+默认按键即播、不等服务器，这是手感的根基。需要扣蓝扣耐力的招式给它加一行：
+
+```yml
+  server-checked: true
+```
+
+之后按键改为上报给服务端，服务端抛 `LanternPlayerActionRequestEvent` 让附属决定放不放，没装附属也照常播出。代价是多一个来回的延迟，翻滚闪避这类吃手感的动作不要开。详见[载体绑定与输入锁](bind-and-input-lock.md)。
+
+---
+
 ## 相关文档
 
 - [玩家外观](player-costumes.md) —— 外观条目怎么写
+- [载体绑定与输入锁](bind-and-input-lock.md) —— 挂件跟随、硬直、服务端把关
 - [按键绑定](keys.md) —— 触发键的写法
 - [MythicMobs 联动](mythic-mechanics.md) —— 伤害帧里调用技能

@@ -114,7 +114,12 @@ object AnimationGroupService {
             )
         }
         rules = parsed.sortedByDescending { it.priority }
+        // 用现有分配预填当前组，而不是清空：清空会让下一轮把全员外观重发一遍
+        // （N×N 广播），还会把衣橱手选的外观按规则结果覆盖回去
         current.clear()
+        Bukkit.getOnlinePlayers().forEach { player ->
+            CostumeAssignmentHandler.get(player.uniqueId)?.get("full_body")?.let { current[player.uniqueId] = it }
+        }
 
         // 加载期校验：规则指向不存在的外观是最常见的配置错误。运行期静默跳过
         // 会让人完全无从排查（改了配置、重载了、就是不生效），必须在这里点名
@@ -156,6 +161,10 @@ object AnimationGroupService {
                 ?: return@forEach
             if (current[player.uniqueId] == target) return@forEach
             if (CacheHandler.costumes[target] == null) return@forEach
+            // 演出窗口内推迟换组：换组即换动画库，正在播的技能动作会因为剪辑
+            // 查不到而当场断掉（玩家模型从隐藏状态弹回来就是这么来的）。
+            // 这里只是不下发，下一轮条件不变时照样会切过去，不会丢
+            if (isBusy(player)) return@forEach
 
             current[player.uniqueId] = target
             CostumeAssignmentHandler.assign(player.uniqueId, "full_body", target)
@@ -163,4 +172,15 @@ object AnimationGroupService {
             NetworkHandler.sendCostumeAssignmentToAll(player.uniqueId, target)
         }
     }
+
+    /**
+     * 玩家此刻是否在技能演出中。
+     *
+     * 两个判据各管一段：播控动画在放是「客户端正依赖当前动画库」的直接证据；
+     * 输入锁还在是「这段演出没结束」的时间证据（技能通常锁住整段时长）。
+     * 任一成立就等下一轮
+     */
+    private fun isBusy(player: Player): Boolean =
+        AnimationOrchestrator.isAnimating(player.uniqueId) ||
+            org.lantern.input.InputLockManager.activeLocks(player.uniqueId).isNotEmpty()
 }

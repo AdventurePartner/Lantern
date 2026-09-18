@@ -134,6 +134,8 @@ object NeoForgeClientEvents {
             wasMouseDown = false
             return
         }
+        // 播控重试：实体或自定义名还没同步的指令按 tick 重试几次再放弃
+        org.lantern.model.handler.AnimationControlHandler.tick()
         handleKeyboardInput(client)
         handlePlayerActions(client)
         // 翻滚等动作的位移逐 tick 驱动，与动画同步收尾
@@ -153,6 +155,7 @@ object NeoForgeClientEvents {
         pressedKeys.clear()
         actionPressedKeys.clear()
         org.lantern.action.PlayerActionStore.clearDash()
+        org.lantern.model.handler.AnimationControlHandler.clearPending()
         // 绑定是会话内状态，换服必须归零，否则新服的实体会带着旧绑定渲染
         org.lantern.bind.BindStore.clear()
         // 输入锁同理，不跨服残留

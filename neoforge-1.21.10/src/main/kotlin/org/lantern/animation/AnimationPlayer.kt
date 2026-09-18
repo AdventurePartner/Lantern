@@ -272,9 +272,30 @@ class AnimationPlayer(private val uuid: UUID) {
     private var evalQueries: Reference2DoubleOpenHashMap<Variable>? = null
     private val animTimeVariable = MathParser.getVariableFor(MolangQueries.ANIM_TIME)
 
+    /**
+     * 播控剪辑解析：指令自带动画库就从那个库取，否则用目标当前绑定的库。
+     * 技能剪辑与外观库解耦的落点在这里——库随主手物品切换，指令自带库就不受影响
+     */
+    private fun forcedClip(
+        forced: AnimationControlStore.ForcedAnimation,
+        clips: Map<String, ClipData>
+    ): ClipData? {
+        val library = forced.library
+        if (library != null) {
+            return AnimationRepository.clips(library)?.get(forced.animation)
+        }
+        return clips[forced.animation]
+    }
+
+    /** 播控此刻是否占着全身运动层 / 上身出招层（每帧刷新，occupy 据此拒绝本地动作） */
+    private var forcedOwnsMotion = false
+    private var forcedOwnsCombat = false
+
     /** 连招段位（-1 = 未进入连招）与上次出手时刻，用于取消窗口与输入窗口判定 */
     private var comboIndex = -1
     private var comboLastTriggerMs = 0L
+    /** 当前段到达可取消点的时刻（毫秒），输入窗口从这里起算 */
+    private var comboCancelReadyMs = 0L
     /** 上一轮生效的连招 id：换组即重置段位，避免用新组的招式接旧组的段 */
     private var comboSetId: String? = null
 
@@ -325,21 +346,36 @@ class AnimationPlayer(private val uuid: UUID) {
         // --- 播控到期（once）：ACTION 层时间轴到达剪辑末尾即刻释放；
         //     时间戳兜底仅在剪辑缺失/长度异常时生效。持有末帧等待到期戳会造成
         //     "动画播完仍僵立收招"的空窗（Boss 已在走路而画面停在站姿） ---
-        if (!paused && forced != null && !forced.loop) {
-            val forcedClip = clips[forced.animation]
-            val forcedLayer = if (forced.toCombatLayer) actionCombat else actionMotion
-            val timelineEnded = forcedClip != null && forcedClip.length > 0f &&
-                channelId == forced.id && forcedLayer.clip === forcedClip && forcedLayer.time >= forcedClip.length
-            val timestampExpired = forced.expiresAtMs > 0 &&
-                System.currentTimeMillis() >= forced.expiresAtMs
+        // --- 播控剪辑缺失：立刻放弃，不占层。
+        //     原先靠 10 秒兜底到期：这十秒里运动层空置、本地动作全被封死，到期还会
+        //     为一段从未播过的动画上报 finish 触发链式接续。缺剪辑的常见原因是库切换
+        //     （外观随主手物品换了）或名字写错，两者都不该让层栈卡死 ---
+        if (forced != null && forcedClip(forced, clips) == null) {
+            if (lastFinishReportedId != forced.id) {
+                lastFinishReportedId = forced.id
+                org.lantern.internal.network.NetworkParser.animationEventSender
+                    ?.invoke(uuid, forced.animation, "missing")
+            }
+            AnimationControlStore.stop(uuid, forced.animation)
+        }
+        val forcedAlive = AnimationControlStore.get(uuid)
+        if (!paused && forcedAlive != null && !forcedAlive.loop) {
+            val forcedClipData = forcedClip(forcedAlive, clips)
+            val forcedLayer = if (forcedAlive.toCombatLayer) actionCombat else actionMotion
+            val timelineEnded = forcedClipData != null && forcedClipData.length > 0f &&
+                channelId == forcedAlive.id && forcedLayer.clip === forcedClipData && forcedLayer.time >= forcedClipData.length
+            val timestampExpired = forcedAlive.expiresAtMs > 0 &&
+                System.currentTimeMillis() >= forcedAlive.expiresAtMs
             if (timelineEnded || timestampExpired) {
-                if (lastFinishReportedId != forced.id) {
-                    lastFinishReportedId = forced.id
+                if (lastFinishReportedId != forcedAlive.id) {
+                    lastFinishReportedId = forcedAlive.id
+                    // 回带服务端序号：连点同一技能时上一实例的 finish 才不会撞掉新实例
+                    val event = if (forcedAlive.seq >= 0L) "finish:${forcedAlive.seq}" else "finish"
                     org.lantern.internal.network.NetworkParser.animationEventSender
-                        ?.invoke(uuid, forced.animation, "finish")
+                        ?.invoke(uuid, forcedAlive.animation, event)
                 }
-                if (forced.animation != states.death) {
-                    AnimationControlStore.stop(uuid, forced.animation)
+                if (forcedAlive.animation != states.death) {
+                    AnimationControlStore.stop(uuid, forcedAlive.animation)
                 }
                 // 死亡动画播完后持有末帧等待真死亡（服务端 finish 回报 -> health=0），
                 // 不回落行走——否则真死亡晚于回落到达时会把 die 从头重播"再死一次"
@@ -353,15 +389,21 @@ class AnimationPlayer(private val uuid: UUID) {
         //     跳跃末帧≈站立，覆盖到真落地再快切即无空窗 ---
         // 运动槽：物理滞空期间持有末帧（跳跃动画时长与滞空有偏差），真落地才释放
         motionSlot.clip?.let { clip ->
+            // 收尾与下层交叠：提前一个「退出过渡」的时长释放槽位，淡出就发生在动作的
+            // 尾段里，而不是等整段播完、定格一帧、再开始淡。播完再淡 = 收势处僵一下
+            // 再硬切，正是翻滚落地那一下发死的来源。交叠上限取剪辑的一半，
+            // 短动作不至于刚起手就开始退
+            val overlap = motionSlot.exitSeconds.coerceIn(0f, clip.length * 0.5f)
             val timelineEnded = clip.length > 0f &&
-                actionMotion.clip === clip && actionMotion.time >= clip.length
+                actionMotion.clip === clip && actionMotion.time >= clip.length - overlap
             // 空中持有末帧只对跳跃类成立：翻滚这类自带时长的动作播完即收，
-            // 否则空中翻滚会一直挂到落地
-            val holdInAir = airborne && !motionSlot.uninterruptible
+            // 否则空中翻滚会一直挂到落地。按状态名判而不是按霸体标记判——
+            // 非霸体的空中翻滚、落地、出生动作原先也会被钉到落地
+            val isJumpClip = clip.name == states.config("jump")?.animation ||
+                clip.name == states.config("sprint_jump")?.animation
+            val holdInAir = airborne && isJumpClip
             if ((timelineEnded && !holdInAir) || System.currentTimeMillis() >= motionSlot.deadline) {
-                motionSlot.clip = null
-                motionSlot.uninterruptible = false
-                motionSlot.exclusive = false
+                releaseMotionSlot()
             }
         }
         // 出招槽：时间轴播完即释放，不受滞空影响
@@ -380,9 +422,10 @@ class AnimationPlayer(private val uuid: UUID) {
         if (queuedAttack) {
             val expired = System.currentTimeMillis() >= queuedAttackExpireMs
             val curClip = actionCombat.clip
-            // 当前刀进度达 70% 即可接刀（收势段可取消——combo cancel_at 语义）
+            // 接刀阈值：配了连招读当前段自己的 cancel-at，没配回落 70%
+            val cancelAt = currentCombo()?.steps?.getOrNull(comboIndex)?.cancelAt ?: 0.7f
             val canChain = combatSlot.clip == null ||
-                (curClip != null && actionCombat.time >= curClip.length * 0.7f)
+                (curClip != null && actionCombat.time >= curClip.length * cancelAt)
             val consumed = canChain && if (currentCombo() != null) {
                 advanceCombo()
             } else {
@@ -421,9 +464,11 @@ class AnimationPlayer(private val uuid: UUID) {
                 if (la != null) {
                     val isJumpAnim = la.name == states.config("jump")?.animation ||
                         la.name == states.config("sprint_jump")?.animation
+                    // 层上此刻必须真的是这段跳跃：播控占层时 actionMotion.clip 是技能剪辑，
+                    // 不加这一判会把技能快进到末帧、当帧上报 finish、服务端伤害帧全部作废
                     if (isJumpAnim) {
                         actionMotion.clip?.let { c ->
-                            if (c.length > 0.08f) actionMotion.time = max(actionMotion.time, c.length - 0.08f)
+                            if (c === la && c.length > 0.08f) actionMotion.time = max(actionMotion.time, c.length - 0.08f)
                         }
                     }
                     // 落地瞬间强制同步 LOCOMOTION：若仍停在跌落，直接零过渡换地面兜底，
@@ -464,9 +509,11 @@ class AnimationPlayer(private val uuid: UUID) {
             if (!taken) {
                 // 队列只记「有一次待处理的输入」，不记左右——左右在真正起播时才决定，
                 // 否则疯狂点击时单格队列被反复覆盖，落到哪一边全看点击时序，
-                // 表现就是连续几次同一边
+                // 表现就是连续几次同一边。
+                // 过期至少撑到当前段的可取消点：蓄力段取消点在 1.2s，500ms 的队列会把
+                // 前半段的所有输入丢掉
                 queuedAttack = true
-                queuedAttackExpireMs = System.currentTimeMillis() + 500L
+                queuedAttackExpireMs = max(System.currentTimeMillis() + 500L, comboCancelReadyMs + 150L)
             }
         }
         wasSwinging = swinging
@@ -488,6 +535,28 @@ class AnimationPlayer(private val uuid: UUID) {
         val forcedToCombat = activeForced?.toCombatLayer == true
         val forcedForMotion = if (forcedToCombat) null else activeForced
 
+        // 播控占层标记：occupy 据此拒绝本地动作。全身播控同时视为独占——
+        // 技能演出期间不该再起本地翻滚，也不该让连招盖住上半身
+        forcedOwnsMotion = forcedForMotion != null
+        forcedOwnsCombat = forcedToCombat
+        if (forcedForMotion != null) {
+            if (motionSlot.clip != null) {
+                // 被播控顶掉的本地动作直接作废：留在槽里会在播控结束后从第 0 帧补播一遍，
+                // 它的位移也要一起停——动画看不见、人却在滑
+                releaseMotionSlot()
+                if (entity is net.minecraft.client.player.LocalPlayer) {
+                    org.lantern.action.PlayerActionStore.clearDash()
+                }
+            }
+            if (combatSlot.clip != null) {
+                combatSlot.clip = null
+                combatSlot.uninterruptible = false
+            }
+            queuedAttack = false
+            // 播完清层用指令给的退出过渡，不借用上一次翻滚残留的收尾时长
+            motionSlot.exitSeconds = forcedForMotion.exitSeconds
+        }
+
         // ACTION_MOTION 层（全身运动）：服务端播控 > 本地运动动作；都无时清层
         when {
             forcedForMotion != null -> {
@@ -496,7 +565,7 @@ class AnimationPlayer(private val uuid: UUID) {
                 val restart = forcedForMotion.id != channelId
                 if (restart) channelId = forcedForMotion.id
                 setLayerTarget(
-                    actionMotion, clips[forcedForMotion.animation],
+                    actionMotion, forcedClip(forcedForMotion, clips),
                     // 播控切入的过渡时长由服务端指令指定（tick × 50ms）；0 = 立即切换（如死亡）。
                     // 协议默认 5 tick = 0.25s，与行走层淡化时长一致，技能动画观感不变
                     forcedForMotion.transition * 0.05f,
@@ -521,10 +590,16 @@ class AnimationPlayer(private val uuid: UUID) {
         // ACTION_COMBAT 层（上身出招）：与运动层并行，互不抢占
         if (forcedToCombat && activeForced != null) {
             // 上身技能：压过本地出招，腿部继续由下层的移动状态驱动
+            if (combatSlot.clip != null) {
+                combatSlot.clip = null
+                combatSlot.uninterruptible = false
+                queuedAttack = false
+            }
+            combatSlot.exitSeconds = activeForced.exitSeconds
             val restart = activeForced.id != channelId
             if (restart) channelId = activeForced.id
             setLayerTarget(
-                actionCombat, clips[activeForced.animation],
+                actionCombat, forcedClip(activeForced, clips),
                 activeForced.transition * 0.05f,
                 loops = activeForced.loop, speed = activeForced.speed,
                 forceRestart = restart
@@ -612,10 +687,19 @@ class AnimationPlayer(private val uuid: UUID) {
             )
         }
 
+        // 首次渲染：各层直接落到目标权重。空层切入的淡入是为切换服务的，实体第一帧
+        // 没有"上一个姿势"可淡——从零权重升上来的 0.25s 里模型是几何初始姿态按比例放大，
+        // 特效模型的巨面片会从脚底"长"出来
+        if (firstRender) {
+            for (layer in layers) if (layer.clip != null) layer.envelope = layer.envelopeTarget
+        }
+
         // --- seek：跳转 ACTION 层时间轴（秒）。暂停状态下同样生效（定格到新帧） ---
         AnimationControlStore.consumeSeek(uuid)?.let { seconds ->
-            actionMotion.clip?.let { clip ->
-                actionMotion.time = if (actionMotion.loops && clip.length > 0f) {
+            // 跳转的是播控所在的那一层：上身播控 seek 不该去改运动层上的跳跃
+            val seekLayer = if (activeForced?.toCombatLayer == true) actionCombat else actionMotion
+            seekLayer.clip?.let { clip ->
+                seekLayer.time = if (seekLayer.loops && clip.length > 0f) {
                     ((seconds % clip.length) + clip.length) % clip.length
                 } else {
                     seconds.coerceIn(0f, clip.length)
@@ -1038,9 +1122,12 @@ class AnimationPlayer(private val uuid: UUID) {
             }
         }
 
-        // 超出输入窗口即回到第一段
+        // 超出输入窗口即回到第一段。窗口从「当前段可取消」那一刻起算：
+        // 从起播起算的话，左砍 0.75s×0.7=525ms 才能接、窗口 700ms 就只剩 175ms 可接，
+        // 蓄力段取消点 1.2s 更是直接落在 800ms 窗口之外——连招看起来是"断了"
         val window = current?.windowMs ?: 0L
-        val index = if (comboIndex < 0 || (window > 0L && now - comboLastTriggerMs > window)) {
+        val windowStart = max(comboCancelReadyMs, comboLastTriggerMs)
+        val index = if (comboIndex < 0 || (window > 0L && now - windowStart > window)) {
             0
         } else {
             (comboIndex + 1) % steps.size
@@ -1059,7 +1146,21 @@ class AnimationPlayer(private val uuid: UUID) {
         if (!started) return false
         comboIndex = index
         comboLastTriggerMs = now
+        comboCancelReadyMs = now + (clip.length * step.cancelAt * 1000f).toLong()
         return true
+    }
+
+    /**
+     * 释放运动槽。
+     *
+     * exitSeconds 不在这里复位：清层分支（when 的 else）正是在释放之后才读它来决定
+     * 淡出时长，提前清成缺省值等于把配置的收尾过渡吃掉，动作播完直接硬切。
+     * 下一个占用者由 occupy 覆写，播控由归层时显式赋值，都不会读到残留
+     */
+    private fun releaseMotionSlot() {
+        motionSlot.clip = null
+        motionSlot.uninterruptible = false
+        motionSlot.exclusive = false
     }
 
     /** 触发运动动作（jump/sprint_jump/landing/spawn）；剪辑缺失不占槽位，判定链继续穿透 */
@@ -1103,6 +1204,10 @@ class AnimationPlayer(private val uuid: UUID) {
         exclusive: Boolean
     ): Boolean {
         if (slot.clip != null && slot.uninterruptible) return false
+        // 播控占着这一层就不接本地动作：接了也画不出来，冷却、位移、无敌帧却全会发生，
+        // 播控一结束还会从第 0 帧补播。全身播控同时封住出招层（技能演出即独占）
+        if (slot === motionSlot && forcedOwnsMotion) return false
+        if (slot === combatSlot && (forcedOwnsCombat || forcedOwnsMotion)) return false
         // 出招撞上独占中的全身动作：直接放弃，也不排队（翻滚完不该补播一刀）
         if (slot === combatSlot && motionSlot.clip != null && motionSlot.exclusive) return false
         val lengthMs = (clip.length * 1000f).toLong()
@@ -1138,10 +1243,15 @@ class AnimationPlayer(private val uuid: UUID) {
         uninterruptible: Boolean,
         exclusive: Boolean,
         toCombatLayer: Boolean
-    ): Boolean = occupy(
-        if (toCombatLayer) combatSlot else motionSlot,
-        clip, transitionSeconds, false, speed, uninterruptible, exitSeconds, exclusive
-    )
+    ): Boolean {
+        // 按键触发发生在渲染帧之间，占层标记可能还是上一帧的；直接查存储保证当帧准确
+        val forced = AnimationControlStore.get(uuid)
+        if (forced != null && (!forced.toCombatLayer || toCombatLayer)) return false
+        return occupy(
+            if (toCombatLayer) combatSlot else motionSlot,
+            clip, transitionSeconds, false, speed, uninterruptible, exitSeconds, exclusive
+        )
+    }
 
     /**
      * 位移实测的运动检测（水平移动 + 垂直速度），60ms 采样窗口 + 滞回，

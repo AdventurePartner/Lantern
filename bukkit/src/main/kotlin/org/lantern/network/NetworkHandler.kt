@@ -716,6 +716,12 @@ object NetworkHandler {
             entry.addProperty("dash-duration", action.dashDuration)
             entry.addProperty("vertical", action.vertical)
             entry.addProperty("trigger", action.trigger)
+            // server-checked：客户端不本地播放，改为上报请求给服务端把关（附属扩展点）。
+            // 配置值与附属的强制标记取并集
+            entry.addProperty(
+                "server-checked",
+                org.lantern.action.PlayerActionGateway.isServerChecked(id, action.serverChecked)
+            )
             if (action.costume.isNotBlank()) entry.addProperty("costume", action.costume)
             val directions = JsonObject()
             action.directions.forEach { (dir, anim) -> directions.addProperty(dir, anim) }
@@ -904,6 +910,8 @@ object NetworkHandler {
         sendPacket(player, 21, packet)
     }
 
+    /** 播控实例序号：每次 play 递增，客户端 finish 回带，服务端按实例而不是按名匹配 */
+    private val animationSeq = java.util.concurrent.atomic.AtomicLong()
 
     fun sendAnimationControl(
         player: Player,
@@ -915,7 +923,10 @@ object NetworkHandler {
         speed: Float,
         timeSeconds: Float? = null,
         uninterruptible: Boolean = false,
-        layer: String? = null
+        layer: String? = null,
+        file: String? = null,
+        seq: Long = -1L,
+        exitTicks: Int? = null
     ) {
         val packet = JsonObject()
         packet.addProperty("uuid", entityUuid.toString())
@@ -927,6 +938,10 @@ object NetworkHandler {
         timeSeconds?.let { packet.addProperty("time", it) }
         if (uninterruptible) packet.addProperty("uninterruptible", true)
         layer?.takeIf { it.isNotBlank() }?.let { packet.addProperty("layer", it) }
+        // 剪辑所在动画库：不写则客户端用目标当前外观/模型绑定的库
+        file?.takeIf { it.isNotBlank() }?.let { packet.addProperty("file", it) }
+        if (seq >= 0L) packet.addProperty("seq", seq)
+        exitTicks?.let { packet.addProperty("exit", it.coerceAtLeast(0)) }
         sendPacket(player, 15, packet)
     }
 
@@ -942,7 +957,11 @@ object NetworkHandler {
         loop: Boolean = true,
         speed: Float = 1.0f,
         uninterruptible: Boolean = false,
-        layer: String? = null
+        layer: String? = null,
+        /** 剪辑所在动画库（相对 assets/lantern/ 的路径）；null = 目标当前外观/模型绑定的库 */
+        file: String? = null,
+        /** 播完清层的退出过渡 tick；null = 沿用起手过渡 */
+        exitTicks: Int? = null
     ) {
         // 负速度（倒放）合法：绝对值过小才视为无效回退 1.0
         val safeSpeed = if (kotlin.math.abs(speed) > 0.01f) speed else 1.0f
@@ -953,10 +972,14 @@ object NetworkHandler {
         ) {
             return
         }
+        val seq = animationSeq.incrementAndGet()
         broadcastNear(entity) {
-            sendAnimationControl(it, entity.uniqueId, "play", animation, transitionTicks, loop, safeSpeed, null, uninterruptible, layer)
+            sendAnimationControl(
+                it, entity.uniqueId, "play", animation, transitionTicks, loop, safeSpeed,
+                null, uninterruptible, layer, file, seq, exitTicks
+            )
         }
-        org.lantern.animation.AnimationOrchestrator.onPlay(entity, animation, loop)
+        org.lantern.animation.AnimationOrchestrator.onPlay(entity, animation, loop, seq)
     }
 
     /** 停止实体上由 [playAnimation] 播放的指定动画。 */
