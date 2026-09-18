@@ -45,6 +45,12 @@ object MolangVariableStore {
         values.remove(uuid)
     }
 
+    /** 退服清空：变量按实体 UUID 存，换服后同 UUID 的实体会读到上一服的值 */
+    fun clear() {
+        values.clear()
+        warned.clear()
+    }
+
     /** 每帧求值 per-entity 变量值（变量本身可为表达式）；无变量实体返回共享空表 */
     fun resolve(uuid: UUID, state: AnimationState<*>): Map<String, Double> {
         val map = values[uuid] ?: return emptyMap()

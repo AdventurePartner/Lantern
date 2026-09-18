@@ -75,6 +75,26 @@ object AnimationHost {
         return player.pose
     }
 
+    /**
+     * 本地玩家在第一人称下不渲染自己，播放器得不到渲染回调：时间轴不走、播控不到期、
+     * 动作槽不释放（翻滚只能成功一次）、finish 永不上报。每客户端 tick 补驱动一次——
+     * 本 tick 已经被渲染驱动过就跳过，不会重复消费边沿
+     */
+    @JvmStatic
+    fun tickLocalPlayer() {
+        val client = net.minecraft.client.Minecraft.getInstance()
+        val player = client.player ?: return
+        val level = client.level ?: return
+        val uuid = player.uuid
+        if (!players.containsKey(uuid)) return
+        val tickId = level.gameTime * 1000L
+        val last = lastDrivenFrame[uuid] ?: -1L
+        // 渲染帧标识 = 刻 × 1000 + 千分位插值；本刻内任何一帧驱动过即视为已驱动
+        if (last >= tickId) return
+        val wrapper = org.lantern.costume.handler.CostumeHandler.hostWrapper(uuid) ?: return
+        drivePose(player, wrapper.animationLocation, wrapper.animationStates)
+    }
+
     /** 渲染阶段调用（submit 内，逐实体串行）：从 DataTicket 读回姿势写入骨骼 */
     @JvmStatic
     fun applyPose(

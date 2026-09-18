@@ -136,6 +136,9 @@ object NeoForgeClientEvents {
         }
         // 播控重试：实体或自定义名还没同步的指令按 tick 重试几次再放弃
         org.lantern.model.handler.AnimationControlHandler.tick()
+        // 第一人称不渲染自己，播放器就不会被渲染回调驱动——时间轴、到期、槽位释放全部冻结。
+        // 这里按 tick 补一次驱动，让本地玩家的状态机在看不见自己时照常走
+        AnimationHost.tickLocalPlayer()
         handleKeyboardInput(client)
         handlePlayerActions(client)
         // 翻滚等动作的位移逐 tick 驱动，与动画同步收尾
@@ -155,7 +158,11 @@ object NeoForgeClientEvents {
         pressedKeys.clear()
         actionPressedKeys.clear()
         org.lantern.action.PlayerActionStore.clearDash()
+        // 动作定义随会话作废：留着的话在新服首包到达前，旧服的翻滚键和连招还在生效，
+        // server-checked 条目还会朝新服发请求
+        org.lantern.action.PlayerActionStore.clear()
         org.lantern.model.handler.AnimationControlHandler.clearPending()
+        org.lantern.animation.MolangVariableStore.clear()
         // 绑定是会话内状态，换服必须归零，否则新服的实体会带着旧绑定渲染
         org.lantern.bind.BindStore.clear()
         // 输入锁同理，不跨服残留
@@ -168,6 +175,9 @@ object NeoForgeClientEvents {
 
     private fun onEntityLeaveLevel(event: EntityLeaveLevelEvent) {
         if (event.level.isClientSide) {
+            // 本地玩家离场（换维度/重生）：进行中的翻滚位移不能带到新实体上继续推
+            if (event.entity === Minecraft.getInstance().player) {
+                org.lantern.action.PlayerActionStore.clearDash()
             }
             CostumeHandler.removePlayer(event.entity.uuid)
             // 淘汰 Lantern 实体模型的 per-UUID 状态，防止长期游玩内存无上限增长；

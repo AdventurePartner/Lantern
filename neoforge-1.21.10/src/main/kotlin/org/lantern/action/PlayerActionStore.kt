@@ -48,6 +48,13 @@ object PlayerActionStore {
         val vertical: Double,
         val suppressAttackMs: Long,
         val invulnerableMs: Long,
+        /**
+         * true = 本地不播，改上报请求交服务端把关（能量、耐力、冷却这类资源逻辑
+         * 由附属在 LanternPlayerActionRequestEvent 里实现）。代价是一个 RTT 的
+         * 出招延迟，所以默认是 false——零延迟是这套动作系统的立身之本，不能因为
+         * 加了扩展点就整体退化
+         */
+        val serverChecked: Boolean,
         val directions: Map<String, String>
     )
 
@@ -195,6 +202,7 @@ object PlayerActionStore {
                     vertical = obj.get("vertical")?.asDouble ?: 0.0,
                     suppressAttackMs = obj.get("suppress-vanilla-attack")?.asLong ?: 0L,
                     invulnerableMs = obj.get("invulnerable")?.asLong ?: 0L,
+                    serverChecked = obj.get("server-checked")?.asBoolean ?: false,
                     directions = directions
                 )
             )
@@ -219,6 +227,11 @@ object PlayerActionStore {
     fun trigger(def: ActionDef): Boolean {
         val client = Minecraft.getInstance()
         val player = client.player ?: return false
+        // 死亡、旁观、骑乘状态下没有"出招"这回事；尸体被推 4 格、旁观者翻滚都是漏洞
+        if (player.isDeadOrDying || player.isSpectator || player.isPassenger) return false
+        // 输入锁压住移动时不接方向动作：锁是「这段时间不许动」，翻滚是最大幅度的动。
+        // 这里读到的方向键已被锁清空，放行的话会朝正前冲 4 格再拿 500ms 无敌
+        if (org.lantern.input.InputLockStore.isLocked("move")) return false
 
         val now = System.currentTimeMillis()
         cooldowns[def.id]?.let { if (now < it) return false }
@@ -228,6 +241,18 @@ object PlayerActionStore {
         if (!def.allowAirborne && !onGround) return false
 
         val direction = currentDirection()
+
+        // 服务端把关的条目：不本地播放，把请求发上去，由服务端决定播不播。
+        // 复用现有的 C2S 动画事件通道（animation 字段填动作 id），零协议变更。
+        // 冷却仍在本地记一份——否则连点会把请求包刷成洪水，服务端那边拦得再干净
+        // 带宽也已经花掉了
+        if (def.serverChecked) {
+            val sender = org.lantern.internal.network.NetworkParser.animationEventSender ?: return false
+            sender(player.uuid, def.id, "request:$direction")
+            if (def.cooldownMs > 0) cooldowns[def.id] = now + def.cooldownMs
+            return true
+        }
+
         val clip = AnimationRepository.clips(def.file)?.get(resolveAnimation(def, direction)) ?: return false
         val played = AnimationHost.triggerAction(
             player.uuid,
@@ -310,6 +335,12 @@ object PlayerActionStore {
     fun tickDash() {
         val dash = activeDash ?: return
         val player = Minecraft.getInstance().player ?: run { activeDash = null; return }
+        // 位移的生命周期跟着动作走：动作被播控顶掉由 AnimationPlayer 清；这里兜住
+        // 起手后才到达的输入锁与死亡/骑乘——人不该在锁住或死了之后还在滑
+        if (player.isDeadOrDying || player.isPassenger || org.lantern.input.InputLockStore.isLocked("move")) {
+            activeDash = null
+            return
+        }
         val progress = (System.currentTimeMillis() - dash.startMs).toDouble() / dash.durationMs
         if (progress >= 1.0) {
             activeDash = null
