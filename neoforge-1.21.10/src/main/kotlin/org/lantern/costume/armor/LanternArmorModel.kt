@@ -63,21 +63,31 @@ class LanternArmorModel private constructor(
             )
         }
         // 外观整体缩放与偏移由渲染器在 geo 空间施加（GeoRenderer.scaleModelForRender
-        // 与 CostumeRenderer.adjustRenderPose），盔甲不在那条链上，折进根节点补齐
+        // 与 CostumeRenderer.adjustRenderPose），盔甲不在那条链上，折进根节点补齐。
+        //
+        // root 骨自身的动画同样要落在这里：它是骨架的总开关，动画把它缩到 0 就是
+        // 「这段演出期间整个人不画」（特效载体接管画面）。原先这个节点只写外观的
+        // 静态 scale/offset、不读 root 骨，结果是身体与手持物件都跟着消失了、
+        // 盔甲却还挂在半空——四件套是玩家身体的一部分，必须跟着 root 走
         val rootPart = root()
         val rootInit = rootPart.initialPose
         val wrapper = CostumeHandler.hostWrapper(playerId)
-        if (wrapper != null) {
-            rootPart.xScale = wrapper.scale
-            rootPart.yScale = wrapper.scale
-            rootPart.zScale = wrapper.scale
-            // offset 是 geo 空间的方块单位平移，换到 ModelPart 空间：x/y 取负、z 保持，再乘 16
-            rootPart.x = rootInit.x() - wrapper.offsetX.toFloat() * 16f
-            rootPart.y = rootInit.y() - wrapper.offsetY.toFloat() * 16f
-            rootPart.z = rootInit.z() + wrapper.offsetZ.toFloat() * 16f
-        } else {
-            rootPart.loadPose(rootInit)
-        }
+        val baseScale = wrapper?.scale ?: 1.0f
+        val offsetX = wrapper?.offsetX?.toFloat() ?: 0.0f
+        val offsetY = wrapper?.offsetY?.toFloat() ?: 0.0f
+        val offsetZ = wrapper?.offsetZ?.toFloat() ?: 0.0f
+        val rootBone = processor.getBone("root")
+        // offset 是 geo 空间的方块单位平移，换到 ModelPart 空间：x/y 取负、z 保持，再乘 16。
+        // root 骨的位移与其余骨骼同一套换算（x/z 直取、y 取负）
+        rootPart.x = rootInit.x() - offsetX * 16f + (rootBone?.posX ?: 0.0f)
+        rootPart.y = rootInit.y() - offsetY * 16f - (rootBone?.posY ?: 0.0f)
+        rootPart.z = rootInit.z() + offsetZ * 16f + (rootBone?.posZ ?: 0.0f)
+        rootPart.xRot = -(rootBone?.rotX ?: 0.0f)
+        rootPart.yRot = -(rootBone?.rotY ?: 0.0f)
+        rootPart.zRot = rootBone?.rotZ ?: 0.0f
+        rootPart.xScale = baseScale * (rootBone?.scaleX ?: 1.0f)
+        rootPart.yScale = baseScale * (rootBone?.scaleY ?: 1.0f)
+        rootPart.zScale = baseScale * (rootBone?.scaleZ ?: 1.0f)
         for ((boneName, part) in nodes) {
             val init = part.initialPose
             val bone = processor.getBone(boneName)
