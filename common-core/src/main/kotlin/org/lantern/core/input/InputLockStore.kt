@@ -1,4 +1,4 @@
-package org.lantern.input
+package org.lantern.core.input
 
 import com.google.gson.JsonObject
 import java.util.concurrent.ConcurrentHashMap
@@ -8,8 +8,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * 压制点必须在客户端：输入产生于客户端，玩家按住 W 时服务端能做的只有把人
  * 拽回去，那是橡皮筋不是锁。这里在输入被消费之前就把对应的位清掉，
- * 玩家按了也等于没按——移动、跳跃、视角三路各自的钩子见
- * [org.lantern.platform.NeoForgeClientEvents] 与 MouseHandlerMixin。
+ * 玩家按了也等于没按——移动、跳跃、视角三路各自的钩子由各平台实现。
  *
  * 多来源按 id 分别记账、并集生效：受击硬直与施法前摇可能同时存在，
  * 任一方到期不该把另一方一起解掉
@@ -36,16 +35,11 @@ object InputLockStore {
     /**
      * packet 21：clear=true 即解锁，否则加锁。
      *
-     * 写入调度到主线程：activeLocks 的并集缓存在主线程重算，收包若在别的线程写表，
+     * 必须在主线程调用：activeLocks 的并集缓存在主线程重算，若写表发生在别的线程，
      * 「判空 → 写 MAX_VALUE 有效期」中间插进一条新锁就会把 invalidate 覆盖掉，
-     * 新锁要等下一条包才可见。全部落在同一线程上就没有这个窗口
+     * 新锁要等下一条包才可见。收包线程的调度由平台注册处包装（见 LanternNeoForge）
      */
     fun handle(obj: JsonObject) {
-        val client = net.minecraft.client.Minecraft.getInstance()
-        if (!client.isSameThread) {
-            client.execute { handle(obj) }
-            return
-        }
         if (obj.get("clear")?.asBoolean == true) {
             val id = obj.get("id")?.asString
             if (id == null) locks.clear() else locks.remove(id)

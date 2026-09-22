@@ -3,7 +3,10 @@ package org.lantern.animation
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import net.minecraft.world.entity.Entity
-import org.lantern.model.renderstate.AnimationControlStore
+import org.lantern.core.anim.ActorSnapshot
+import org.lantern.core.anim.AnimationPlayer
+import org.lantern.core.anim.clip.ClipData
+import org.lantern.core.anim.control.AnimationControlStore
 import org.lantern.model.wrapper.CustomModelWrapper
 import software.bernie.geckolib.animatable.processing.AnimationProcessor
 
@@ -47,9 +50,9 @@ object AnimationHost {
     fun drivePose(
         entity: Entity,
         animationLocation: net.minecraft.resources.ResourceLocation,
-        animationStates: org.lantern.model.wrapper.AnimationStateMapping
+        animationStates: org.lantern.core.anim.statemap.AnimationStateMapping
     ): Map<String, FloatArray>? {
-        val clips = AnimationRepository.clips(animationLocation)
+        val clips = AnimationRepository.clips(animationLocation.toString())
         if (clips.isNullOrEmpty()) {
             // 动画资产缺失：播控既无法播放也无法到期，清掉残留条目；
             // 返回空姿势让骨骼回退静态初始值，而不是冻结在上一帧
@@ -57,7 +60,7 @@ object AnimationHost {
             return emptyMap()
         }
         val uuid = entity.uuid
-        val player = players.computeIfAbsent(uuid) { AnimationPlayer(it) }
+        val player = players.computeIfAbsent(uuid) { newPlayer(it) }
         // 帧标识 = 游戏刻 × 1000 + 帧内插值的千分位，同一渲染帧内恒定
         val level = entity.level()
         val frameId = level.gameTime * 1000L +
@@ -67,13 +70,35 @@ object AnimationHost {
             player.drive(
                 clips,
                 AnimationControlStore.get(uuid),
-                entity,
+                ActorSnapshots.capture(entity),
                 animationStates,
                 spawned.add(uuid)
             )
         }
         return player.pose
     }
+
+    /**
+     * 播放器内核的平台装配：库查询走资源仓库、连招查询组合外观 id、
+     * 事件上报桥到 C2S 通道、位移取消只对本地玩家生效
+     */
+    private fun newPlayer(uuid: UUID): AnimationPlayer = AnimationPlayer(
+        uuid,
+        clipLibrary = AnimationRepository::clips,
+        comboLookup = { id ->
+            org.lantern.core.action.PlayerActionDefs.attackCombo(
+                org.lantern.costume.handler.CostumeHandler.hostCostumeId(id)
+            )
+        },
+        eventSink = { id, animation, event ->
+            org.lantern.internal.network.NetworkParser.animationEventSender?.invoke(id, animation, event)
+        },
+        dashCancel = { id ->
+            if (net.minecraft.client.Minecraft.getInstance().player?.uuid == id) {
+                org.lantern.action.PlayerActionStore.clearDash()
+            }
+        }
+    )
 
     /**
      * 本地玩家在第一人称下不渲染自己，播放器得不到渲染回调：时间轴不走、播控不到期、

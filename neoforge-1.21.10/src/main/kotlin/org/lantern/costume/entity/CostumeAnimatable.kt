@@ -2,7 +2,7 @@ package org.lantern.costume.entity
 
 import org.lantern.costume.renderstate.CostumeRenderData
 import org.lantern.model.enums.EntityAnimationState
-import org.lantern.model.wrapper.AnimationStateMapping
+import org.lantern.core.anim.statemap.AnimationStateMapping
 import software.bernie.geckolib.animatable.GeoAnimatable
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache
 import software.bernie.geckolib.animatable.manager.AnimatableManager

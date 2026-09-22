@@ -1,4 +1,4 @@
-package org.lantern.costume.bone
+package org.lantern.core.bone
 
 data class BoneMapping(
     val head: String = "head",

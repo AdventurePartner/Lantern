@@ -3,10 +3,9 @@ package org.lantern.model.handler
 import java.util.UUID
 import kotlin.math.abs
 import net.minecraft.client.Minecraft
-import net.minecraft.resources.ResourceLocation
 import org.lantern.Lantern
 import org.lantern.animation.AnimationRepository
-import org.lantern.model.renderstate.AnimationControlStore
+import org.lantern.core.anim.control.AnimationControlStore
 
 /**
  * packetId 15 动画播控入口：校验目标实体确由 Lantern 实体模型渲染后，写入强制动画存储。
@@ -55,7 +54,7 @@ object AnimationControlHandler {
         val speed: Float,
         val uninterruptible: Boolean,
         val toCombatLayer: Boolean,
-        val library: ResourceLocation?,
+        val library: String?,
         val seq: Long,
         val exitTicks: Int,
         var ticksLeft: Int
@@ -74,7 +73,7 @@ object AnimationControlHandler {
         seekSeconds: Float,
         uninterruptible: Boolean = false,
         toCombatLayer: Boolean = false,
-        library: ResourceLocation? = null,
+        library: String? = null,
         seq: Long = -1L,
         exitTicks: Int = -1
     ) {
@@ -139,10 +138,10 @@ object AnimationControlHandler {
         val animation = request.animation
 
         // 目标动画库：指令自带的库优先（技能剪辑与外观解耦），否则玩家取 hostDriven 外观、
-        // 实体走 entityModels 索引
-        val animationLocation: ResourceLocation = request.library ?: run {
+        // 实体走 entityModels 索引；统一为字符串库 id（命名空间:路径）
+        val animationLocation: String = request.library ?: run {
             if (entity is net.minecraft.world.entity.player.Player) {
-                org.lantern.costume.handler.CostumeHandler.hostWrapper(request.uuid)?.animationLocation ?: run {
+                org.lantern.costume.handler.CostumeHandler.hostWrapper(request.uuid)?.animationLocation?.toString() ?: run {
                     report("no-costume:$animation", true,
                         "[Lantern] 玩家 {} 没有 host-driven 外观，动画 '{}' 被丢弃", request.uuid, animation)
                     return true
@@ -150,7 +149,7 @@ object AnimationControlHandler {
             } else {
                 // 自定义名尚未同步：AddEntity 与随后的 SetEntityData 是两个包，中间可能隔一帧
                 val name = entity.customName?.string ?: return false
-                RendererHandler.getCustomModelWrapper(name)?.animationLocation ?: run {
+                RendererHandler.getCustomModelWrapper(name)?.animationLocation?.toString() ?: run {
                     report("no-model:$animation", true,
                         "[Lantern] 自定义名 '{}' 不在 entityModels 表里，动画 '{}' 被丢弃", name, animation)
                     return true

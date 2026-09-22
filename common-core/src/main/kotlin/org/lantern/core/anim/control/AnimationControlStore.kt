@@ -1,4 +1,4 @@
-package org.lantern.model.renderstate
+package org.lantern.core.anim.control
 
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -40,7 +40,7 @@ object AnimationControlStore {
          * 库一换剪辑就没了。指令自带库之后，技能剪辑与外观彻底解耦——
          * 与本地动作（playerActions 的 file 字段）同一套思路
          */
-        val library: net.minecraft.resources.ResourceLocation? = null,
+        val library: String? = null,
         /** 服务端实例序号，finish 回带它让服务端按实例而不是按名匹配；-1 = 老协议无序号 */
         val seq: Long = -1L,
         /** 播完清层时的退出过渡秒数（服务端指令给定，不再借用上一个本地动作的收尾时长） */
@@ -62,7 +62,7 @@ object AnimationControlStore {
         expiresAtMs: Long,
         uninterruptible: Boolean = false,
         toCombatLayer: Boolean = false,
-        library: net.minecraft.resources.ResourceLocation? = null,
+        library: String? = null,
         seq: Long = -1L,
         exitSeconds: Float = 0.05f
     ) {

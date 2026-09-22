@@ -1,11 +1,8 @@
-package org.lantern.animation
+package org.lantern.core.anim.molang
 
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import org.lantern.Lantern
-import software.bernie.geckolib.animatable.processing.AnimationState
-import software.bernie.geckolib.loading.math.MathParser
-import software.bernie.geckolib.loading.math.MathValue
+import org.lantern.core.CoreLog
 
 /**
  * packet 17 同步的服务端注入变量（per-entity）。
@@ -13,10 +10,14 @@ import software.bernie.geckolib.loading.math.MathValue
  * 值支持纯数字或 molang 表达式（表达式在客户端每帧求值，可引用 query.*——
  * 例如按生命百分比驱动的发光强度）；更新为合并语义，空串值 = 删除该变量。
  * 网络线程直接调用：只触碰 ConcurrentHashMap，值编译不依赖 MC 状态。
+ *
+ * 表达式编译经平台注入的 [MolangCompiler]（平台入口 attach，收包必然在装配之后）
  */
 object MolangVariableStore {
 
-    private val values = ConcurrentHashMap<UUID, Map<String, MathValue>>()
+    lateinit var compiler: MolangCompiler
+
+    private val values = ConcurrentHashMap<UUID, Map<String, MolangExpression>>()
     private val warned = ConcurrentHashMap.newKeySet<String>()
 
     fun update(uuid: UUID, vars: Map<String, String>) {
@@ -27,12 +28,11 @@ object MolangVariableStore {
                     merged.remove(key)
                     continue
                 }
-                runCatching { merged[key] = MathParser.compileMolang(raw) }
+                runCatching { merged[key] = compiler.compileMolang(raw) }
                     .onFailure {
                         if (warned.add("$uuid:$key")) {
-                            Lantern.logger.warn(
-                                "[Lantern] Bad molang variable '{}={}' for {}: {}",
-                                key, raw, uuid, it.message
+                            CoreLog.logger.warning(
+                                "[Lantern] Bad molang variable '$key=$raw' for $uuid: ${it.message}"
                             )
                         }
                     }
@@ -51,12 +51,16 @@ object MolangVariableStore {
         warned.clear()
     }
 
-    /** 每帧求值 per-entity 变量值（变量本身可为表达式）；无变量实体返回共享空表 */
-    fun resolve(uuid: UUID, state: AnimationState<*>): Map<String, Double> {
+    /**
+     * 每帧求值 per-entity 变量值（变量本身可为表达式）。
+     * 求值时 scope 的 variables 尚为空表——变量引用变量按 0 处理（与历史行为一致）。
+     * 无变量实体返回共享空表
+     */
+    fun resolve(uuid: UUID, scope: MolangScope): Map<String, Double> {
         val map = values[uuid] ?: return emptyMap()
         val resolved = HashMap<String, Double>(map.size)
         for ((key, expression) in map) {
-            resolved[key] = runCatching { expression.get(state) }.getOrDefault(0.0)
+            resolved[key] = runCatching { expression.eval(scope) }.getOrDefault(0.0)
         }
         return resolved
     }

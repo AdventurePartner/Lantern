@@ -1,7 +1,7 @@
 package org.lantern.internal.mixin.input;
 
 import net.minecraft.client.MouseHandler;
-import org.lantern.input.InputLockStore;
+import org.lantern.core.input.InputLockStore;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

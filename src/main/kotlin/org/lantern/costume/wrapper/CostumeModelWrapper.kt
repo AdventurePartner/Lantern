@@ -1,9 +1,9 @@
 package org.lantern.costume.wrapper
 
 import net.minecraft.resources.ResourceLocation
-import org.lantern.costume.bone.BoneMapping
 import org.lantern.costume.slot.CostumeSlot
-import org.lantern.model.wrapper.AnimationStateMapping
+import org.lantern.core.anim.statemap.AnimationStateMapping
+import org.lantern.core.bone.BoneMapping
 
 class CostumeModelWrapper(
     val id: String,

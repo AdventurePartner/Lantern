@@ -1,37 +1,21 @@
-package org.lantern.animation
+package org.lantern.core.anim
 
 import java.util.UUID
-import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap
-import net.minecraft.core.component.DataComponents
-import net.minecraft.world.InteractionHand
-import net.minecraft.world.entity.Entity
-import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.player.Player
-import net.minecraft.world.item.AxeItem
-import net.minecraft.world.item.BowItem
-import net.minecraft.world.item.CrossbowItem
-import net.minecraft.world.item.HoeItem
-import net.minecraft.world.item.Item
-import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.ItemUseAnimation
-import net.minecraft.world.item.MaceItem
-import net.minecraft.world.item.ShieldItem
-import net.minecraft.world.item.ShovelItem
-import net.minecraft.world.item.TridentItem
-import org.lantern.model.renderstate.AnimationControlStore
-import org.lantern.model.wrapper.AnimationStateMapping
-import org.lantern.model.wrapper.PlayMode
-import org.lantern.model.wrapper.StateConfig
-import software.bernie.geckolib.animatable.GeoAnimatable
-import software.bernie.geckolib.animatable.processing.AnimationState
-import software.bernie.geckolib.loading.math.MathParser
-import software.bernie.geckolib.loading.math.MolangQueries
-import software.bernie.geckolib.loading.math.value.Variable
-import software.bernie.geckolib.animatable.processing.AnimationProcessor
-import software.bernie.geckolib.cache.`object`.GeoBone
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import org.lantern.core.anim.clip.ClipData
+import org.lantern.core.anim.clip.Keyframe
+import org.lantern.core.anim.clip.Vec3
+import org.lantern.core.anim.control.AnimationControlStore
+import org.lantern.core.anim.molang.MolangScope
+import org.lantern.core.anim.molang.MolangVariableStore
+import org.lantern.core.anim.molang.MutableMolangScope
+import org.lantern.core.anim.molang.QueryNames
+import org.lantern.core.anim.statemap.AnimationStateMapping
+import org.lantern.core.anim.statemap.PlayMode
+import org.lantern.core.anim.statemap.StateConfig
+import org.lantern.core.action.ComboDef
 
 /**
  * Lantern 自托管动画播放器（每实体一个）。
@@ -65,8 +49,21 @@ import kotlin.math.min
  *
  * 轴变换约定（反编译 GeckoLib 解析器实证）：旋转 (x,y,z) -> (-x,-y,+z) 弧度；
  * 位移、缩放原值。
+ *
+ * 平台协作：实体读取面收拢为每帧一份 [ActorSnapshot]（平台采集）；
+ * 库查询/连招查询/事件上报/位移取消四个平台能力经构造器注入
  */
-class AnimationPlayer(private val uuid: UUID) {
+class AnimationPlayer(
+    private val uuid: UUID,
+    /** 播控指令自带动画库的剪辑查询（平台实现读客户端资源仓库） */
+    private val clipLibrary: (String) -> Map<String, ClipData>?,
+    /** 当前外观下生效的连招查询（平台实现组合外观 id 与连招定义表） */
+    private val comboLookup: (UUID) -> ComboDef?,
+    /** 动画生命周期事件上报（finish:seq / missing），平台实现桥到 C2S 通道 */
+    private val eventSink: (UUID, String, String) -> Unit,
+    /** 本地玩家的动作位移取消（播控顶掉本地动作时，本地实体才需要停位移） */
+    private val dashCancel: (UUID) -> Unit
+) {
 
     private companion object {
         // 垂直速度窗口阈值（格/秒）：真实跳跃初速约 8.9、台阶行走约 1.7——
@@ -264,13 +261,12 @@ class AnimationPlayer(private val uuid: UUID) {
     private var queuedAttackExpireMs = 0L
 
     /**
-     * 求值上下文的 query 表与 anim_time 变量句柄。
+     * 求值上下文的 query 表。
      * 采样每一层时把 anim_time 换成该层自己的时间轴——全局取「最高非空层」会在
      * 层切换的那一帧突然跳到另一条时间线上，依赖 anim_time 的表达式关键帧
      * （呼吸、摆动这类）会随之抖一下
      */
-    private var evalQueries: Reference2DoubleOpenHashMap<Variable>? = null
-    private val animTimeVariable = MathParser.getVariableFor(MolangQueries.ANIM_TIME)
+    private var evalQueries: MutableMolangScope? = null
 
     /**
      * 播控剪辑解析：指令自带动画库就从那个库取，否则用目标当前绑定的库。
@@ -282,7 +278,7 @@ class AnimationPlayer(private val uuid: UUID) {
     ): ClipData? {
         val library = forced.library
         if (library != null) {
-            return AnimationRepository.clips(library)?.get(forced.animation)
+            return clipLibrary(library)?.get(forced.animation)
         }
         return clips[forced.animation]
     }
@@ -300,14 +296,12 @@ class AnimationPlayer(private val uuid: UUID) {
     private var comboSetId: String? = null
 
     /** 当前外观下生效的连招（随动画组切换而变） */
-    private fun currentCombo() = org.lantern.action.PlayerActionStore.attackCombo(
-        org.lantern.costume.handler.CostumeHandler.hostCostumeId(uuid)
-    )
+    private fun currentCombo() = comboLookup(uuid)
 
     fun drive(
         clips: Map<String, ClipData>,
         forced: AnimationControlStore.ForcedAnimation?,
-        entity: Entity,
+        actor: ActorSnapshot,
         states: AnimationStateMapping,
         firstRender: Boolean
     ) {
@@ -315,14 +309,13 @@ class AnimationPlayer(private val uuid: UUID) {
         val dt = if (lastNanos == 0L) 0f else min((now - lastNanos) / 1_000_000_000f, 0.25f)
         lastNanos = now
         upperBodyBones = states.upperBodyBones
-        val living = entity as? LivingEntity
-        val isMoving = computeMotion(entity.x, entity.y, entity.z, entity.onGround())
+        val isMoving = computeMotion(actor.x, actor.y, actor.z, actor.physicallyGrounded)
         // 攀爬中位移实测的垂直速度（约 2.36 格/秒）会越过起跳/跌落阈值——
         // 梯子/藤蔓上强制清空中状态并拦截边沿，否则爬梯被演成连续跳跃。
         // 创造飞行同理且更甚：按空格上升的垂直速度远超起跳阈值，会被读成连续起跳，
         // 下降超过 600ms 还会进跌落——飞行期间整条空中判定必须停用
-        val onClimb = living?.onClimbable() == true
-        val flying = (living as? Player)?.abilities?.flying == true
+        val onClimb = actor.climbing
+        val flying = actor.flying
         if (onClimb || flying) {
             airborne = false
             wasRising = false
@@ -333,7 +326,7 @@ class AnimationPlayer(private val uuid: UUID) {
         }
 
         // --- 死亡状态（进入时锁定，停末帧） ---
-        if (living != null && living.isDeadOrDying) {
+        if (actor.living && actor.dead) {
             dead = true
         } else if (dead) {
             dead = false
@@ -353,8 +346,7 @@ class AnimationPlayer(private val uuid: UUID) {
         if (forced != null && forcedClip(forced, clips) == null) {
             if (lastFinishReportedId != forced.id) {
                 lastFinishReportedId = forced.id
-                org.lantern.internal.network.NetworkParser.animationEventSender
-                    ?.invoke(uuid, forced.animation, "missing")
+                eventSink(uuid, forced.animation, "missing")
             }
             AnimationControlStore.stop(uuid, forced.animation)
         }
@@ -371,8 +363,7 @@ class AnimationPlayer(private val uuid: UUID) {
                     lastFinishReportedId = forcedAlive.id
                     // 回带服务端序号：连点同一技能时上一实例的 finish 才不会撞掉新实例
                     val event = if (forcedAlive.seq >= 0L) "finish:${forcedAlive.seq}" else "finish"
-                    org.lantern.internal.network.NetworkParser.animationEventSender
-                        ?.invoke(uuid, forcedAlive.animation, event)
+                    eventSink(uuid, forcedAlive.animation, event)
                 }
                 if (forcedAlive.animation != states.death) {
                     AnimationControlStore.stop(uuid, forcedAlive.animation)
@@ -440,12 +431,12 @@ class AnimationPlayer(private val uuid: UUID) {
         if (firstRender) {
             states.config("spawn")?.let { startMotionAction(it, clips) }
         }
-        val edgeAllowed = living != null && !living.isInWater && !living.isPassenger && !onClimb && !flying
+        val edgeAllowed = actor.living && !actor.inWater && !actor.passenger && !onClimb && !flying
         if (jumpEdge) {
             jumpEdge = false
-            if (edgeAllowed && living != null) {
+            if (edgeAllowed && actor.living) {
                 // 疾跑中起跳优先 sprint_jump，未配置则回退 jump
-                val jumpConfig = (if (living.isSprinting) {
+                val jumpConfig = (if (actor.sprinting) {
                     resolveState(states, clips, "sprint_jump", "jump")
                 } else {
                     resolveState(states, clips, "jump")
@@ -485,8 +476,8 @@ class AnimationPlayer(private val uuid: UUID) {
         // --- 攻击边沿：swinging 上升沿（首击）+ attackAnim 锯齿回落（连击重挥——
         //     连点时 swinging 恒 true，只有进度从高位跳回 0；每次真实挥击恰好一个
         //     跳变，无同步杂波——swingTime 的刷新抖动会产生假边沿，弃用） ---
-        val swinging = living?.swinging == true
-        val attackAnimNow = living?.attackAnim ?: 0f
+        val swinging = actor.swinging
+        val attackAnimNow = actor.attackAnim
         val swingEdge = !wasSwinging && swinging
         // attackAnim = swingTime / getCurrentSwingDuration()，挥击期间单调递增，
         // 任何下降都只可能是重挥重置，所以阈值只需躲开浮点相等、不需要留大余量。
@@ -544,9 +535,7 @@ class AnimationPlayer(private val uuid: UUID) {
                 // 被播控顶掉的本地动作直接作废：留在槽里会在播控结束后从第 0 帧补播一遍，
                 // 它的位移也要一起停——动画看不见、人却在滑
                 releaseMotionSlot()
-                if (entity is net.minecraft.client.player.LocalPlayer) {
-                    org.lantern.action.PlayerActionStore.clearDash()
-                }
+                dashCancel(uuid)
             }
             if (combatSlot.clip != null) {
                 combatSlot.clip = null
@@ -634,7 +623,7 @@ class AnimationPlayer(private val uuid: UUID) {
 
         // POSTURE 层：上身姿态链（use 弓/盾/食、hold_* 持物——窄控制面，
         // 与 LOCOMOTION 的移动状态并存：走路拉弓=腿走路+手臂拉弓）
-        val posturePick = living?.let { selectUpperBodyPosture(it, states, clips) }
+        val posturePick = if (actor.living) selectUpperBodyPosture(actor, states, clips) else null
         if (posturePick != null) {
             setLayerTarget(
                 posture, posturePick.first,
@@ -651,14 +640,14 @@ class AnimationPlayer(private val uuid: UUID) {
         if (activeForced == null) channelId = -1L
         // sprint 进入滞回：isSprinting 边界抖动会让 walk<->sprint 反复换片（fade 重开=顿挫），
         // 需持续 150ms 才进入、条件消失即刻退出
-        if (living != null && living.isSprinting && isMoving) {
+        if (actor.living && actor.sprinting && isMoving) {
             sprintMs += dt
             if (sprintMs >= 0.15f) sprintActive = true
         } else {
             sprintMs = 0f
             sprintActive = false
         }
-        val locomotionPick = living?.let { selectLocomotion(it, isMoving, states, clips) }
+        val locomotionPick = if (actor.living) selectLocomotion(actor, isMoving, states, clips) else null
             ?: resolveState(states, clips, if (isMoving) "walk" else "idle")
         locomotionPick?.let { (clip, config, key) ->
             // 步频按实测速度调制：剪辑按基准速度编制，慢走慢摆、快走快摆，
@@ -716,24 +705,20 @@ class AnimationPlayer(private val uuid: UUID) {
                 layer.fadeClip?.let {
                     layer.fadeTime = advance(it, layer.fadeTime, dt * layer.fadeSpeed, layer.fadeLoops)
                 }
-                if (layer.fadeElapsed >= 0f) {
-                    layer.fadeElapsed += dt
-                    if (layer.fadeElapsed >= layer.fadeDuration) {
-                        layer.fadeClip = null
-                        layer.fadeElapsed = -1f
-                    }
+                if (layer.fadeElapsed >= 0f && layer.fadeDuration > 0f) {
+                    layer.fadeElapsed = min(layer.fadeElapsed + dt, layer.fadeDuration)
                 }
-                // 可见度包络趋近目标；降到 0 即释放剪辑（此时本层已完全让位给下层）
+                // 包络向目标推进
                 if (layer.envelope != layer.envelopeTarget) {
-                    layer.envelope = if (layer.envelopeRate <= 0f) {
-                        layer.envelopeTarget
-                    } else {
-                        val step = layer.envelopeRate * dt
-                        if (layer.envelopeTarget > layer.envelope) {
+                    if (layer.envelopeRate > 0f) {
+                        val step = dt * layer.envelopeRate
+                        layer.envelope = if (layer.envelope < layer.envelopeTarget) {
                             min(layer.envelope + step, layer.envelopeTarget)
                         } else {
                             max(layer.envelope - step, layer.envelopeTarget)
                         }
+                    } else {
+                        layer.envelope = layer.envelopeTarget
                     }
                 }
                 if (layer.envelope <= 0f && layer.envelopeTarget == 0f) {
@@ -754,21 +739,21 @@ class AnimationPlayer(private val uuid: UUID) {
 
         // --- 采样 + 层合成 ---
         // 表达式关键帧在此求值：query.* 来自 Lantern 构建的 per-entity queryValues，
-        // variable.* 来自 packet 17 注入的 per-entity 变量（ThreadLocal 上下文）
+        // variable.* 来自 packet 17 注入的 per-entity 变量（求值桥的 ThreadLocal 上下文）
         // 腿部归属：下层有实质腿部动作时（移动中、或跳跃等运动动作在播）才把腿让出去，
         // 原地出招保持动作完整。150ms 一阶平滑，起步停步不突变
         val motionLayerActive = actionMotion.clip != null && actionMotion.envelope > 0.01f
         val legTarget = if (movingCached || motionLayerActive) 1f else 0f
         legHandoff += (legTarget - legHandoff) * min(dt / 0.15f, 1f)
 
-        val evalState = buildEvalState(entity, living)
-        val vars = MolangVariableStore.resolve(uuid, evalState)
-        pose = MolangContext.evaluate(vars) {
+        val evalScope = buildEvalState(actor)
+        evalScope.variables = MolangVariableStore.resolve(uuid, evalScope)
+        pose = run {
             var composed: Map<String, FloatArray>? = null
             for (layer in layers) {
                 val w = layerWeight(layer)
                 if (w <= 0f) continue
-                val sampled = sampleLayer(layer, evalState) ?: continue
+                val sampled = sampleLayer(layer, evalScope) ?: continue
                 composed = if (layer.kind == LayerKind.ACTION_COMBAT) {
                     blendCombat(composed ?: emptyMap(), sampled, w, legHandoff)
                 } else when (layer.blend) {
@@ -855,15 +840,15 @@ class AnimationPlayer(private val uuid: UUID) {
      *  层的整体进出不在这里处理——那是可见度包络的职责，作用在层合成权重上 */
     private fun sampleLayer(
         layer: LayerState,
-        state: AnimationState<*>
+        scope: MolangScope
     ): Map<String, FloatArray>? {
         // 该层的表达式关键帧用该层自己的时间轴求值
-        evalQueries?.put(animTimeVariable, layer.time.toDouble())
-        val main = layer.clip?.let { samplePose(it, layer.time, layer.loops, state) } ?: return null
+        (scope as? MutableMolangScope)?.setQuery(QueryNames.ANIM_TIME, layer.time.toDouble())
+        val main = layer.clip?.let { samplePose(it, layer.time, layer.loops, scope) } ?: return null
         val fade = layer.fadeClip
         return if (fade != null && layer.fadeElapsed >= 0f && layer.fadeDuration > 0f) {
             blendPoses(
-                samplePose(fade, layer.fadeTime, layer.fadeLoops, state),
+                samplePose(fade, layer.fadeTime, layer.fadeLoops, scope),
                 main, layer.fadeElapsed / layer.fadeDuration, crossfade = true
             )
         } else {
@@ -916,53 +901,51 @@ class AnimationPlayer(private val uuid: UUID) {
     }
 
     /**
-     * 构建 GeckoLib MathValue 求值用的轻量 AnimationState：query.* 函数只读
-     * queryValues map（缺失返回 0），renderState/manager 不会被触碰。
-     * query 值由 Lantern 从实体状态与播放器运动实测换算，未提供的 query 返回 0
+     * 构建 molang 求值上下文：query.* 只读 scope 的 queries 表（缺失返回 0）。
+     * query 值由 Lantern 从实体快照与播放器运动实测换算，未提供的 query 返回 0
      */
-    private fun buildEvalState(entity: Entity, living: LivingEntity?): AnimationState<GeoAnimatable> {
-        val queries = Reference2DoubleOpenHashMap<Variable>()
+    private fun buildEvalState(actor: ActorSnapshot): MutableMolangScope {
+        val scope = MutableMolangScope()
         fun q(name: String, value: Double) {
-            queries.put(MathParser.getVariableFor(name), value)
+            scope.setQuery(name, value)
         }
 
         // anim_time 先填一个兜底值，真正取值在 sampleLayer 里按层覆写
-        q(MolangQueries.ANIM_TIME, (layers.lastOrNull { it.clip != null }?.time ?: 0f).toDouble())
-        evalQueries = queries
-        q(MolangQueries.IS_MOVING, if (movingCached) 1.0 else 0.0)
-        q(MolangQueries.GROUND_SPEED, groundSpeed.toDouble())
-        q(MolangQueries.VERTICAL_SPEED, verticalSpeed.toDouble())
-        q(MolangQueries.IS_ON_GROUND, if (airborne) 0.0 else 1.0)
-        q(MolangQueries.LIFE_TIME, entity.tickCount / 20.0)
+        q(QueryNames.ANIM_TIME, (layers.lastOrNull { it.clip != null }?.time ?: 0f).toDouble())
+        evalQueries = scope
+        q(QueryNames.IS_MOVING, if (movingCached) 1.0 else 0.0)
+        q(QueryNames.GROUND_SPEED, groundSpeed.toDouble())
+        q(QueryNames.VERTICAL_SPEED, verticalSpeed.toDouble())
+        q(QueryNames.IS_ON_GROUND, if (airborne) 0.0 else 1.0)
+        q(QueryNames.LIFE_TIME, actor.tickCount / 20.0)
 
-        val level = entity.level()
-        q(MolangQueries.TIME_STAMP, level.gameTime.toDouble())
-        q(MolangQueries.TIME_OF_DAY, level.dayTime / 24000.0)
-        q(MolangQueries.DAY, level.gameTime / 24000.0)
+        q(QueryNames.TIME_STAMP, actor.gameTime.toDouble())
+        q(QueryNames.TIME_OF_DAY, actor.dayTime / 24000.0)
+        q(QueryNames.DAY, actor.gameTime / 24000.0)
 
-        if (living != null) {
-            q(MolangQueries.IS_ALIVE, if (living.isAlive) 1.0 else 0.0)
-            q(MolangQueries.HEALTH, living.health.toDouble())
-            q(MolangQueries.MAX_HEALTH, living.maxHealth.toDouble())
-            q(MolangQueries.HURT_TIME, living.hurtTime.toDouble())
-            q(MolangQueries.IS_IN_WATER, if (living.isInWater) 1.0 else 0.0)
-            q(MolangQueries.IS_RIDING, if (living.isPassenger) 1.0 else 0.0)
-            q(MolangQueries.IS_SNEAKING, if (living.isShiftKeyDown) 1.0 else 0.0)
-            q(MolangQueries.IS_SPRINTING, if (living.isSprinting) 1.0 else 0.0)
-            q(MolangQueries.IS_BABY, if (living.isBaby) 1.0 else 0.0)
-            q(MolangQueries.SCALE, living.scale.toDouble())
-            q(MolangQueries.HEAD_X_ROTATION, living.xRot.toDouble())
-            q(MolangQueries.HEAD_Y_ROTATION, living.yRot.toDouble())
+        if (actor.living) {
+            q(QueryNames.IS_ALIVE, if (actor.alive) 1.0 else 0.0)
+            q(QueryNames.HEALTH, actor.health.toDouble())
+            q(QueryNames.MAX_HEALTH, actor.maxHealth.toDouble())
+            q(QueryNames.HURT_TIME, actor.hurtTime.toDouble())
+            q(QueryNames.IS_IN_WATER, if (actor.inWater) 1.0 else 0.0)
+            q(QueryNames.IS_RIDING, if (actor.passenger) 1.0 else 0.0)
+            q(QueryNames.IS_SNEAKING, if (actor.sneaking) 1.0 else 0.0)
+            q(QueryNames.IS_SPRINTING, if (actor.sprinting) 1.0 else 0.0)
+            q(QueryNames.IS_BABY, if (actor.baby) 1.0 else 0.0)
+            q(QueryNames.SCALE, actor.scale.toDouble())
+            q(QueryNames.HEAD_X_ROTATION, actor.pitch.toDouble())
+            q(QueryNames.HEAD_Y_ROTATION, actor.yaw.toDouble())
             // 别名：GeckoLib 的标准名是 head_x_rotation / head_y_rotation，
             // 而不少既有资产惯用更短的 query.pitch / query.yaw。两套名字都认，
             // 同一份资产拿过来直接能跑，不必为了改名重导一遍动画
-            q("query.pitch", living.xRot.toDouble())
-            q("query.yaw", living.yRot.toDouble())
-            q(MolangQueries.BODY_Y_ROTATION, living.yBodyRot.toDouble())
-            q(MolangQueries.YAW_SPEED, (living.yRot - living.yRotO).toDouble())
-            q(MolangQueries.DEATH_TICKS, if (dead) death.time * 20.0 else 0.0)
+            q(QueryNames.PITCH, actor.pitch.toDouble())
+            q(QueryNames.YAW, actor.yaw.toDouble())
+            q(QueryNames.BODY_Y_ROTATION, actor.bodyYaw.toDouble())
+            q(QueryNames.YAW_SPEED, actor.yawSpeed.toDouble())
+            q(QueryNames.DEATH_TICKS, if (dead) death.time * 20.0 else 0.0)
         }
-        return AnimationState(null, null, 0f, queries, null)
+        return scope
     }
 
     /**
@@ -972,7 +955,7 @@ class AnimationPlayer(private val uuid: UUID) {
      * 两套步态逐帧混合=部件分离、生硬卡脚（2026-09-04 真机实证）
      */
     private fun selectLocomotion(
-        entity: LivingEntity,
+        actor: ActorSnapshot,
         moving: Boolean,
         states: AnimationStateMapping,
         clips: Map<String, ClipData>
@@ -983,17 +966,17 @@ class AnimationPlayer(private val uuid: UUID) {
             if (candidate == null) candidate = resolveState(states, clips, *keys)
         }
 
-        if (entity.onClimbable()) pick("climbing")
-        if (candidate == null && entity.isInWater) {
+        if (actor.climbing) pick("climbing")
+        if (candidate == null && actor.inWater) {
             pick(if (moving) "swim_move" else "swim", "swim_walk", "swim_idle")
         }
-        if (candidate == null && entity is Player && entity.abilities.flying) {
+        if (candidate == null && actor.flying) {
             pick(if (moving) "fly_move" else "fly_static")
         }
-        if (candidate == null && entity.isPassenger) {
+        if (candidate == null && actor.passenger) {
             pick(if (moving) "ride_move" else "ride", "riding_walk", "riding_idle")
         }
-        if (candidate == null && entity.isShiftKeyDown) {
+        if (candidate == null && actor.sneaking) {
             pick(if (moving) "sneak_walk" else "sneak_hold", "sneak_idle")
         }
         // falling 进入需 600ms 空中确认：普通跳跃/跑跳滞空约 0.53s 全程被 ACTION 跳跃
@@ -1010,11 +993,10 @@ class AnimationPlayer(private val uuid: UUID) {
     }
 
     /**
-     * POSTURE 层上身姿态链（窄控制面：弓/盾/食/持物，与移动状态并存）：
-     * 使用物品(分主副手) > 持物(hold_*)。未命中返回 null 清层
+     * POSTURE 层上身姿态链：使用物品(分主副手) > 持物(hold_*)。未命中返回 null 清层
      */
     private fun selectUpperBodyPosture(
-        entity: LivingEntity,
+        actor: ActorSnapshot,
         states: AnimationStateMapping,
         clips: Map<String, ClipData>
     ): Triple<ClipData, StateConfig, String>? {
@@ -1024,20 +1006,20 @@ class AnimationPlayer(private val uuid: UUID) {
             if (candidate == null) candidate = resolveState(states, clips, *keys)
         }
 
-        if (entity.isUsingItem) {
-            val mainHand = entity.usedItemHand == InteractionHand.MAIN_HAND
-            when (entity.useItem.getUseAnimation()) {
-                ItemUseAnimation.BOW, ItemUseAnimation.CROSSBOW -> pick(
+        if (actor.usingItem) {
+            val mainHand = actor.usingMainHand
+            when (actor.useAction) {
+                UseActionKind.BOW, UseActionKind.CROSSBOW -> pick(
                     if (mainHand) "use_bow_main" else "use_bow_off", "pull_bow"
                 )
-                ItemUseAnimation.BLOCK -> pick(
+                UseActionKind.BLOCK -> pick(
                     if (mainHand) "use_shield_main" else "use_shield_off"
                 )
-                ItemUseAnimation.EAT, ItemUseAnimation.DRINK -> pick("use_eat", "eat", "drink")
+                UseActionKind.EAT, UseActionKind.DRINK -> pick("use_eat", "eat", "drink")
                 else -> {}
             }
         } else {
-            HoldItems.typeOf(entity.mainHandItem)?.let { type ->
+            actor.mainHandHold?.let { type ->
                 pick("hold_$type")
             }
         }
@@ -1133,7 +1115,7 @@ class AnimationPlayer(private val uuid: UUID) {
             (comboIndex + 1) % steps.size
         }
         val step = steps[index]
-        val clip = org.lantern.action.PlayerActionStore.comboClip(combo, step) ?: return false
+        val clip = clipLibrary(combo.file)?.get(step.animation) ?: return false
         val started = occupy(
             slot, clip,
             step.transitionTicks * 0.05f,
@@ -1324,33 +1306,6 @@ class AnimationPlayer(private val uuid: UUID) {
     }
 }
 
-/**
- * 主手物品类型 -> hold_* 状态名（持物待机姿态）。
- * 1.21.10 中剑/镐没有专属 Item 类（工具数据组件化），判定分两层：
- * 先匹配有专属类的类型（专属武器在前），再按数据组件兜底（WEAPON->sword，TOOL->pickaxe）
- */
-private object HoldItems {
-    private val classes: List<Pair<String, Class<out Item>>> = listOf(
-        "mace" to MaceItem::class.java,
-        "trident" to TridentItem::class.java,
-        "axe" to AxeItem::class.java,
-        "shovel" to ShovelItem::class.java,
-        "hoe" to HoeItem::class.java,
-        "bow" to BowItem::class.java,
-        "crossbow" to CrossbowItem::class.java,
-        "shield" to ShieldItem::class.java
-    )
-
-    fun typeOf(stack: ItemStack?): String? {
-        if (stack == null || stack.isEmpty) return null
-        val item = stack.item
-        for ((name, cls) in classes) if (cls.isInstance(item)) return name
-        if (stack.has(DataComponents.WEAPON)) return "sword"
-        if (stack.has(DataComponents.TOOL)) return "pickaxe"
-        return null
-    }
-}
-
 /** 过渡时长手感规范（smooth 参数）的上限：1000ms */
 private const val MAX_BLEND_SECONDS = 1f
 
@@ -1377,12 +1332,12 @@ private fun advance(clip: ClipData, time: Float, dt: Float, loops: Boolean): Flo
 }
 
 /** 采样剪辑 -> 骨骼写入空间姿势（轴变换在此完成；缺失轨道记 NaN = 该轴回落静态值）。
- *  关键帧值在此按 [state] 求值（数值关键帧是 Constant，求值即字段读） */
+ *  关键帧值在此按 [scope] 求值（数值关键帧是常量，求值即字段读） */
 private fun samplePose(
     clip: ClipData,
     rawTime: Float,
     loops: Boolean,
-    state: AnimationState<*>
+    scope: MolangScope
 ): Map<String, FloatArray> {
     val time = when {
         loops && clip.length > 0f -> rawTime % clip.length
@@ -1390,9 +1345,9 @@ private fun samplePose(
     }
     val result = HashMap<String, FloatArray>(clip.bones.size)
     for ((boneName, tracks) in clip.bones) {
-        val rot = sampleTrack(tracks.rotation, time, state)
-        val pos = sampleTrack(tracks.position, time, state)
-        val scale = sampleTrack(tracks.scale, time, state)
+        val rot = sampleTrack(tracks.rotation, time, scope)
+        val pos = sampleTrack(tracks.position, time, scope)
+        val scale = sampleTrack(tracks.scale, time, scope)
         result[boneName] = floatArrayOf(
             Math.toRadians((-(rot?.x ?: 0f)).toDouble()).toFloat(),
             Math.toRadians((-(rot?.y ?: 0f)).toDouble()).toFloat(),
@@ -1413,47 +1368,47 @@ private fun samplePose(
      *  旧片独有淡出、新片独有淡入，消除淡出末帧独占骨骼从满值到消失的跳变；
      *  false（层间 OVERRIDE）：上层独有骨骼随层权重渐现/渐隐，下层独有保持满值
      *  （上层淡入期不该压暗下层未被覆盖的骨骼）。NaN 轴保持穿透语义 */
-    private fun blendPoses(
-        from: Map<String, FloatArray>,
-        to: Map<String, FloatArray>,
-        w: Float,
-        crossfade: Boolean = false
-    ): Map<String, FloatArray> {
-        val out = HashMap<String, FloatArray>(from.size + to.size)
-        for ((name, a) in from) {
-            val b = to[name]
-            out[name] = if (b != null) {
-                FloatArray(9) { i ->
-                    when {
-                        a[i].isNaN() -> b[i]
-                        b[i].isNaN() -> a[i]
-                        // 0..2 是旋转：必须按最短弧插值，见 lerpAngle
-                        i < 3 -> lerpAngle(a[i], b[i], w)
-                        else -> a[i] + (b[i] - a[i]) * w
-                    }
+private fun blendPoses(
+    from: Map<String, FloatArray>,
+    to: Map<String, FloatArray>,
+    w: Float,
+    crossfade: Boolean = false
+): Map<String, FloatArray> {
+    val out = HashMap<String, FloatArray>(from.size + to.size)
+    for ((name, a) in from) {
+        val b = to[name]
+        out[name] = if (b != null) {
+            FloatArray(9) { i ->
+                when {
+                    a[i].isNaN() -> b[i]
+                    b[i].isNaN() -> a[i]
+                    // 0..2 是旋转：必须按最短弧插值，见 lerpAngle
+                    i < 3 -> lerpAngle(a[i], b[i], w)
+                    else -> a[i] + (b[i] - a[i]) * w
                 }
-            } else if (crossfade) {
-                scaleAxes(a, 1f - w)
-            } else {
-                a
             }
+        } else if (crossfade) {
+            scaleAxes(a, 1f - w)
+        } else {
+            a
         }
-        for ((name, b) in to) {
-            if (name !in out) out[name] = scaleAxes(b, w)
-        }
-        return out
     }
+    for ((name, b) in to) {
+        if (name !in out) out[name] = scaleAxes(b, w)
+    }
+    return out
+}
 
     /**
- * 角度插值，走最短弧。
- *
- * 姿势里的旋转是连续累积的欧拉角，不取模——动画内部要靠它表达「转一整圈」
- * （翻滚资产的 body 从 22° 连续转到 382°，几何上回到原位但数值差 360）。
- * 混合时若直接线性插值，382° 融向下层的 20° 会沿着数值方向倒退一整圈，
- * 在过渡时长内反向翻转，观感就是动作播完突然「重置」。
- * 把角度差归一到 [-PI, PI] 即走真实的最短路径；差值本就在该区间内的
- * 普通动画完全不受影响。
- */
+     * 角度插值，走最短弧。
+     *
+     * 姿势里的旋转是连续累积的欧拉角，不取模——动画内部要靠它表达「转一整圈」
+     * （翻滚资产的 body 从 22° 连续转到 382°，几何上回到原位但数值差 360）。
+     * 混合时若直接线性插值，382° 融向下层的 20° 会沿着数值方向倒退一整圈，
+     * 在过渡时长内反向翻转，观感就是动作播完突然「重置」。
+     * 把角度差归一到 [-PI, PI] 即走真实的最短路径；差值本就在该区间内的
+     * 普通动画完全不受影响。
+     */
 private fun lerpAngle(from: Float, to: Float, w: Float): Float {
     val twoPi = (Math.PI * 2.0).toFloat()
     var delta = to - from
@@ -1464,8 +1419,8 @@ private fun lerpAngle(from: Float, to: Float, w: Float): Float {
 }
 
 /** 按系数缩放姿势各轴（NaN 轴保持 NaN = 未控轴继续穿透回落静态值） */
-    private fun scaleAxes(v: FloatArray, k: Float): FloatArray =
-        FloatArray(9) { i -> if (v[i].isNaN()) v[i] else v[i] * k }
+private fun scaleAxes(v: FloatArray, k: Float): FloatArray =
+    FloatArray(9) { i -> if (v[i].isNaN()) v[i] else v[i] * k }
 
 /**
  * ADDING 合成：叠加层姿态按权重逐轴加到基线上（欧拉逐轴相加，与偏移语义一致，
@@ -1478,8 +1433,8 @@ private fun addPoses(base: Map<String, FloatArray>, addend: Map<String, FloatArr
         out[name] = if (b != null) {
             FloatArray(9) { i ->
                 when {
+                    a[i].isNaN() -> b[i]
                     b[i].isNaN() -> a[i]
-                    a[i].isNaN() -> b[i] * w
                     else -> a[i] + b[i] * w
                 }
             }
@@ -1494,24 +1449,24 @@ private fun addPoses(base: Map<String, FloatArray>, addend: Map<String, FloatArr
     return out
 }
 
-private fun sampleTrack(frames: List<Keyframe>, time: Float, state: AnimationState<*>): Vec3? {
+private fun sampleTrack(frames: List<Keyframe>, time: Float, scope: MolangScope): Vec3? {
     if (frames.isEmpty()) return null
-    if (frames.size == 1) return frames[0].value.eval(state)
-    if (time <= frames.first().time) return frames.first().value.eval(state)
-    if (time >= frames.last().time) return frames.last().value.eval(state)
+    if (frames.size == 1) return frames[0].value.eval(scope)
+    if (time <= frames.first().time) return frames.first().value.eval(scope)
+    if (time >= frames.last().time) return frames.last().value.eval(scope)
 
     var i = 0
     while (i < frames.size - 1 && frames[i + 1].time <= time) i++
     val a = frames[i]
     val b = frames[i + 1]
     val span = b.time - a.time
-    if (span <= 0f) return b.value.eval(state)
+    if (span <= 0f) return b.value.eval(scope)
     val t = (time - a.time) / span
 
     // 区间端点：prev.post -> next.pre；catmullrom 控制点取 pre 值
     //（区间端点语义实证：start=prev.post, end=next.pre）
-    val start = a.value.eval(state)
-    val end = (b.pre ?: b.value).eval(state)
+    val start = a.value.eval(scope)
+    val end = (b.pre ?: b.value).eval(scope)
 
     val catmull = a.lerpMode == "catmullrom" || b.lerpMode == "catmullrom"
     if (!catmull) {
@@ -1521,8 +1476,8 @@ private fun sampleTrack(frames: List<Keyframe>, time: Float, state: AnimationSta
             start.z + (end.z - start.z) * t
         )
     }
-    val p0 = frames[max(i - 1, 0)].let { (it.pre ?: it.value).eval(state) }
-    val p3 = frames[min(i + 2, frames.size - 1)].let { (it.pre ?: it.value).eval(state) }
+    val p0 = frames[max(i - 1, 0)].let { (it.pre ?: it.value).eval(scope) }
+    val p3 = frames[min(i + 2, frames.size - 1)].let { (it.pre ?: it.value).eval(scope) }
     return Vec3(
         spline(t, p0.x, start.x, end.x, p3.x),
         spline(t, p0.y, start.y, end.y, p3.y),
@@ -1540,41 +1495,4 @@ private fun spline(t: Float, p0: Float, p1: Float, p2: Float, p3: Float): Float 
             (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
             (-p0 + 3f * p1 - 3f * p2 + p3) * t3
         )
-}
-
-/**
- * 渲染阶段（submit 内，逐实体串行）调用：将 per-entity 姿势映射写入处理器骨骼。
- * [initial] 为该渲染器克隆骨骼的静态初始姿势（见 GenericGeoModel），剪辑未驱动的
- * 骨骼/轴回落到它——由调用方预计算，避免每帧重新装配
- */
-private val boneNameLowerCache = java.util.concurrent.ConcurrentHashMap<String, String>()
-
-/** 骨骼名小写缓存：动画轨道以小写为键，骨骼名数量有限，避免每帧逐骨分配字符串 */
-private fun lowerBoneName(name: String): String =
-    boneNameLowerCache.getOrPut(name) { name.lowercase() }
-
-fun applyPoseToBones(
-    processor: AnimationProcessor<*>,
-    pose: Map<String, FloatArray>?,
-    initial: Map<String, FloatArray>
-) {
-    val bones = processor.registeredBones
-    if (bones.isEmpty() || pose == null) return
-    for (bone in bones) {
-        val init = initial[bone.name] ?: continue
-        val v = pose[lowerBoneName(bone.name)]
-        bone.updateRotation(
-            if (v == null || v[0].isNaN()) init[0] else v[0],
-            if (v == null || v[1].isNaN()) init[1] else v[1],
-            if (v == null || v[2].isNaN()) init[2] else v[2]
-        )
-        bone.updatePosition(
-            if (v == null || v[3].isNaN()) init[3] else v[3],
-            if (v == null || v[4].isNaN()) init[4] else v[4],
-            if (v == null || v[5].isNaN()) init[5] else v[5]
-        )
-        bone.setScaleX(if (v == null || v[6].isNaN()) init[6] else v[6])
-        bone.setScaleY(if (v == null || v[7].isNaN()) init[7] else v[7])
-        bone.setScaleZ(if (v == null || v[8].isNaN()) init[8] else v[8])
-    }
 }

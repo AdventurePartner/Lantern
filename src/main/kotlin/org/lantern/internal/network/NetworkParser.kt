@@ -15,13 +15,13 @@ import org.lantern.internal.wrapper.key.KeyWrapper
 import org.lantern.internal.wrapper.resource.ItemIconResourceWrapperImpl
 import org.lantern.model.handler.BlockRendererHandler
 import org.lantern.model.wrapper.BlockModelWrapper
-import org.lantern.costume.bone.BoneMapping
+import org.lantern.core.bone.BoneMapping
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.costume.slot.CostumeSlot
 import org.lantern.costume.wrapper.CostumeModelWrapper
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.model.handler.RendererHandler
-import org.lantern.model.wrapper.AnimationStateMapping
+import org.lantern.core.anim.statemap.AnimationStateMapping
 import net.minecraft.resources.ResourceLocation
 
 import org.lantern.platform.IdentifierBridge
@@ -41,7 +41,7 @@ object NetworkParser {
      * exitTicks：播完清层的退出过渡 tick（-1 = 沿用起手过渡）。
      * 未注册的平台忽略该包。
      */
-    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float, uninterruptible: Boolean, toCombatLayer: Boolean, library: ResourceLocation?, seq: Long, exitTicks: Int) -> Unit)? =
+    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float, uninterruptible: Boolean, toCombatLayer: Boolean, library: String?, seq: Long, exitTicks: Int) -> Unit)? =
         null
 
     /**
@@ -504,15 +504,9 @@ object NetworkParser {
         val uninterruptible = obj.get("uninterruptible")?.asBoolean ?: false
         // 归层：combat = 上身出招层（腿继续走），缺省 motion = 全身
         val toCombatLayer = obj.get("layer")?.asString.equals("combat", ignoreCase = true)
-        // 指令自带动画库：技能剪辑不再绑死在目标当前的外观库上
-        // 共享源码要同时编给 1.20.1，不能用 ResourceLocation.parse；带命名空间的自己切
-        val library = obj.get("file")?.asString?.takeIf { it.isNotBlank() }?.let { path ->
-            runCatching {
-                val colon = path.indexOf(':')
-                if (colon > 0) IdentifierBridge.of(path.substring(0, colon), path.substring(colon + 1))
-                else IdentifierBridge.of(Lantern.MOD_ID, path)
-            }.getOrNull()
-        }
+        // 指令自带动画库：技能剪辑不再绑死在目标当前的外观库上。库 id 以字符串
+        // 原样下传，命名空间的补全由消费侧的资源定位完成（common-core 不碰 ResourceLocation）
+        val library = obj.get("file")?.asString?.takeIf { it.isNotBlank() }
         val seq = obj.get("seq")?.asLong ?: -1L
         val exitTicks = obj.get("exit")?.asInt ?: -1
         if (action == "seek" && seekSeconds < 0f) return

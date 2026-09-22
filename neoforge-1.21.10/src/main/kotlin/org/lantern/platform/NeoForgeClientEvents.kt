@@ -22,7 +22,7 @@ import org.lantern.internal.placeholder.PlaceholderStore
 import org.lantern.internal.storage.ScreenType
 import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.model.handler.RendererHandler
-import org.lantern.model.renderstate.AnimationControlStore
+import org.lantern.core.anim.control.AnimationControlStore
 import org.lantern.uix.canvas.impl.GuiCanvas
 import org.lantern.uix.event.EventDispatcher
 import org.lantern.uix.input.FocusManager
@@ -83,7 +83,7 @@ object NeoForgeClientEvents {
      * 只清一个的话锁形同虚设
      */
     private fun onMovementInput(event: MovementInputUpdateEvent) {
-        val locks = org.lantern.input.InputLockStore.activeLocks()
+        val locks = org.lantern.core.input.InputLockStore.activeLocks()
         if (locks.isEmpty()) return
         val lockMove = "move" in locks
         val lockJump = "jump" in locks
@@ -114,7 +114,7 @@ object NeoForgeClientEvents {
      * 所以取消的同时必须把挥手也关掉，锁才是真的锁
      */
     private fun onInteractionKey(event: InputEvent.InteractionKeyMappingTriggered) {
-        val locks = org.lantern.input.InputLockStore.activeLocks()
+        val locks = org.lantern.core.input.InputLockStore.activeLocks()
         if (locks.isEmpty()) return
         if (event.isAttack && "attack" in locks) {
             event.isCanceled = true
@@ -162,11 +162,11 @@ object NeoForgeClientEvents {
         // server-checked 条目还会朝新服发请求
         org.lantern.action.PlayerActionStore.clear()
         org.lantern.model.handler.AnimationControlHandler.clearPending()
-        org.lantern.animation.MolangVariableStore.clear()
+        org.lantern.core.anim.molang.MolangVariableStore.clear()
         // 绑定是会话内状态，换服必须归零，否则新服的实体会带着旧绑定渲染
-        org.lantern.bind.BindStore.clear()
+        org.lantern.core.bind.BindStore.clear()
         // 输入锁同理，不跨服残留
-        org.lantern.input.InputLockStore.clear()
+        org.lantern.core.input.InputLockStore.clear()
         parsedKeys.clear()
         wasMouseDown = false
         // 相机演出状态（lock/shake/fov/offset）不跨服残留
@@ -184,9 +184,9 @@ object NeoForgeClientEvents {
             // 渲染器懒重建，实体换维度重新进入视距时会自动恢复
             RendererHandler.evict(event.entity.uuid)
             AnimationHost.remove(event.entity.uuid)
-            org.lantern.bind.BindStore.remove(event.entity.uuid)
+            org.lantern.core.bind.BindStore.remove(event.entity.uuid)
             AnimationControlStore.stop(event.entity.uuid, null)
-            org.lantern.animation.MolangVariableStore.remove(event.entity.uuid)
+            org.lantern.core.anim.molang.MolangVariableStore.remove(event.entity.uuid)
         }
     }
 
@@ -239,7 +239,7 @@ object NeoForgeClientEvents {
      * 与 keys.yml 的通道分开跟踪按下集，两者绑同一个键时互不干扰
      */
     private fun handlePlayerActions(client: Minecraft) {
-        val definitions = org.lantern.action.PlayerActionStore.definitions()
+        val definitions = org.lantern.core.action.PlayerActionDefs.definitions()
         if (definitions.isEmpty()) return
         if (client.player == null) return
         val window = client.getWindow().handle()

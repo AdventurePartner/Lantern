@@ -1,7 +1,8 @@
 package org.lantern.model.renderstate
 
 import java.util.UUID
-import org.lantern.model.wrapper.AnimationStateMapping
+import org.lantern.core.anim.control.AnimationControlStore
+import org.lantern.core.anim.statemap.AnimationStateMapping
 import software.bernie.geckolib.constant.dataticket.DataTicket
 
 /**

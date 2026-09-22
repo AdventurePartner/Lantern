@@ -101,7 +101,7 @@ object CostumeHandler {
         // 指令引用的剪辑在新库里查不到，留着只会在换回去时凭空续播半段。
         // 整替槽位真的变了才清，同 id 重复下发（登录全量同步）不受影响
         if (wrapper.slot == CostumeSlot.FULL_BODY && previous != null && previous != costumeId) {
-            org.lantern.model.renderstate.AnimationControlStore.stop(playerUUID, null)
+            org.lantern.core.anim.control.AnimationControlStore.stop(playerUUID, null)
         }
     }
 

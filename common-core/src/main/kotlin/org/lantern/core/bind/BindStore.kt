@@ -1,8 +1,9 @@
-package org.lantern.bind
+package org.lantern.core.bind
 
 import com.google.gson.JsonObject
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import org.lantern.core.CoreLog
 
 /**
  * 载体绑定表（客户端，packet 20）。
@@ -11,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 把它画到宿主的**插值位置**上（不是 tick 位置——用 tick 位置每帧都会跳，
  * 宿主跑动时载体会一顿一顿地跟）。
  *
- * 只碰 ConcurrentHashMap，网络线程直接写即可，不必调度回主线程
+ * 只碰 ConcurrentHashMap，任何线程直接写即可
  */
 object BindStore {
 
@@ -42,7 +43,7 @@ object BindStore {
         val hostRaw = obj.get("host")?.asString
         if (hostRaw == null) {
             binds.remove(follower)
-            org.lantern.Lantern.logger.info("[Lantern] 解绑载体 {}", follower)
+            CoreLog.logger.log(java.util.logging.Level.INFO, "[Lantern] 解绑载体 {0}", follower)
             return
         }
         val host = runCatching { UUID.fromString(hostRaw) }.getOrNull() ?: return
@@ -58,7 +59,7 @@ object BindStore {
             expireAtMs = if (durationMs > 0) System.currentTimeMillis() + durationMs else 0L
         )
         // 与服务端那条「绑定建立」配对：两边都打，才能区分"服务端没发"与"客户端没收到"
-        org.lantern.Lantern.logger.info("[Lantern] 收到绑定: 载体={} 宿主={}", follower, host)
+        CoreLog.logger.log(java.util.logging.Level.INFO, "[Lantern] 收到绑定: 载体={0} 宿主={1}", arrayOf(follower, host))
     }
 
     /**

@@ -1,4 +1,4 @@
-package org.lantern.model.wrapper
+package org.lantern.core.anim.statemap
 
 import com.google.gson.JsonObject
 
