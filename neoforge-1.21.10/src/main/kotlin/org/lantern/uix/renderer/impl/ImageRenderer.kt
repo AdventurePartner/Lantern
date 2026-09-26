@@ -35,6 +35,7 @@ object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
                 runCatching { IdentifierBridge.parse(widget.texture) }.getOrNull()
             } ?: return
         }
-        graphics.blit(location, x, y, width, height, 0.0f, 1.0f, 0.0f, 1.0f)
+        // 1.21.9+ 该重载的四个 int 是左上/右下角点 (x1, y1, x2, y2)，不是 x/y/width/height
+        graphics.blit(location, x, y, x + width, y + height, 0.0f, 1.0f, 0.0f, 1.0f)
     }
 }
