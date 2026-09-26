@@ -15,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap
 object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
     private val rlCache = ConcurrentHashMap<String, ResourceLocation?>()
 
-
     override fun render(
         widget: ImageWidgetImpl,
         style: StyleRule,
