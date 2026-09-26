@@ -4,7 +4,7 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import org.lantern.model.enums.EntityAnimationState
 import org.lantern.model.util.EntityStateUtil
-import org.lantern.model.wrapper.AnimationStateMapping
+import org.lantern.core.anim.statemap.AnimationStateMapping
 import software.bernie.geckolib.animatable.GeoReplacedEntity
 import software.bernie.geckolib.animation.AnimatableManager
 import software.bernie.geckolib.animation.AnimationController

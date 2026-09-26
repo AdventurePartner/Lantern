@@ -1,8 +1,164 @@
-# Lantern Costume Configuration
-# Each entry defines a costume that can be assigned to players
+# ============================================
+# Lantern 外观配置
+# ============================================
 #
+# 两类条目，同一套字段：
+#   整替外观（slot: full_body + host-driven: true）——客户端由 AnimationHost
+#     四层层栈驱动（状态表全量语义，含 once/hold 播放模式与播控），整替
+#     玩家模型；animationGroups.yml 的条件规则切换的就是这些条目。
+#   贴身部件（slot: back / tail / head / effect，取 gui/wardrobe.yml 定义的
+#     槽位名）——叠加在整替外观上的挂件，衣橱按槽位换装。
+#
+# player-default.costume 是玩家回落外观：漏配则玩家没有默认模型。
+# 资产放在客户端资源包 assets/lantern/ 下，以下路径均相对该目录。
+#
+# 字段说明：
+#   display-name   显示名
+#   geo / texture  模型与贴图路径
+#   animations.file           动画库文件
+#   animations.states         状态表，值两种写法：
+#       简写  sprint: run                （= loop 语义）
+#       展开  jump:                       （自定义播放语义）
+#               animation: 跳跃
+#               mode: once                （loop=循环 / once=播完回落 / hold=停末帧直到条件消失）
+#               transition: 3             （切换过渡 tick，20 tick = 1 秒）
+#   animations.upper-body-bones  出招层上身骨骼集：不配用客户端内置的
+#       15 关节规范；骨架命名与标准人模不同的外观在此声明
+#   scale / offset.x|y|z  缩放与挂点偏移
+#   slot      槽位：full_body（整替）/ back / tail / head / effect（部件）
+#   bone-sync 部件骨骼是否跟随宿主（整替外观配 false）
+#   host-driven 玩家宿主化开关（玩家整替外观必开）
+#   bone-mapping.head / body / left_arm / right_arm / left_leg / right_leg
+#             骨映射：骨架骨名与标准人模不同时逐骨声明，缺省即标准名
+
+# ============================================
+# 玩家默认外观（开箱即用，状态表即状态键全集）
+# 资产：geo/player/player_default.geo.json（15 关节方块人模板）
+# ============================================
+player-default:
+  costume: player_default
+
+player_default:
+  display-name: "玩家默认模型"
+  host-driven: true
+  slot: full_body
+  bone-sync: false
+  geo: "geo/player/player_default.geo.json"
+  texture: "textures/player/player_default.png"
+  animations:
+    file: "animations/player/player_default.animation.json"
+    states:
+      idle: 待机
+      walk: 行走
+      sprint: 奔跑
+      sneak_hold:
+        animation: 蹲下过程
+        mode: hold
+      sneak_walk: 蹲下移动
+      fly_static: 待机
+      fly_move: 行走
+      jump:
+        animation: 跳跃
+        mode: once
+      sprint_jump:
+        animation: 行走跳跃
+        mode: once
+      falling:
+        animation: 跌落
+        mode: hold
+      swim: 游泳
+      ride: 骑乘
+      use_bow_main:
+        animation: 右手拉弓
+        mode: hold
+      use_bow_off:
+        animation: 左手拉弓
+        mode: hold
+      use_shield_main:
+        animation: 右手持盾
+        mode: hold
+      use_shield_off:
+        animation: 左手持盾
+        mode: hold
+      use_eat:
+        animation: 吃东西
+        mode: hold
+      attack_left:
+        animation: 左砍
+        mode: once
+        transition: 2
+      attack_right:
+        animation: 右砍
+        mode: once
+        transition: 2
+      # 头部叠加层：动画只控 head 骨，用 query.pitch / query.yaw 取视角，
+      # 叠加在行走/出招的既有姿态之上（「头随视角、身体照常动作」）
+      head:
+        animation: 头颅
+        mode: loop
+
+# ============================================
+# 换动画组只换动画库：共用骨架与贴图，由 animationGroups.yml 条件切换
+# （持有带「重型」lore 的物品时切到本条目）。未配置的状态穿透回落
+# idle/walk；技能动画不进 states，由 MythicMobs 的 lanternanim 机制
+# 或 animations.yml 轨道按动画名播放。
+# ============================================
+# player_heavy:
+#   display-name: "重型武器"
+#   host-driven: true
+#   slot: full_body
+#   bone-sync: false
+#   geo: "geo/player/player_default.geo.json"
+#   texture: "textures/player/player_default.png"
+#   animations:
+#     file: "animations/player/heavy_weapon.animation.json"
+#     states:
+#       idle: 重武器待机
+#       walk: 重武器行走
+#       sprint: 重武器行走
+#       attack_left:
+#         animation: 重武器劈砍
+#         mode: once
+#         transition: 2
+#       attack_right:
+#         animation: 重武器劈砍
+#         mode: once
+#         transition: 2
+#       head:
+#         animation: 重武器头颅
+#         mode: loop
+
+# 异骨架外观：bone-mapping 逐骨声明骨架骨名，upper-body-bones 列出
+# 出招层的上身骨（其余骨让位给移动层）：
+# player_custom_rig:
+#   display-name: "自定义骨架"
+#   host-driven: true
+#   slot: full_body
+#   bone-sync: false
+#   geo: "geo/player/custom_rig.geo.json"
+#   texture: "textures/player/custom_rig.png"
+#   bone-mapping:
+#     head: bone_head
+#     body: bone_body
+#     left_arm: bone_arm_l
+#     right_arm: bone_arm_r
+#     left_leg: bone_leg_l
+#     right_leg: bone_leg_r
+#   animations:
+#     file: "animations/player/custom_rig.animation.json"
+#     states:
+#       idle: 待机
+#       walk: 行走
+#     upper-body-bones:
+#     - bone_body
+#     - bone_head
+#     - bone_arm_l
+#     - bone_arm_r
+
+# 贴身部件示例（slot 取 gui/wardrobe.yml 定义的槽位名）：
 # angel_wings:
 #   display-name: "Angel Wings"
+#   slot: back
 #   geo: "geo/costume/angel_wings.geo.json"
 #   texture: "textures/costume/angel_wings.png"
 #   animations:

@@ -46,10 +46,27 @@ object Configurations {
                 CacheHandler.itemIcons[i.toInt()] = ItemIconCache(section)
             }
         }
+        LanternPlugin.instance.saveResource("playerActions.yml", "playerActions.yml", false) {
+            CacheHandler.playerActions.clear()
+            val data = YamlConfiguration.loadConfiguration(it)
+            data.getKeys(false).forEach { key ->
+                val section = data.getConfigurationSection(key) ?: return@forEach
+                val action = org.lantern.cache.PlayerActionCache(section)
+                if (action.valid) {
+                    CacheHandler.playerActions[key] = action
+                } else {
+                    plugin.logger.warning("[Lantern] Skipped invalid player action: $key")
+                }
+            }
+        }
         LanternPlugin.instance.saveResource("costumes.yml", "costumes.yml", false) {
             CacheHandler.costumes.clear()
             val data = YamlConfiguration.loadConfiguration(it)
+            CacheHandler.defaultPlayerCostume = data.getString("player-default.costume")
+                ?.takeIf { costume -> costume.isNotEmpty() && data.getConfigurationSection(costume) != null }
             data.getKeys(false).forEach { key ->
+                // player-default 是配置节不是外观条目，跳过（否则空 geo 条目会下发客户端）
+                if (key == "player-default") return@forEach
                 val section = data.getConfigurationSection(key) ?: return@forEach
                 CacheHandler.costumes[key] = CostumeCache(section)
             }

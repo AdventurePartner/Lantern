@@ -5,15 +5,23 @@
   "minVersion": "0.8",
   "client": [
     "accessor.ChatComponentAccessor",
+    "accessor.ClientInputAccessor",
     "block.BarrelBlockMixin",
     "camera.CameraMixin",
     "camera.GameRendererMixin",
     "camera.GuiMixin",
     "camera.MinecraftMixin",
     "chat.ChatComponentMixin",
+    "input.MouseHandlerMixin",
     "network.GeckoLibNetworkingNeoForgeMixin",
+    "AvatarAttachLayerMixin",
     "EntityMixin",
-    "EntityRenderDispatcherMixin"
+    "EntityRenderDispatcherMixin",
+    "HumanoidArmorLayerMixin",
+    "LivingEntityRendererMixin",
+    "PlayerItemInHandLayerMixin",
+    "PlayerModelHostPoseMixin",
+    "WingsLayerMixin"
   ],
   "mixins": [],
   "injectors": {

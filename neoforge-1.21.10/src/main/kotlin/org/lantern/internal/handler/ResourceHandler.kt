@@ -205,6 +205,12 @@ object ResourceHandler {
 
         RendererHandler.reload()
         clientStorage.entityModels.forEach(RendererHandler::addEntityModel)
+        // 与 common 版 rebuild 对齐：F3+T 时 GeckoLib 烘焙缓存整表换代（重载
+        // listener 按 id 排序 geckolib 先于 lantern 进入 apply），服装渲染器
+        // 持有的 isolatedModel 深拷贝不随之失效，必须丢弃待懒重建取新缓存
+        CostumeHandler.refreshRenderers()
+        // 盔甲部件树随 vanilla 模型生命周期重建（几何为静态数值，重建只为对齐时序）
+        org.lantern.costume.armor.LanternArmorModel.invalidate()
     }
 
     fun clearSession() {

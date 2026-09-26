@@ -22,6 +22,11 @@ class CostumeRenderLayer(
         bodyYaw: Float,
         pitch: Float
     ) {
+        // 隐身对齐 vanilla 身体语义：layers 循环不被隐身门控（AvatarRenderer 只挡
+        // spectator），判定由各 layer 自行负责（CapeLayer 同款显式判 isInvisible）。
+        // 盔甲/手持层有意不判隐身是原版行为，整替模型是身体替身，跟随身体消失；
+        // 队友可见隐身的 15% 半透明（translucentBypass）不复制，直接不画
+        if (renderState.isInvisible) return
         val playerId = requireNotNull(renderState.getRenderData(CostumeRenderData.PLAYER_UUID))
         if (!CostumeHandler.hasAny(playerId)) return
         val cameraState = requireNotNull(renderState.getRenderData(CostumeRenderData.CAMERA_STATE))

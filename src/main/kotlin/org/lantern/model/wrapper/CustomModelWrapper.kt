@@ -1,6 +1,7 @@
 package org.lantern.model.wrapper
 
 import net.minecraft.resources.ResourceLocation
+import org.lantern.core.anim.statemap.AnimationStateMapping
 
 class CustomModelWrapper(
     val modelLocation: ResourceLocation,

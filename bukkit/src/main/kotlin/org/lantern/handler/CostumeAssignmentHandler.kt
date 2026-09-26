@@ -23,8 +23,13 @@ object CostumeAssignmentHandler {
     private var saveTaskId = -1
 
     fun assign(playerUUID: UUID, slot: String, costumeId: String) {
-        assignments.computeIfAbsent(playerUUID) { ConcurrentHashMap() }[slot] = costumeId
+        val previous = assignments.computeIfAbsent(playerUUID) { ConcurrentHashMap() }.put(slot, costumeId)
         markDirty()
+        // 换整替外观 = 客户端换动画库并静默停掉播控（不上报 finish）。服务端这边的登记
+        // 也得一起作废，否则 isAnimating 永远为真，该玩家的换组从此永久推迟
+        if (slot == "full_body" && previous != null && previous != costumeId) {
+            org.lantern.animation.AnimationOrchestrator.forget(playerUUID)
+        }
     }
 
     fun remove(playerUUID: UUID, slot: String? = null) {

@@ -36,6 +36,8 @@ Lantern 分为两部分：
 | `plugins/Lantern/blockModels.yml` | 自定义方块 |
 | `plugins/Lantern/entityModels.yml` | 生物显示成自定义模型 |
 | `plugins/Lantern/costumes.yml` | 玩家外观 |
+| `plugins/Lantern/playerActions.yml` | 玩家主动动作（翻滚闪避、连招） |
+| `plugins/Lantern/animationGroups.yml` | 按条件自动切换动作组 |
 | `plugins/Lantern/itemIcons.yml` | 物品图标替换 |
 | `plugins/Lantern/characters.yml` | 用一个文字显示一张小图片 |
 | `plugins/Lantern/data/blocks.yml` | 已放置自定义方块的位置记录，通常不要手动修改 |
@@ -85,5 +87,7 @@ chat-channels:
 - [自定义方块](custom-blocks.md)
 - [生物模型](entity-models.md)
 - [玩家外观](player-costumes.md)
+- [玩家动作](player-actions.md)
+- [载体绑定与输入锁](bind-and-input-lock.md)
 - [按键绑定](keys.md)
 - [图片文字、物品图标和资源包](assets-and-icons.md)

@@ -9,7 +9,7 @@ import org.lantern.Lantern
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.handler.CycleHandler
 import org.lantern.model.renderer.GenericGeoRenderer
-import org.lantern.model.wrapper.AnimationStateMapping
+import org.lantern.core.anim.statemap.AnimationStateMapping
 import org.lantern.model.wrapper.CustomModelWrapper
 
 object RendererHandler {

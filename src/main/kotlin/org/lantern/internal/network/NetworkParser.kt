@@ -15,13 +15,13 @@ import org.lantern.internal.wrapper.key.KeyWrapper
 import org.lantern.internal.wrapper.resource.ItemIconResourceWrapperImpl
 import org.lantern.model.handler.BlockRendererHandler
 import org.lantern.model.wrapper.BlockModelWrapper
-import org.lantern.costume.bone.BoneMapping
+import org.lantern.core.bone.BoneMapping
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.costume.slot.CostumeSlot
 import org.lantern.costume.wrapper.CostumeModelWrapper
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.model.handler.RendererHandler
-import org.lantern.model.wrapper.AnimationStateMapping
+import org.lantern.core.anim.statemap.AnimationStateMapping
 import net.minecraft.resources.ResourceLocation
 
 import org.lantern.platform.IdentifierBridge
@@ -33,9 +33,15 @@ object NetworkParser {
      * packetId 15（动画播控）的处理器，由支持运行时动画控制的客户端平台注册。
      * action: play | stop | pause | resume | seek；
      * seek 时 seekSeconds 为跳转目标（秒），其他 action 为 -1。
+     * toCombatLayer 由 layer 字段决定：combat = 上身出招层（腿保持移动状态），
+     * 缺省 motion = 全身运动层（压住行走）。
+     * 目标可以是实体（entityModels 条目）或玩家（host-driven 外观）。
+     * library：可选，剪辑所在动画库（file 字段）；null = 用目标当前绑定的库。
+     * seq：服务端实例序号（-1 = 无），finish 回带用于按实例匹配。
+     * exitTicks：播完清层的退出过渡 tick（-1 = 沿用起手过渡）。
      * 未注册的平台忽略该包。
      */
-    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float) -> Unit)? =
+    var animationControlHandler: ((uuid: UUID, action: String, animation: String, transition: Int, loop: Boolean, speed: Float, seekSeconds: Float, uninterruptible: Boolean, toCombatLayer: Boolean, library: String?, seq: Long, exitTicks: Int) -> Unit)? =
         null
 
     /**
@@ -58,6 +64,44 @@ object NetworkParser {
      */
     var cameraActionHandler: ((action: String, obj: JsonObject) -> Unit)? = null
 
+    /**
+     * packetId 19 玩家主动动作定义（按键触发的翻滚等），由支持本地动作触发的平台注册。
+     * 载荷整体交给平台侧解析——动作定义引用的剪辑与层语义是平台动画内核的概念。
+     *
+     * 载荷形如 { "actions": [ ... ] }，每项两种形态：
+     *   方向动作 { id, key, file, directions:{forward:.., left:..}, transition,
+     *              exit-transition, cooldown, layer, exclusive, uninterruptible,
+     *              invulnerable, suppress-vanilla-attack, distance, dash-duration,
+     *              vertical, airborne, require-ground }
+     *   连招     { id, trigger:"attack", costume, file, layer,
+     *              steps:[{animation, cancel-at, window, transition, exit-transition}] }
+     * 触发与播放全在客户端本地：出招延迟对动作玩法敏感，服务端只下发定义。
+     */
+    var playerActionHandler: ((obj: JsonObject) -> Unit)? = null
+
+    /**
+     * packetId 20 载体绑定（bind / unbind），由实现了渲染重定向的客户端平台注册。
+     *
+     * 绑定态 { follower, host, offset:[x,y,z], rotate, visible, durationMs }；
+     * 解绑只带 { follower }（无 host 字段即解绑）。
+     * 语义纯客户端渲染层：载体的服务端坐标、碰撞、移动逻辑一概不动，
+     * 只是渲染时把它画到宿主的插值位置上。
+     */
+    var entityBindHandler: ((obj: JsonObject) -> Unit)? = null
+
+    /**
+     * packetId 21 玩家输入锁，由实现了输入压制的客户端平台注册。
+     *
+     * 加锁 { id, locks:["move","jump",...], durationMs }；
+     * 解锁 { clear:true, id? }（省略 id = 清除该玩家全部锁）。
+     * 多来源按 id 分别记账、并集生效，各自到期。
+     */
+    var inputLockHandler: ((obj: JsonObject) -> Unit)? = null
+
+    /**
+     * 分发表。未匹配的 packetId 自然落空（when 语句无 else 分支）——
+     * 老客户端收到新增包号即为静默跳过，wire 兼容靠这一点维持，勿改成穷举分支
+     */
     fun parse(packetId: Int, obj: JsonObject) {
         when (packetId) {
             1 -> parseCharacters(obj)
@@ -77,6 +121,9 @@ object NetworkParser {
             15 -> parseAnimationControl(obj)
             17 -> parseMolangVariables(obj)
             18 -> parseCameraControl(obj)
+            19 -> playerActionHandler?.invoke(obj)
+            20 -> entityBindHandler?.invoke(obj)
+            21 -> inputLockHandler?.invoke(obj)
             99 -> reloadResourcePack()
         }
     }
@@ -273,7 +320,9 @@ object NetworkParser {
                 animationLocation = IdentifierBridge.of(Lantern.MOD_ID, animPath)
 
                 val statesObj = animationsObj.getAsJsonObject("states")
-                animationStates = AnimationStateMapping.fromStatesJson(statesObj)
+                // 上身骨骼集随外观下发：换外观即换骨架，遮罩要跟着走
+                val upperBones = animationsObj.getAsJsonArray("upper-body-bones")
+                animationStates = AnimationStateMapping.fromStatesJson(statesObj, upperBones)
             } else {
                 animationLocation = IdentifierBridge.of(
                     Lantern.MOD_ID, "animations/costume/default.animation.json"
@@ -289,6 +338,7 @@ object NetworkParser {
 
             val slot = CostumeSlot.fromString(it.get("slot")?.asString ?: "full_body")
             val boneSyncEnabled = it.get("bone-sync")?.asBoolean ?: true
+            val hostDriven = it.get("host-driven")?.asBoolean ?: false
             val boneMapping = it.getAsJsonObject("bone-mapping")?.let { bm ->
                 BoneMapping(
                     head = bm.get("head")?.asString ?: "head",
@@ -314,7 +364,8 @@ object NetworkParser {
                 textureUrl = textureUrl,
                 slot = slot,
                 boneSyncEnabled = boneSyncEnabled,
-                boneMapping = boneMapping
+                boneMapping = boneMapping,
+                hostDriven = hostDriven
             )
 
             definitions[id] = wrapper
@@ -450,8 +501,16 @@ object NetworkParser {
         val loop = obj.get("mode")?.asString != "once"
         val speed = obj.get("speed")?.asFloat ?: 1.0f
         val seekSeconds = obj.get("time")?.asFloat ?: -1f
+        val uninterruptible = obj.get("uninterruptible")?.asBoolean ?: false
+        // 归层：combat = 上身出招层（腿继续走），缺省 motion = 全身
+        val toCombatLayer = obj.get("layer")?.asString.equals("combat", ignoreCase = true)
+        // 指令自带动画库：技能剪辑不再绑死在目标当前的外观库上。库 id 以字符串
+        // 原样下传，命名空间的补全由消费侧的资源定位完成（common-core 不碰 ResourceLocation）
+        val library = obj.get("file")?.asString?.takeIf { it.isNotBlank() }
+        val seq = obj.get("seq")?.asLong ?: -1L
+        val exitTicks = obj.get("exit")?.asInt ?: -1
         if (action == "seek" && seekSeconds < 0f) return
-        handler(uuid, action, animation, transition, loop, speed, seekSeconds)
+        handler(uuid, action, animation, transition, loop, speed, seekSeconds, uninterruptible, toCombatLayer, library, seq, exitTicks)
     }
 
     private fun reloadResourcePack() {

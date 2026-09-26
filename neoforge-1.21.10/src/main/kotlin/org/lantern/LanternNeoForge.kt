@@ -39,14 +39,29 @@ class LanternNeoForge(modBus: IEventBus) {
 
         NeoForgePacketNetwork.register(modBus)
         NeoForgeClientEvents.register()
-        NetworkParser.animationControlHandler = AnimationControlHandler::handle
+        NetworkParser.animationControlHandler = { uuid, action, animation, transition, loop, speed, seek, uninterruptible, toCombat, library, seq, exit ->
+            AnimationControlHandler.handle(uuid, action, animation, transition, loop, speed, seek, uninterruptible, toCombat, library, seq, exit)
+        }
         NetworkParser.animationEventSender = { uuid, animation, event ->
             NeoForgePacketNetwork.sendAnimationEvent(uuid, animation, event)
         }
         // packet 17 变量同步：只触碰 ConcurrentHashMap 且值编译无 MC 依赖，网络线程直接执行
-        NetworkParser.molangVariableHandler = org.lantern.animation.MolangVariableStore::update
+        org.lantern.core.anim.molang.MolangVariableStore.compiler = org.lantern.animation.GeckoLibMolang
+        NetworkParser.molangVariableHandler = org.lantern.core.anim.molang.MolangVariableStore::update
         // packet 18 相机（shoulder + 演出指令）：NetworkParser 统一调度到主线程后更新渲染状态
         NetworkParser.cameraActionHandler = org.lantern.camera.control.CameraControl::handle
+        NetworkParser.playerActionHandler = org.lantern.core.action.PlayerActionDefs::load
+        // packet 20：只写 ConcurrentHashMap，与 packet 17 同理，网络线程直接执行
+        NetworkParser.entityBindHandler = org.lantern.core.bind.BindStore::handle
+        // packet 21：写表必须与并集缓存重算同线程，收包线程非主线程时调度过去
+        NetworkParser.inputLockHandler = { obj ->
+            val client = net.minecraft.client.Minecraft.getInstance()
+            if (client.isSameThread) {
+                org.lantern.core.input.InputLockStore.handle(obj)
+            } else {
+                client.execute { org.lantern.core.input.InputLockStore.handle(obj) }
+            }
+        }
         modBus.addListener(
             AddPackFindersEvent::class.java,
             Consumer<AddPackFindersEvent>(LanternDynamicPackSource::register)

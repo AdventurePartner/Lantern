@@ -1,12 +1,12 @@
-package org.lantern.animation
+package org.lantern.core.anim.clip
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
-import org.lantern.Lantern
-import software.bernie.geckolib.animatable.processing.AnimationState
-import software.bernie.geckolib.loading.math.MathParser
-import software.bernie.geckolib.loading.math.MathValue
+import org.lantern.core.CoreLog
+import org.lantern.core.anim.molang.MolangCompiler
+import org.lantern.core.anim.molang.MolangExpression
+import org.lantern.core.anim.molang.MolangScope
 
 /**
  * 基岩版 .animation.json 的自有解析器。
@@ -19,23 +19,22 @@ import software.bernie.geckolib.loading.math.MathValue
  *   {"vector": [x,y,z]}
  *   {"pre": <值>, "post": <值>, "lerp_mode": "catmullrom"}
  *
- * 表达式经 GeckoLib MathParser 编译为 AST（数值编译为 Constant），
- * 每帧由 [AnimationPlayer] 带 per-entity 求值上下文取值——
- * query.* 由 Lantern 构建的 queryValues 供给，variable.* 为服务端注入变量。
+ * 表达式经平台注入的 [MolangCompiler] 编译，每帧由播放器带 per-entity 求值上下文取值——
+ * query.* 由 Lantern 构建的 queryValues 供给，variable.* 为服务端注入变量
  */
 data class Vec3(val x: Float, val y: Float, val z: Float)
 
 /** 关键帧值：每轴一个已编译的 molang 表达式（数值即 Constant），按求值上下文取值 */
-class ExprVec3(val x: MathValue, val y: MathValue, val z: MathValue) {
+class ExprVec3(val x: MolangExpression, val y: MolangExpression, val z: MolangExpression) {
 
-    fun eval(state: AnimationState<*>): Vec3 = Vec3(
-        x.get(state).toFloat(),
-        y.get(state).toFloat(),
-        z.get(state).toFloat()
+    fun eval(scope: MolangScope): Vec3 = Vec3(
+        x.eval(scope).toFloat(),
+        y.eval(scope).toFloat(),
+        z.eval(scope).toFloat()
     )
 }
 
-/** pre = 关键帧前值（段落起点语义，ModelEngine 反编译实证：区间端点 prev.post -> next.pre） */
+/** pre = 关键帧前值（段落起点语义，区间端点实证：prev.post -> next.pre） */
 data class Keyframe(val time: Float, val value: ExprVec3, val pre: ExprVec3?, val lerpMode: String?)
 
 class BoneTracks(
@@ -58,7 +57,7 @@ class ClipData(
 
 object BedrockAnimationParser {
 
-    fun parse(root: JsonObject): Map<String, ClipData> {
+    fun parse(root: JsonObject, compiler: MolangCompiler): Map<String, ClipData> {
         val animations = root.getAsJsonObject("animations") ?: return emptyMap()
         val result = LinkedHashMap<String, ClipData>()
         for ((name, element) in animations.entrySet()) {
@@ -70,10 +69,13 @@ object BedrockAnimationParser {
             for ((boneName, boneElement) in bonesObj.entrySet()) {
                 if (!boneElement.isJsonObject) continue
                 val bone = boneElement.asJsonObject
-                bones[boneName] = BoneTracks(
-                    rotation = parseTrack(bone, "rotation"),
-                    position = parseTrack(bone, "position"),
-                    scale = parseTrack(bone, "scale")
+                // 骨骼名统一小写作键：不同资产作者的大小写风格不一（有的写
+                // Body/RightArm，本项目资产用 body/rightArm），集合相同却匹配不上会
+                // 整段动画无效。写骨时同样按小写查找，两端一致即大小写不敏感
+                bones[boneName.lowercase()] = BoneTracks(
+                    rotation = parseTrack(bone, "rotation", compiler),
+                    position = parseTrack(bone, "position", compiler),
+                    scale = parseTrack(bone, "scale", compiler)
                 )
             }
             result[name] = ClipData(name, length, anim.get("loop"), bones)
@@ -81,11 +83,11 @@ object BedrockAnimationParser {
         return result
     }
 
-    private fun parseTrack(bone: JsonObject, key: String): List<Keyframe> {
+    private fun parseTrack(bone: JsonObject, key: String, compiler: MolangCompiler): List<Keyframe> {
         val element = bone.get(key) ?: return emptyList()
         // 常量轨道："rotation": [x,y,z]
         if (element.isJsonArray) {
-            val v = parseExprVector(element.asJsonArray) ?: return emptyList()
+            val v = parseExprVector(element.asJsonArray, compiler) ?: return emptyList()
             return listOf(Keyframe(0f, v, v, null))
         }
         if (!element.isJsonObject) return emptyList()
@@ -93,16 +95,16 @@ object BedrockAnimationParser {
         val frames = LinkedHashMap<Float, Keyframe>()
         for ((timeStr, frameElement) in obj.entrySet()) {
             val time = timeStr.toFloatOrNull() ?: continue
-            val (value, pre, lerpMode) = parseFrame(frameElement) ?: continue
+            val (value, pre, lerpMode) = parseFrame(frameElement, compiler) ?: continue
             frames[time] = Keyframe(time, value, pre, lerpMode)
         }
         return frames.toSortedMap().map { it.value }
     }
 
     /** 返回 (post 值, pre 值, lerp_mode) */
-    private fun parseFrame(element: JsonElement): Triple<ExprVec3, ExprVec3?, String?>? {
+    private fun parseFrame(element: JsonElement, compiler: MolangCompiler): Triple<ExprVec3, ExprVec3?, String?>? {
         if (element.isJsonArray) {
-            val v = parseExprVector(element.asJsonArray) ?: return null
+            val v = parseExprVector(element.asJsonArray, compiler) ?: return null
             return Triple(v, v, null)
         }
         if (!element.isJsonObject) return null
@@ -110,35 +112,31 @@ object BedrockAnimationParser {
         val lerpMode = obj.get("lerp_mode")?.takeIf { it.isJsonPrimitive }?.asString
         val post = obj.get("post") ?: obj.get("vector") ?: return null
         val preElement = obj.get("pre")
-        val value = parseValueVector(post) ?: return null
-        val pre = preElement?.let { parseValueVector(it) }
+        val value = parseValueVector(post, compiler) ?: return null
+        val pre = preElement?.let { parseValueVector(it, compiler) }
         return Triple(value, pre, lerpMode)
     }
 
-    private fun parseValueVector(element: JsonElement): ExprVec3? {
+    private fun parseValueVector(element: JsonElement, compiler: MolangCompiler): ExprVec3? {
         return when {
-            element.isJsonArray -> parseExprVector(element.asJsonArray)
-            element.isJsonObject -> element.asJsonObject.get("vector")?.takeIf { it.isJsonArray }?.asJsonArray?.let { parseExprVector(it) }
+            element.isJsonArray -> parseExprVector(element.asJsonArray, compiler)
+            element.isJsonObject -> element.asJsonObject.get("vector")?.takeIf { it.isJsonArray }?.asJsonArray?.let { parseExprVector(it, compiler) }
             else -> null
         }
     }
 
-    /** 每轴编译为 MathValue（数值→Constant、字符串→molang AST），并把表达式引用的
-     *  variable.* 节点绑定到 Lantern 的 per-entity 求值上下文（见 [MolangContext]） */
-    private fun parseExprVector(array: JsonArray): ExprVec3? {
+    /** 每轴编译为 molang 表达式（数值->常量）。variable.* 节点到 per-entity 求值
+     *  上下文的重定向由平台的编译器实现负责 */
+    private fun parseExprVector(array: JsonArray, compiler: MolangCompiler): ExprVec3? {
         if (array.size() < 3) return null
         return runCatching {
-            val compiled = ExprVec3(
-                MathParser.parseJson(array.get(0)),
-                MathParser.parseJson(array.get(1)),
-                MathParser.parseJson(array.get(2))
+            ExprVec3(
+                compiler.compile(array.get(0)),
+                compiler.compile(array.get(1)),
+                compiler.compile(array.get(2))
             )
-            MolangContext.bindUsedVariables(compiled.x)
-            MolangContext.bindUsedVariables(compiled.y)
-            MolangContext.bindUsedVariables(compiled.z)
-            compiled
         }.onFailure {
-            Lantern.logger.warn("[Lantern] Failed to compile keyframe values {}: {}", array, it.message)
+            CoreLog.logger.warning("[Lantern] Failed to compile keyframe values $array: ${it.message}")
         }.getOrNull()
     }
 }

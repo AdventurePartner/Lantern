@@ -24,9 +24,22 @@ import org.lantern.network.NetworkHandler
  *   lanternanim{anim=roar;pause=true} @Self                    暂停当前播控
  *   lanternanim{anim=roar;pause=false} @Self                   恢复
  *   lanternanim{anim=roar;seek=1.5} @Self                      时间轴跳到 1.5 秒
+ *   lanternanim{anim=slash;layer=combat} @Self                 上身层播放（腿保持移动）
+ *   lanternanim{anim=roll;speed=-1} @Self                      倒放
+ *   lanternanim{anim=神剑极阵;m=once;file=animations/player/sword_immortal.animation.json} @Self
+ *                                                              指定剪辑所在的动画库
  *
- * 目标实体必须已由 Lantern 实体模型渲染（自定义名 == entityModels.yml 的 key），
- * 否则客户端忽略该指令。
+ * layer 取值：motion（缺省，全身层，压住行走）/ combat（上身层，可边跑边放）。
+ * speed 支持负值即倒放；绝对值过小（<0.01）视为无效并回退 1.0。
+ * file：剪辑所在动画库（相对客户端 assets/lantern/）。技能动画务必配它——
+ *       不配就从目标**当前外观**绑定的库里找，外观随主手物品切换，
+ *       换个物品技能就空放。exit：播完清层的退出过渡 tick，缺省同起手过渡。
+ *
+ * 目标可以是实体，也可以是玩家：
+ *   实体 —— 自定义名须等于 entityModels.yml 的 key；
+ *   玩家 —— 须已分配 host-driven 的 full_body 外观（costumes.yml），
+ *           动画名在该外观绑定的动画库里查找。
+ * 两者都不满足时客户端忽略该指令。
  *
  * 注意：CustomComponentRegistry 通过 (MythicMechanicLoadEvent) 构造器实例化本类，
  * 不能使用内置机制的 (SkillExecutor, File, String, MythicLineConfig) 签名。
@@ -50,25 +63,37 @@ class LanternAnimMechanic(
     private val remove: Boolean = lineConfig.getBoolean(arrayOf("remove", "r"), false)
     private val transition: Int = lineConfig.getInteger(arrayOf("time", "t"), 5).coerceAtLeast(0)
     private val loop: Boolean = !lineConfig.getString(arrayOf("mode", "m"), "loop").equals("once", ignoreCase = true)
-    private val speed: Float = lineConfig.getString(arrayOf("speed", "sp"), "1.0").toFloatOrNull()?.coerceAtLeast(0.01f) ?: 1.0f
+    // 负速度即倒放，底层与协议都支持；此处不能 coerceAtLeast(0.01) 把它钳成正数，
+    // 否则 MM 入口永远放不出倒放。只有绝对值过小（无意义）才回退 1.0
+    private val speed: Float = lineConfig.getString(arrayOf("speed", "sp"), "1.0").toFloatOrNull()
+        ?.takeIf { kotlin.math.abs(it) > 0.01f } ?: 1.0f
+    /** 归层：combat = 上身出招层（腿保持移动），缺省全身 */
+    private val layer: String? = lineConfig.getString(arrayOf("layer", "l"))
     private val seek: Float? = lineConfig.getString(arrayOf("seek", "sk"))?.toFloatOrNull()
     private val pause: Boolean? = lineConfig.getString(arrayOf("pause", "p"))?.toBooleanStrictOrNull()
+    /** 剪辑所在动画库；技能动画与外观解耦的关键字段 */
+    private val libraryFile: String? = lineConfig.getString(arrayOf("file", "lib"))?.takeIf { it.isNotBlank() }
+    /** 播完清层的退出过渡 tick；缺省沿用起手过渡 */
+    private val exitTicks: Int? = lineConfig.getString(arrayOf("exit", "x"))?.toIntOrNull()?.coerceAtLeast(0)
 
     override fun castAtEntity(data: SkillMetadata, target: AbstractEntity): SkillResult {
         val anim = animation ?: return SkillResult.INVALID_CONFIG
         val entity = target.bukkitEntity ?: return SkillResult.INVALID_TARGET
-        // MM 技能可能在异步线程执行，发包统一调度回主线程。
+        // MM 技能可能在异步线程执行，发包统一调度回主线程；已经在主线程就直接执行——
+        // 无条件 runTask 会推后一 tick，恰好让每秒一次的换组巡检抢在播控前面跑。
         // 动作优先级：remove=停止 > seek > pause > 播放
-        Bukkit.getScheduler().runTask(LanternPlugin.instance, Runnable {
+        MythicIntegration.onMainThread {
             when {
                 remove -> NetworkHandler.stopAnimation(entity, anim, transition)
                 seek != null -> NetworkHandler.seekAnimation(entity, anim, seek)
                 pause != null ->
                     if (pause) NetworkHandler.pauseAnimation(entity, anim)
                     else NetworkHandler.resumeAnimation(entity, anim)
-                else -> NetworkHandler.playAnimation(entity, anim, transition, loop, speed)
+                else -> NetworkHandler.playAnimation(
+                    entity, anim, transition, loop, speed, layer = layer, file = libraryFile, exitTicks = exitTicks
+                )
             }
-        })
+        }
         return SkillResult.SUCCESS
     }
 }

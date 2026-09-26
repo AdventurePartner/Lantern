@@ -26,6 +26,10 @@ class LanternPlugin : AyPlugin() {
         instance = this
         Configurations.load()
         org.lantern.animation.AnimationOrchestrator.load(this)
+        org.lantern.animation.AnimationGroupService.load(this)
+        org.lantern.animation.AnimationGroupService.start(this)
+        // 载体绑定：每秒一轮回收到期/失效条目，并对进入宿主视野的玩家补发
+        org.lantern.bind.BindRegistry.start(this)
         CustomBlockTracker.load()
         CustomBlockTracker.startAutoSave(this)
         CostumeAssignmentHandler.load()
@@ -57,7 +61,10 @@ class LanternPlugin : AyPlugin() {
 
     override fun onDisable() {
         PlaceholderService.stopAll()
-        org.lantern.animation.AnimationOrchestrator.reset()
+        org.lantern.animation.AnimationOrchestrator.shutdown()
+        org.lantern.animation.AnimationGroupService.stop()
+        org.lantern.bind.BindRegistry.reset()
+        org.lantern.input.InputLockManager.reset()
         CustomBlockTracker.stopAutoSave()
         CustomBlockTracker.save()
         CostumeAssignmentHandler.stopAutoSave()
