@@ -97,7 +97,9 @@ class LanternNeoForge(modBus: IEventBus) {
     }
 
     private fun registerGuiLayers(event: RegisterGuiLayersEvent) {
-        event.registerBelowAll(
+        // registerAboveAll：vignette（暗角）在 CAMERA_OVERLAYS 图层按环境光照绘制，
+        // BelowAll 会被它在黑暗环境下压暗；HUD 必须画在所有原版图层之上
+        event.registerAboveAll(
             IdentifierBridge.of(Lantern.MOD_ID, "hud"),
             GuiLayer { graphics, delta ->
                 HudRenderer.render(graphics, delta.getGameTimeDeltaPartialTick(false))
