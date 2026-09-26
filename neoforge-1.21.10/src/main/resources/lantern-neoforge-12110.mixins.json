@@ -11,9 +11,14 @@
     "camera.GuiMixin",
     "camera.MinecraftMixin",
     "chat.ChatComponentMixin",
+    "font.FontMixin",
+    "font.FontPreparedTextBuilderMixin",
+    "font.GuiRendererMixin",
+    "hud.PlayerTabOverlayMixin",
     "network.GeckoLibNetworkingNeoForgeMixin",
     "EntityMixin",
-    "EntityRenderDispatcherMixin"
+    "EntityRenderDispatcherMixin",
+    "renderer.NameTagStorageMixin"
   ],
   "mixins": [],
   "injectors": {
