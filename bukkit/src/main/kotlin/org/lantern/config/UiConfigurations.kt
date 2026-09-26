@@ -53,6 +53,10 @@ object UiConfigurations {
         screen.addProperty("id", config.getString("id") ?: "unknown")
         screen.addProperty("screen-type", config.getString("screen-type") ?: "hud")
         config.getString("match-title")?.let { screen.addProperty("match-title", it) }
+        config.getString("match-screen")?.let { screen.addProperty("match-screen", it) }
+        // z 轴深度：负值 = 背景层（物品之下），非负 = 顶层（默认 0）；数值越大渲染越靠前
+        if (config.contains("index")) screen.addProperty("index", config.getInt("index"))
+        if (config.getBoolean("cancel-vanilla-bg", false)) screen.addProperty("cancel-vanilla-bg", true)
 
         // parse named styles
         val stylesObj = JsonObject()
@@ -82,6 +86,8 @@ object UiConfigurations {
         section.getString("tooltip")?.let { node.addProperty("tooltip", it) }
         section.getString("source")?.let { node.addProperty("source", it) }
         if (section.contains("max-length")) node.addProperty("max-length", section.getInt("max-length"))
+        // 节点级 index：兄弟节点间排序，不改变所属渲染层
+        if (section.contains("index")) node.addProperty("index", section.getInt("index"))
 
         section.getConfigurationSection("style")?.let { node.add("style", parseStyleSection(it)) }
 
@@ -112,6 +118,7 @@ object UiConfigurations {
         map["tooltip"]?.toString()?.let { node.addProperty("tooltip", it) }
         map["source"]?.toString()?.let { node.addProperty("source", it) }
         (map["max-length"] as? Int)?.let { node.addProperty("max-length", it) }
+        map["index"]?.toString()?.toIntOrNull()?.let { node.addProperty("index", it) }
 
         @Suppress("UNCHECKED_CAST")
         (map["style"] as? Map<*, *>)?.let { node.add("style", parseStyleFromMap(it)) }

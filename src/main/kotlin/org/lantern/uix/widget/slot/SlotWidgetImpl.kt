@@ -1,6 +1,8 @@
 package org.lantern.uix.widget.slot
 
+import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 import org.lantern.uix.interaction.SlotInteractionHelper
 import org.lantern.uix.widget.BaseWidget
 
@@ -15,8 +17,13 @@ class SlotWidgetImpl(
     init {
         if (slotIndex >= 0) {
             onClick { event ->
-                SlotInteractionHelper.handleSlotClick(slotIndex, event.button)
-                event.consume()
+                // 容器界面上 slot 节点是位置声明：原版槽位已被移到该处，
+                // 点击/拖拽全部交由原版处理（不消费，事件透传）。
+                // 仅 HUD 等非容器场景保留镜像点击转发。
+                if (Minecraft.getInstance().screen !is AbstractContainerScreen<*>) {
+                    SlotInteractionHelper.handleSlotClick(slotIndex, event.button)
+                    event.consume()
+                }
             }
         }
     }

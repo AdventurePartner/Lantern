@@ -230,7 +230,24 @@ texture: "https://example.com/icon.png"
 
 ### 物品格 `slot`
 
-适合贴在已有容器界面上，显示原界面里的一个物品格。`slot_0` 表示第一个格子，`slot_1` 表示第二个格子。
+**容器界面上（如 match-screen: player_inventory 的 overlay）＝ 槽位位置声明**：
+把原版界面的第 N 个槽位**移动**到该节点位置（容器锚定坐标，支持嵌套 panel 偏移累加）。
+移动后渲染、点击、拖拽、shift 快移、tooltip 全部由原版在新位置处理，uix 不再画镜像、不拦截点击。
+`visible: false` 可把槽位隐藏（移出屏幕，物品逻辑仍在，shift 仍可移入）。
+width/height 仅影响布局占位，槽位本身固定 16x16（+1px 点击容差）。
+
+生存背包（player_inventory）的槽位下标：
+`0` 合成结果、`1-4` 合成格、`5-8` 盔甲（头/胸/腿/靴）、`9-35` 主背包三行、`36-44` 快捷栏、`45` 副手。
+
+```yml
+- type: slot
+  source: "slot_36"        # 快捷栏第一格
+  style:
+    x: 20
+    y: 20
+```
+
+**HUD 等非容器场景＝ 物品镜像**：显示当前打开容器（或玩家背包）指定格子的物品（含数量/耐久），点击转发 PICKUP。此时 width/height 控制镜像尺寸（默认 18）。
 
 ```yml
 - type: slot

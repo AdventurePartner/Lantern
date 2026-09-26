@@ -10,25 +10,35 @@ import java.util.IdentityHashMap
  */
 object LayoutCache {
 
-    // Pack width+height into a Long for zero-allocation cache key
-    private fun packKey(width: Int, height: Int): Long =
-        (width.toLong() shl 32) or (height.toLong() and 0xFFFFFFFFL)
+    // Pack width/height/offsetX/offsetY (each 16 bits) into a Long for zero-allocation cache key.
+    // 屏幕尺寸与容器 leftPos/topPos 均为非负且远小于 65535。
+    private fun packKey(width: Int, height: Int, offsetX: Int, offsetY: Int): Long =
+        ((width.toLong() and 0xFFFFL) shl 48) or
+            ((height.toLong() and 0xFFFFL) shl 32) or
+            ((offsetX.toLong() and 0xFFFFL) shl 16) or
+            (offsetY.toLong() and 0xFFFFL)
 
     private val cache = IdentityHashMap<IWidget, Pair<Long, LayoutResult>>()
     private val flatIndex = IdentityHashMap<IWidget, LayoutRect>()
 
     /**
      * 获取或计算指定根 widget 的布局结果。
-     * 仅在尺寸变化或缓存失效时重新计算。
+     * 仅在尺寸或布局原点变化或缓存失效时重新计算。
      */
-    fun getOrCompute(root: IWidget, width: Int, height: Int): LayoutResult {
-        val key = packKey(width, height)
+    fun getOrCompute(
+        root: IWidget,
+        width: Int,
+        height: Int,
+        offsetX: Int = 0,
+        offsetY: Int = 0
+    ): LayoutResult {
+        val key = packKey(width, height, offsetX, offsetY)
         val existing = cache[root]
         if (existing != null && existing.first == key) {
             return existing.second
         }
 
-        val result = LayoutEngine.layout(root, width, height)
+        val result = LayoutEngine.layout(root, width, height, offsetX, offsetY)
         cache[root] = key to result
 
         // 更新扁平索引

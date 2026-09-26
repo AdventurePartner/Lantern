@@ -1,0 +1,65 @@
+# 玩家背包界面（按 E 打开的生存背包）叠加层示例。
+#
+# match-screen: player_inventory 按界面类型匹配，不受客户端语言影响。
+# 坐标原点为背包面板左上角（176x166），y 取负值即位于面板上方；
+# 背包槽位的拖拽、shift 快速转移等原生交互不受影响，
+# 只有真正点到 overlay 控件时点击才会被拦截。
+#
+# z 轴（数值越大渲染越靠前/越在上，像前端 z-index）：
+#   原版面板背景（cancel-vanilla-bg: true 可取消，仅容器界面）
+#     -> index < 0 的 overlay（背景层，画在物品/槽位之下）
+#     -> 游戏物品/槽位渲染
+#     -> index >= 0 的 overlay（顶层，画在物品/tooltip 之上，默认 0）
+# 同层内按 index 升序绘制（大者在上）；节点级 index 只排序兄弟节点，不改变层。
+# 背景层贴图需放在客户端资源包（mod 不内置），例如
+#   资源包 assets/lantern/textures/ui/beibao.png -> lantern:textures/ui/beibao.png
+#
+# 替换背包背景的完整写法（拆成两个 yml，各自独立 index）：
+#   beibao-bg.yml:      index: -100 + cancel-vanilla-bg: true + root 放背景 image
+#   beibao-toolbar.yml: index: 0（默认）+ root 放工具栏按钮
+#
+# 槽位重定位：容器界面 overlay 里的 slot 节点是"位置声明"——
+# 把原版槽位移动到指定位置（容器锚定坐标），点击/拖拽/shift/tooltip 原位全效。
+# 生存背包下标：0 合成结果、1-4 合成格、5-8 盔甲、9-35 主背包、36-44 快捷栏、45 副手。
+# visible: false 可隐藏槽位（如不想显示合成格）。示例：
+#   - type: slot
+#     source: "slot_36"
+#     style: { x: 20, y: 20 }
+id: inventory_overlay
+screen-type: overlay
+match-screen: player_inventory
+
+styles:
+  toolbar:
+    background: "#cc1a1a2e"
+    border-radius: 3
+  btn:
+    background: "#4a90d9"
+    color: "#ffffff"
+    width: 64
+    height: 16
+
+root:
+  type: panel
+  style-ref: toolbar
+  style:
+    x: 0
+    y: -24
+    width: 176
+    height: 20
+  children:
+    - type: button
+      text: '衣柜'
+      style-ref: btn
+      style:
+        x: 6
+        y: 2
+      action: 'command:lantern wardrobe'
+
+    - type: button
+      text: '菜单'
+      style-ref: btn
+      style:
+        x: 106
+        y: 2
+      action: 'command:menu'

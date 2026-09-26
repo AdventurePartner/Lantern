@@ -17,9 +17,12 @@ object EventDispatcher {
     private val scratchSet: MutableSet<IComponent> =
         Collections.newSetFromMap(java.util.IdentityHashMap())
 
-    fun dispatchClick(root: IComponent, mouseX: Int, mouseY: Int, button: Int = 0) {
+    /**
+     * 分发点击并返回是否命中了可见控件且事件被消费。
+     * overlay 依据该返回值决定是否拦截原版界面的鼠标事件。
+     */
+    fun dispatchClick(root: IComponent, mouseX: Int, mouseY: Int, button: Int = 0): Boolean =
         dispatchClickRecursive(root, mouseX, mouseY, button)
-    }
 
     private fun dispatchClickRecursive(
         component: IComponent,

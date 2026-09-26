@@ -30,7 +30,18 @@ object LayoutEngine {
     private const val DEFAULT_INPUT_HEIGHT = 20
     private const val DEFAULT_SLOT_SIZE = 18
 
-    fun layout(root: IWidget, availableWidth: Int, availableHeight: Int): LayoutResult {
+    /**
+     * [offsetX]/[offsetY] 将整棵树的布局原点从屏幕左上角平移到指定位置，
+     * 用于容器锚定 overlay（以 AbstractContainerScreen 的 leftPos/topPos 为原点）。
+     * 偏移只作用于根矩形；子组件坐标仍相对父级，渲染与命中沿用绝对坐标即可。
+     */
+    fun layout(
+        root: IWidget,
+        availableWidth: Int,
+        availableHeight: Int,
+        offsetX: Int = 0,
+        offsetY: Int = 0
+    ): LayoutResult {
         val result = LayoutResult()
         // 将根 widget 放入布局结果，使渲染器能查到它的坐标
         if (root is PanelWidgetImpl) {
@@ -40,11 +51,11 @@ object LayoutEngine {
             val isAbsolute = rootStyle.getString(StyleProperty.POSITION, "") == "absolute"
             val rootRect = if (isAbsolute) {
                 val (rootX, rootY) = resolveAnchoredPosition(rootStyle, availableWidth, availableHeight, rootW, rootH)
-                LayoutRect(rootX, rootY, rootW, rootH)
+                LayoutRect(offsetX + rootX, offsetY + rootY, rootW, rootH)
             } else {
                 LayoutRect(
-                    rootStyle.getInt(StyleProperty.X),
-                    rootStyle.getInt(StyleProperty.Y),
+                    offsetX + rootStyle.getInt(StyleProperty.X),
+                    offsetY + rootStyle.getInt(StyleProperty.Y),
                     rootW,
                     rootH
                 )

@@ -66,6 +66,7 @@ sourceSets {
             "org/lantern/internal/mixin/resource/FallbackResourceManagerMixin.java",
             "org/lantern/internal/mixin/accessor/ChatComponentAccessor.java",
             "org/lantern/internal/mixin/chat/ChatComponentMixin.java",
+            "org/lantern/internal/mixin/uix/ContainerBackgroundRenderMixin.java",
             "org/lantern/internal/pack/LanternVirtualPackResources.java",
             "org/lantern/costume/entity/CostumeAnimatable.kt",
             "org/lantern/model/block/LanternBlockEntity.kt",

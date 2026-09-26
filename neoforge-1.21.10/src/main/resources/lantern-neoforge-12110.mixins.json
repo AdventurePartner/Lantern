@@ -5,6 +5,8 @@
   "minVersion": "0.8",
   "client": [
     "accessor.ChatComponentAccessor",
+    "accessor.AbstractContainerScreenAccessor",
+    "accessor.SlotAccessor",
     "block.BarrelBlockMixin",
     "camera.CameraMixin",
     "camera.GameRendererMixin",
@@ -15,6 +17,7 @@
     "font.FontPreparedTextBuilderMixin",
     "font.GuiRendererMixin",
     "hud.PlayerTabOverlayMixin",
+    "uix.ContainerBackgroundRenderMixin",
     "network.GeckoLibNetworkingNeoForgeMixin",
     "EntityMixin",
     "EntityRenderDispatcherMixin",

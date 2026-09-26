@@ -22,6 +22,8 @@ object SlotRenderer : IWidgetRenderer<SlotWidgetImpl> {
         delta: Float
     ) {
         if (!style.getBoolean(StyleProperty.VISIBLE)) return
+        // 容器界面上 slot 节点是位置声明（原版槽位自身渲染），不画镜像；仅 HUD 场景保留镜像渲染
+        if (Minecraft.getInstance().screen is AbstractContainerScreen<*>) return
         val rect = LayoutCache.findRect(widget)
         val x = rect?.x ?: style.getInt(StyleProperty.X)
         val y = rect?.y ?: style.getInt(StyleProperty.Y)

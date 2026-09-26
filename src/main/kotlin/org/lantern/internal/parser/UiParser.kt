@@ -5,6 +5,7 @@ import com.google.gson.JsonObject
 import org.lantern.internal.storage.ScreenType
 import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.uix.layout.LayoutCache
+import org.lantern.uix.renderer.SlotLayoutManager
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.style.StyleSheet
 import org.lantern.internal.placeholder.PlaceholderStore
@@ -26,6 +27,7 @@ object UiParser {
     fun parseScreens(screensArray: JsonArray) {
         PlaceholderStore.clear()
         LayoutCache.clear()
+        SlotLayoutManager.resetAll()
         UiScreenStorage.clear()
         screensArray.map { it as JsonObject }.forEach { screenObj ->
             val id = screenObj.get("id")?.asString ?: return@forEach
@@ -35,11 +37,14 @@ object UiParser {
                 else -> ScreenType.HUD
             }
             val matchTitle = screenObj.get("match-title")?.asString
+            val matchScreen = screenObj.get("match-screen")?.asString
+            val index = screenObj.get("index")?.takeIf { it.isJsonPrimitive }?.asInt ?: 0
+            val cancelVanillaBg = screenObj.get("cancel-vanilla-bg")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false
             val styleSheet = screenObj.getAsJsonObject("styles")
                 ?.let { StyleSheet.fromJson(it) } ?: StyleSheet.EMPTY
             val rootObj = screenObj.getAsJsonObject("root") ?: return@forEach
             val rootWidget = parseNode(rootObj, styleSheet)
-            UiScreenStorage.put(id, rootWidget, screenType, matchTitle)
+            UiScreenStorage.put(id, rootWidget, screenType, matchTitle, matchScreen, index, cancelVanillaBg)
         }
     }
 
@@ -79,11 +84,15 @@ object UiParser {
         widget.tooltip = node.get("tooltip")?.asString ?: ""
 
         if (widget is PanelWidgetImpl) {
-            node.getAsJsonArray("children")?.map { it as JsonObject }?.forEach { childObj ->
-                val child = parseNode(childObj, styleSheet)
-                child.parent = widget
-                widget.children.add(child)
-            }
+            // 节点级 index：兄弟节点间升序稳定排序（同值保持书写顺序），不改变所属渲染层
+            node.getAsJsonArray("children")
+                ?.map { it as JsonObject }
+                ?.sortedBy { it.get("index")?.takeIf { p -> p.isJsonPrimitive }?.asInt ?: 0 }
+                ?.forEach { childObj ->
+                    val child = parseNode(childObj, styleSheet)
+                    child.parent = widget
+                    widget.children.add(child)
+                }
         }
 
         return widget

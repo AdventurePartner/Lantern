@@ -6,6 +6,8 @@
   "client": [
     "accessor.PoseStackAccessor",
     "accessor.ChatComponentAccessor",
+    "accessor.AbstractContainerScreenAccessor",
+    "accessor.SlotAccessor",
     "EntityMixin",
     "EntityRenderDispatcherMixin",
     "font.StringRenderOutputMixin",
@@ -18,6 +20,7 @@
     "chat.ChatScreenMixin",
     "hud.PlayerTabOverlayMixin",
     "uix.ScreenRenderMixin",
+    "uix.ContainerBackgroundRenderMixin",
     "block.LevelRendererMixin",
     "block.ParticleEngineMixin",
     "block.BlockRenderDispatcherMixin",
