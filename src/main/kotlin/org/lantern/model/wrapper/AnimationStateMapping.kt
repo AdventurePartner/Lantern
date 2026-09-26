@@ -46,6 +46,18 @@ class AnimationStateMapping(private val stateTable: Map<String, StateConfig>) {
 
     companion object {
         /**
+         * 协议 mode 值 -> PlayMode。
+         * "hold" 是 HOLD_LAST_FRAME 的协议别名（服务端 defaultModeOf 下发 hold），
+         * 不能按枚举名匹配；未命中别名再按枚举名忽略大小写兜底（如显式写 hold_last_frame）
+         */
+        private fun playModeOf(name: String): PlayMode? = when (name.lowercase()) {
+            "loop" -> PlayMode.LOOP
+            "once" -> PlayMode.ONCE
+            "hold" -> PlayMode.HOLD_LAST_FRAME
+            else -> PlayMode.values().firstOrNull { it.name.equals(name, true) }
+        }
+
+        /**
          * 创建默认的动画状态映射（只使用 idle）
          */
         fun default(idleAnimation: String = "idle"): AnimationStateMapping {
@@ -81,7 +93,7 @@ class AnimationStateMapping(private val stateTable: Map<String, StateConfig>) {
                         val o = value.asJsonObject
                         val animation = o.get("animation")?.takeIf { it.isJsonPrimitive }?.asString ?: continue
                         val mode = o.get("mode")?.takeIf { it.isJsonPrimitive }?.asString
-                            ?.let { name -> PlayMode.values().firstOrNull { it.name.equals(name, true) } }
+                            ?.let(::playModeOf)
                             ?: PlayMode.LOOP
                         StateConfig(animation, mode, o.get("transition")?.takeIf { it.isJsonPrimitive }?.asInt ?: 5)
                     }
