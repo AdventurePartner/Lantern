@@ -74,11 +74,14 @@ object Configurations {
         LanternPlugin.instance.saveResource("blockModels.yml", "blockModels.yml", false) {
             CacheHandler.blockModels.clear()
             val data = YamlConfiguration.loadConfiguration(it)
-            data.getKeys(false).forEach { key ->
+            CacheHandler.blockModels.keys.forEach { key ->
                 val section = data.getConfigurationSection(key) ?: return@forEach
                 CacheHandler.blockModels[key] = BlockModelCache(section)
             }
             CacheHandler.rebuildBlockModelIndices()
+        }
+        LanternPlugin.instance.saveResource("worldImages.yml", "worldImages.yml", false) {
+            CacheHandler.worldImages = org.lantern.cache.WorldImageCache(YamlConfiguration.loadConfiguration(it))
         }
         UiConfigurations.load()
         WardrobeConfig.load()

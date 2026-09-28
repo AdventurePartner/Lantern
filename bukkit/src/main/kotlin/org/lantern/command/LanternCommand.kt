@@ -41,7 +41,8 @@ class LanternCommand : CommandExecutor, TabCompleter {
         "unbind" to "lantern.bind",
         "binds" to "lantern.bind",
         "lock" to "lantern.lock",
-        "unlock" to "lantern.lock"
+        "unlock" to "lantern.lock",
+        "image" to "lantern.image"
     )
 
     private fun denyIfMissing(sender: CommandSender, sub: String?): Boolean {
@@ -107,6 +108,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
             "binds" -> handleBindList(sender)
             "lock" -> handleLock(sender, args)
             "unlock" -> handleUnlock(sender, args)
+            "image" -> handleImage(sender, args)
             "help" -> showHelp(sender)
             null -> showHelp(sender)
             else -> {
@@ -143,6 +145,8 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "costume" -> listOf("equip", "unequip")
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
+                "image" -> listOf("text", "texture", "spawn", "clear")
+                    .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 "wardrobe", "lock", "unlock" -> Bukkit.getOnlinePlayers().map { it.name }
                     .filter { it.startsWith(args[1] ?: "", ignoreCase = true) }
                 // bind 的第一个参数是宿主 UUID：在线玩家的 UUID 是最常用的宿主
@@ -167,6 +171,12 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
                 "lock" -> org.lantern.input.InputLockManager.ACTIONS
                     .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+                "image" -> if (args[1]?.equals("spawn", ignoreCase = true) == true) {
+                    CacheHandler.worldImages.images.keys
+                        .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
+                } else {
+                    emptyList()
+                }
                 "cam" -> when (args[1]?.lowercase()) {
                     "set" -> listOf("offset-x", "offset-y", "distance")
                         .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
@@ -701,6 +711,12 @@ class LanternCommand : CommandExecutor, TabCompleter {
             HelpEntry("lantern binds", "", "列出当前全部绑定"),
             HelpEntry("lantern lock", "<玩家> <动作,动作> <毫秒>", "压住玩家输入（move/jump/sneak/turn/attack/use）"),
             HelpEntry("lantern unlock", "<玩家>", "解除玩家的全部输入锁")
+        ),
+        "世界图片" to listOf(
+            HelpEntry("lantern image text", "<内容> [缩放]", "在自己头顶生成文字世界图片（3 秒）"),
+            HelpEntry("lantern image texture", "<贴图路径> [边长]", "在自己头顶生成贴图世界图片（3 秒）"),
+            HelpEntry("lantern image spawn", "<模板名>", "按 worldImages.yml 模板生成世界图片"),
+            HelpEntry("lantern image clear", "", "清空自己客户端的全部世界图片")
         )
     )
 
@@ -748,6 +764,84 @@ class LanternCommand : CommandExecutor, TabCompleter {
             // castSkill 返回 false 是条件不通过（冷却中、aura 未消），不是配置错
             sender.sendMessage("${ChatColor.GRAY}技能 '$skill' 条件未满足，未施放。")
         }
+    }
+
+    // ============ 世界图片 ============
+
+    /**
+     * /lantern image：世界图片的调试与验收入口。生成类子命令只发给执行者本人，
+     * 不影响其他在线玩家；模板与动画定义在 worldImages.yml
+     */
+    private fun handleImage(sender: CommandSender, args: Array<out String?>) {
+        when (args.getOrNull(1)?.lowercase()) {
+            "clear" -> {
+                val player = playerSender(sender) ?: return
+                org.lantern.worldimage.WorldImageService.clear(listOf(player))
+                sender.sendMessage("${ChatColor.GREEN}已清空自己客户端的世界图片。")
+            }
+            "text" -> {
+                val player = playerSender(sender) ?: return
+                val text = args.getOrNull(2) ?: run { imageUsage(sender); return }
+                val scale = args.getOrNull(3)?.toDoubleOrNull() ?: 1.0
+                val instance = com.google.gson.JsonObject()
+                instance.addProperty("id", "cmd-${System.currentTimeMillis()}")
+                instance.addProperty("type", "text")
+                instance.addProperty("text", text)
+                instance.addProperty("scale", scale)
+                instance.addProperty("age", 60)
+                spawnDebugImage(player, instance)
+                sender.sendMessage("${ChatColor.GREEN}已生成文字世界图片（3 秒）。")
+            }
+            "texture" -> {
+                val player = playerSender(sender) ?: return
+                val path = args.getOrNull(2) ?: run { imageUsage(sender); return }
+                val size = args.getOrNull(3)?.toDoubleOrNull() ?: 1.0
+                val instance = com.google.gson.JsonObject()
+                instance.addProperty("id", "cmd-${System.currentTimeMillis()}")
+                instance.addProperty("type", "texture")
+                instance.addProperty("texture", path)
+                instance.addProperty("size", size)
+                instance.addProperty("age", 60)
+                spawnDebugImage(player, instance)
+                sender.sendMessage("${ChatColor.GREEN}已生成贴图世界图片（3 秒）。")
+            }
+            "spawn" -> {
+                val player = playerSender(sender) ?: return
+                val template = args.getOrNull(2) ?: run { imageUsage(sender); return }
+                if (template !in CacheHandler.worldImages.images) {
+                    sender.sendMessage("${ChatColor.RED}worldImages.yml 里没有模板 '$template'。")
+                    return
+                }
+                val instance = com.google.gson.JsonObject()
+                instance.addProperty("id", "cmd-${System.currentTimeMillis()}")
+                instance.addProperty("template", template)
+                instance.addProperty("age", 60)
+                spawnDebugImage(player, instance)
+                sender.sendMessage("${ChatColor.GREEN}已按模板 '$template' 生成世界图片（3 秒）。")
+            }
+            else -> imageUsage(sender)
+        }
+    }
+
+    /** 调试实例统一绑定到执行者头顶一米处，坐标取实时 location。 */
+    private fun spawnDebugImage(player: Player, instance: com.google.gson.JsonObject) {
+        val bind = com.google.gson.JsonObject()
+        bind.addProperty("world", player.world.key.toString())
+        val pos = com.google.gson.JsonArray()
+        pos.add(player.location.x)
+        pos.add(player.location.y + 1.0)
+        pos.add(player.location.z)
+        bind.add("pos", pos)
+        instance.add("bind", bind)
+        org.lantern.worldimage.WorldImageService.spawn(listOf(player), listOf(instance))
+    }
+
+    private fun imageUsage(sender: CommandSender) {
+        helpHeader(sender, "世界图片")
+        helpLine(sender, "lantern image text", "<内容> [缩放]", "在自己头顶生成文字世界图片（3 秒）")
+        helpLine(sender, "lantern image texture", "<贴图路径> [边长]", "在自己头顶生成贴图世界图片（3 秒）")
+        helpLine(sender, "lantern image spawn", "<模板名>", "按 worldImages.yml 模板生成世界图片")
+        helpLine(sender, "lantern image clear", "", "清空自己客户端的全部世界图片")
     }
 
     // ============ 载体绑定 ============

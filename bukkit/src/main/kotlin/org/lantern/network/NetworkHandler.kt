@@ -38,12 +38,16 @@ object NetworkHandler {
     private var cachedBlockModelsBytes: ByteArray? = null
     private var cachedResourcePackKeyBytes: ByteArray? = null
     private var cachedChatChannelsBytes: ByteArray? = null
+    private var cachedWorldImagesBytes: ByteArray? = null
     private const val MAIN_CHANNEL = "lantern:main"
     private const val S2C_JSON_PACKET_TYPE = 0
     private const val S2C_CHUNK_PACKET_TYPE = 2
     private const val MAX_PLUGIN_MESSAGE_BYTES = 32766
     private const val CHUNK_HEADER_BYTES = 21
     private const val MAX_CHUNK_PAYLOAD_BYTES = 32_000
+    /** lantern:main 的 JSON opcode：22 世界图片配置 / 23 世界图片实例指令（与客户端分发表对齐） */
+    private const val WORLD_IMAGES_PACKET_ID = 22
+    private const val WORLD_IMAGE_COMMAND_PACKET_ID = 23
     private val chunkMessageIds = AtomicInteger()
 
 
@@ -57,6 +61,7 @@ object NetworkHandler {
         cachedBlockModelsBytes = null
         cachedResourcePackKeyBytes = null
         cachedChatChannelsBytes = null
+        cachedWorldImagesBytes = null
     }
 
     private fun serializePacket(internalPacketId: Int, obj: JsonObject): ByteArray {
@@ -123,6 +128,7 @@ object NetworkHandler {
         sendCostumeAssignment(player, CostumeAssignmentHandler.getAll())
         sendBlockModels(player, CacheHandler.blockModels)
         sendPlayerActions(player, CacheHandler.playerActions)
+        sendWorldImages(player, CacheHandler.worldImages)
         sendBlockPositions(player)
         // 登录补发：绑定按宿主位置做半径广播，中途进服的玩家没收到过任何一条
         org.lantern.bind.BindRegistry.syncTo(player)
@@ -130,6 +136,26 @@ object NetworkHandler {
         // 延迟一秒发送重载资源数据包
         val reloadRunnable = Runnable { sendReloadResourceManagerPacket(player) }
         Bukkit.getScheduler().runTaskLater(LanternPlugin.instance, reloadRunnable, 20L)
+    }
+
+    /** packetId 22：世界图片模板与自定义动画（登录同步与 /lantern reload 都走这里，可缓存）。 */
+    fun sendWorldImages(player: Player, cache: org.lantern.cache.WorldImageCache) {
+        val bytes = cachedWorldImagesBytes ?: run {
+            val images = com.google.gson.JsonObject()
+            cache.images.forEach { (name, template) -> images.add(name, template) }
+            val packet = com.google.gson.JsonObject()
+            packet.add("images", images)
+            packet.add("animations", cache.animations)
+            serializePacket(WORLD_IMAGES_PACKET_ID, packet).also { cachedWorldImagesBytes = it }
+        }
+        sendSerializedPacket(player, bytes)
+    }
+
+    /** packetId 23：世界图片实例指令（spawn/remove/clear），瞬时态不缓存。 */
+    fun sendWorldImageCommand(players: Collection<Player>, action: com.google.gson.JsonObject) {
+        if (players.isEmpty()) return
+        val bytes = serializePacket(WORLD_IMAGE_COMMAND_PACKET_ID, action)
+        players.forEach { sendSerializedPacket(it, bytes) }
     }
 
     fun sendUiScreens(player: Player, screens: List<JsonObject>) {

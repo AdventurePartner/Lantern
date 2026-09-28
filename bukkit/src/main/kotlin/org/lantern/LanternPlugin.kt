@@ -40,6 +40,8 @@ class LanternPlugin : AyPlugin() {
         Bukkit.getPluginManager().registerEvents(WardrobeListener(), this)
         Bukkit.getPluginManager().registerEvents(org.lantern.animation.DeathAnimationInterceptor(), this)
         Bukkit.getPluginManager().registerEvents(org.lantern.animation.StateEventListener(), this)
+        // 伤害数值弹出（世界图片系统的首个应用）
+        Bukkit.getPluginManager().registerEvents(org.lantern.listen.DamageNumberListener(), this)
         // 注册消息通道
         Bukkit.getMessenger().registerOutgoingPluginChannel(this, "lantern:main")
         channelListener = LanternChannelMessageListener()

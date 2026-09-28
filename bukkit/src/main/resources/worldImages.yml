@@ -1,0 +1,45 @@
+# 世界图片：在世界空间绘制贴图面片或文字（跟随玩家/实体/固定坐标，
+# 支持朝向、缩放、第一人称可见性与关键帧动画）。
+#
+# images      图片模板：/lantern image spawn 与其他插件按名字引用
+# animations  服主自定义动画：同名覆盖内置（damage_pop / float_up / drop_spin）
+# damage      伤害数值弹出（本文件唯一的内置应用，零配置可用）
+
+images:
+  # 贴图型模板示例（贴图放进客户端资源包 assets/lantern/ 下，或写 http(s) 直链）：
+  # demo_logo:
+  #   texture: "image/logo.png"     # 必填，lantern: 命名空间下的路径或 http(s) 直链
+  #   size: 1.0                     # 面片边长（格）
+  #   scale: 1.0                    # 附加缩放
+  #   facing: billboard             # billboard=始终面向观察者 | fixed=固定朝向（配 rot）
+  #   rot: [0, 0]                   # facing=fixed 时的 yaw/pitch（度），实体 yaw 同语义
+  #   offset: [0, 2.0, 0]           # 相对绑定点的基础偏移
+  #   first-person: true            # 绑定自己时第一人称是否显示
+  #   see-through: false            # true=穿墙可见（名牌同款）
+animations:
+  # 自定义动画示例：轨道 offset-x/y/z、scale、alpha、rot-yaw、rot-pitch；
+  # 每条轨道是关键帧列表，t=tick，v=数值，ease 写在目标帧（linear|in|out|in_out）：
+  # my_float:
+  #   duration: 40                  # 时长（tick），非 loop 动画播完即消失
+  #   loop: false                   # true=循环（实例需带 age 定寿命）
+  #   tracks:
+  #     offset-y:
+  #       - {t: 0, v: 0, ease: out}
+  #       - {t: 40, v: 1.5}
+  #     alpha:
+  #       - {t: 30, v: 1.0}
+  #       - {t: 40, v: 0.0, ease: in}
+
+damage:
+  # 伤害数值弹出：所有对生物的最终伤害在受害者头顶弹出文字
+  enabled: true
+  format: "%.0f"          # 数值格式（Java 格式串）
+  color: "#FF5555"        # 文字颜色（#RRGGBB 或 #AARRGGBB）
+  min-damage: 0.5         # 低于该值的伤害不显示（火焰余烬之类的碎数）
+  merge-ms: 250           # 同一实体的刷新间隔：窗口内的后续伤害不另起数字，
+                          # 当前数字播完为止；跨过窗口的下一跳刷新为最新值
+  radius: 48              # 数字下发给受害者周围多少格内的玩家
+  first-person: false     # 自己受伤的数字在第一人称是否显示（false=不挡自己视线）
+  scale: 1.0              # 附加缩放
+  size: 0.4               # 字符行高（格）
+  animation: damage_pop   # 使用的动画（内置或 animations 里自定义的名字）

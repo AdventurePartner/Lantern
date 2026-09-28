@@ -4,6 +4,7 @@ import org.lantern.cache.BlockModelCache
 import org.lantern.cache.CostumeCache
 import org.lantern.cache.ItemIconCache
 import org.lantern.cache.KeyCache
+import org.lantern.cache.WorldImageCache
 import java.util.concurrent.ConcurrentHashMap
 
 object CacheHandler {
@@ -13,6 +14,9 @@ object CacheHandler {
     val blockModels: MutableMap<String, BlockModelCache> = ConcurrentHashMap()
     /** 玩家主动动作定义（playerActions.yml），客户端本地按键触发 */
     val playerActions: MutableMap<String, org.lantern.cache.PlayerActionCache> = ConcurrentHashMap()
+    /** 世界图片配置（worldImages.yml）：模板、自定义动画与伤害数值参数 */
+    @Volatile
+    var worldImages: WorldImageCache = WorldImageCache(org.bukkit.configuration.file.YamlConfiguration())
 
     /**
      * P1 玩家宿主化：进服自动套上的整替外观 id（costumes.yml 顶层 player-default.costume）。
