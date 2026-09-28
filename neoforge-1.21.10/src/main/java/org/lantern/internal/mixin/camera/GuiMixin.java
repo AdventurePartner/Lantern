@@ -2,7 +2,7 @@ package org.lantern.internal.mixin.camera;
 
 import net.minecraft.client.CameraType;
 import net.minecraft.client.gui.Gui;
-import org.lantern.camera.ShoulderCameraState;
+import org.lantern.core.camera.ShoulderCameraState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;

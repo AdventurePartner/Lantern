@@ -60,7 +60,7 @@ object NetworkParser {
     /**
      * packetId 18 相机演出指令（lock/unlock/shake/fov/offset/clear）的处理器，
      * 由实现了相机控制的客户端平台注册。
-     * "shoulder"（越肩参数）由共享 [org.lantern.camera.ShoulderCameraState] 直写，不经此 handler。
+     * "shoulder"（越肩参数）由共享 [org.lantern.core.camera.ShoulderCameraState] 直写，不经此 handler。
      */
     var cameraActionHandler: ((action: String, obj: JsonObject) -> Unit)? = null
 
@@ -130,7 +130,7 @@ object NetworkParser {
 
     /**
      * packetId 18（相机控制）。
-     * 阶段一仅 "shoulder"（越肩参数，直写共享 [org.lantern.camera.ShoulderCameraState]）；
+     * 阶段一仅 "shoulder"（越肩参数，直写共享 [org.lantern.core.camera.ShoulderCameraState]）；
      * 后续演出指令（lock/shake/fov/...）在同一包号下扩展 action 分支。
      */
     private fun parseCameraControl(obj: JsonObject) {
@@ -139,7 +139,7 @@ object NetworkParser {
         // 避免 CameraControl/ShoulderCameraState 与渲染线程的数据竞争与元组撕裂
         Minecraft.getInstance().execute {
             when (action) {
-                "shoulder" -> org.lantern.camera.ShoulderCameraState.update(
+                "shoulder" -> org.lantern.core.camera.ShoulderCameraState.update(
                     obj.get("enabled")?.asBoolean ?: false,
                     obj.get("offset-x")?.asDouble ?: 0.0,
                     obj.get("offset-y")?.asDouble ?: 0.0,

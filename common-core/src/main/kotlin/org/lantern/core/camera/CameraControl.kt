@@ -1,28 +1,47 @@
-package org.lantern.camera.control
+package org.lantern.core.camera
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
-import net.minecraft.Util
-import net.minecraft.client.Minecraft
-import net.minecraft.util.Mth
-import net.minecraft.world.phys.Vec3
 import java.util.UUID
 import kotlin.math.atan2
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+/** 位置三元组：相机域内的世界坐标载体（common 不依赖 MC 的 Vec3） */
+data class Position(val x: Double, val y: Double, val z: Double)
+
+/**
+ * 相机内核的平台能力口：实体注视目标、开镜检测、朝向写回。
+ * 由各平台入口注册到 [CameraControl.port]（收包必然在装配之后）
+ */
+interface CameraPort {
+    /** 实体眼睛位置（插值）；实体不存在返回 null */
+    fun eyePosition(uuid: UUID, partialTick: Float): Position?
+
+    /** 本地玩家是否开镜（望远镜等让位原版 FOV 变焦） */
+    fun isScoping(): Boolean
+
+    /** 把演出朝向写回本地玩家（lock 的 sync 模式） */
+    fun writePlayerOrientation(yaw: Float, pitch: Float)
+}
+
 /**
  * 相机演出状态机（packet 18：lock/unlock/shake/fov/offset/clear/path/watch）。
  *
- * 全部状态只在渲染线程触碰（NetworkParser 经 Minecraft.execute 派发，与 Camera.setup /
- * GameRenderer.getFov 同线程）。叠加顺序（策划 §6.4）：
+ * 全部状态只在渲染线程触碰（平台侧 NetworkParser 经主线程 execute 派发，与
+ * Camera.setup / GameRenderer.getFov 同线程）。叠加顺序（策划 §6.4）：
  * 越肩 → offset → lock → **path/watch 位姿覆写** → shake（位置扰动）。
  * path/watch 结束或被 clear 打断时经 250ms 回程过渡滑回玩家位姿（不瞬跳）；
  * path 入口有 5 tick 淡入（从当前位姿滑进首帧）。
+ *
+ * 平台协作：时间源为单调时钟（System.nanoTime 派生，与原 Util.getMillis 同源性质）；
+ * 角度插值自实现（与 Mth.wrapDegrees/rotLerp 同式）；实体查询与玩家写回经 [port] 注入
  */
 object CameraControl {
 
-    private fun now(): Long = Util.getMillis()
+    lateinit var port: CameraPort
+
+    private fun now(): Long = System.nanoTime() / 1_000_000L
 
     // ---- offset：pitch/yaw/roll 叠加，带过渡 ----
     private var offsetPitch = 0f
@@ -86,7 +105,7 @@ object CameraControl {
     private var watchX = 0.0
     private var watchY = 0.0
     private var watchZ = 0.0
-    private var watchLook: Vec3? = null
+    private var watchLook: Position? = null
     private var watchLookEntity: UUID? = null
     private var watchStartMs = 0L
     private var watchSmoothMs = 0L
@@ -111,7 +130,7 @@ object CameraControl {
         val pitch: Float,
         val roll: Float,
         /** 非空 = 位置直接覆写（path/watch/回程），否则只做相对扰动 */
-        val absolutePos: Vec3?,
+        val absolutePos: Position?,
         val dx: Double,
         val dy: Double,
         val dz: Double
@@ -198,9 +217,9 @@ object CameraControl {
             val rawPitch = frame.get("pitch")?.asDouble ?: 0.0
             // 相邻帧解卷：catmullrom 需要连续序列，解卷后 linear 恰好等价最短路径
             val yaw = if (frames.isEmpty()) rawYaw
-            else lastYaw + Mth.wrapDegrees((rawYaw - lastYaw).toFloat()).toDouble()
+            else lastYaw + wrapDegrees((rawYaw - lastYaw).toFloat()).toDouble()
             val pitch = if (frames.isEmpty()) rawPitch
-            else lastPitch + Mth.wrapDegrees((rawPitch - lastPitch).toFloat()).toDouble()
+            else lastPitch + wrapDegrees((rawPitch - lastPitch).toFloat()).toDouble()
             frames.add(
                 PathFrame(
                     (frame.get("t")?.asDouble ?: 0.0).coerceAtLeast(0.0),
@@ -306,7 +325,7 @@ object CameraControl {
         watchZ = pos.get("z")?.asDouble ?: 0.0
         val look = obj.getAsJsonObject("look")
         watchLook = look?.let {
-            Vec3(it.get("x")?.asDouble ?: 0.0, it.get("y")?.asDouble ?: 0.0, it.get("z")?.asDouble ?: 0.0)
+            Position(it.get("x")?.asDouble ?: 0.0, it.get("y")?.asDouble ?: 0.0, it.get("z")?.asDouble ?: 0.0)
         }
         watchLookEntity = obj.get("entity")?.asString
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
@@ -409,7 +428,7 @@ object CameraControl {
         var yaw = baseYaw
         var pitch = basePitch
         var roll = 0f
-        var absolute: Vec3? = null
+        var absolute: Position? = null
         var engaged = false
 
         val finish = finishPose
@@ -418,9 +437,9 @@ object CameraControl {
             val w = if (FINISH_MS <= 0L) 1f
             else ((time - finishStartMs).toFloat() / FINISH_MS).coerceIn(0f, 1f)
             val e = smooth(w)
-            yaw = Mth.rotLerp(e, finish.yaw, baseYaw)
+            yaw = rotLerp(e, finish.yaw, baseYaw)
             pitch = lerp(e, finish.pitch, basePitch)
-            absolute = Vec3(
+            absolute = Position(
                 finish.x + (camX - finish.x) * e,
                 finish.y + (camY - finish.y) * e,
                 finish.z + (camZ - finish.z) * e)
@@ -476,13 +495,10 @@ object CameraControl {
                                 w = ((time - lockStartMs).toFloat() / lockSmoothMs).coerceIn(0f, 1f)
                             }
                             w = smooth(w)
-                            yaw = Mth.rotLerp(w, yaw, desiredYaw)
+                            yaw = rotLerp(w, yaw, desiredYaw)
                             pitch = lerp(w, pitch, desiredPitch)
                             if (lockSync) {
-                                Minecraft.getInstance().player?.let {
-                                    it.setYRot(yaw)
-                                    it.setXRot(pitch)
-                                }
+                                port.writePlayerOrientation(yaw, pitch)
                             }
                         }
                     }
@@ -516,7 +532,7 @@ object CameraControl {
         return Pose(yaw, pitch, roll, absolute, rightX * sx, sy.toDouble(), rightZ * sx)
     }
 
-    private class OverridePose(val yaw: Float, val pitch: Float, val pos: Vec3)
+    private class OverridePose(val yaw: Float, val pitch: Float, val pos: Position)
 
     private fun evaluateOverride(
         time: Long, baseYaw: Float, basePitch: Float, partialTick: Float,
@@ -536,13 +552,13 @@ object CameraControl {
             val entry = pathEntry ?: CapturedPose(baseYaw, basePitch, camX, camY, camZ).also { pathEntry = it }
             val entryW = smooth((t / 5.0).coerceIn(0.0, 1.0).toFloat())
             if (entryW < 1f) {
-                yaw = Mth.rotLerp(entryW, entry.yaw, yaw)
+                yaw = rotLerp(entryW, entry.yaw, yaw)
                 pitch = lerp(entryW, entry.pitch, pitch)
                 x = entry.x + (x - entry.x) * entryW
                 y = entry.y + (y - entry.y) * entryW
                 z = entry.z + (z - entry.z) * entryW
             }
-            return OverridePose(yaw, pitch, Vec3(x, y, z))
+            return OverridePose(yaw, pitch, Position(x, y, z))
         }
 
         if (watchEndMs > 0L) {
@@ -563,7 +579,7 @@ object CameraControl {
             val px = from.x + (watchX - from.x) * w
             val py = from.y + (watchY - from.y) * w
             val pz = from.z + (watchZ - from.z) * w
-            val target = watchLookEntity?.let { Minecraft.getInstance().level?.getEntity(it)?.getEyePosition(partialTick) }
+            val target = watchLookEntity?.let { port.eyePosition(it, partialTick) }
                 ?: watchLook
                 ?: return null
             val dx = target.x - px
@@ -572,11 +588,11 @@ object CameraControl {
             if (dx * dx + dy * dy + dz * dz > 1e-6) {
                 val desiredYaw = Math.toDegrees(atan2(-dx, dz)).toFloat()
                 val desiredPitch = -Math.toDegrees(atan2(dy, sqrt(dx * dx + dz * dz))).toFloat()
-                val yaw = Mth.rotLerp(w, from.yaw, desiredYaw)
+                val yaw = rotLerp(w, from.yaw, desiredYaw)
                 val pitch = lerp(w, from.pitch, desiredPitch)
-                return OverridePose(yaw, pitch, Vec3(px, py, pz))
+                return OverridePose(yaw, pitch, Position(px, py, pz))
             }
-            return OverridePose(from.yaw, from.pitch, Vec3(px, py, pz))
+            return OverridePose(from.yaw, from.pitch, Position(px, py, pz))
         }
         return null
     }
@@ -584,8 +600,7 @@ object CameraControl {
     /** getFov 返回值层叠加：path 轨 > 回程过渡 > 手动指令 > vanilla；开镜让位原版变焦。 */
     @JvmStatic
     fun fov(vanilla: Float): Float {
-        val player = Minecraft.getInstance().player
-        if (player != null && player.isScoping) {
+        if (port.isScoping()) {
             return vanilla
         }
         val time = now()
@@ -630,13 +645,23 @@ object CameraControl {
         return value
     }
 
-    private fun lockTarget(partialTick: Float): Vec3? {
-        val uuid = lockEntity ?: return Vec3(lockX, lockY, lockZ)
-        val entity = Minecraft.getInstance().level?.getEntity(uuid) ?: return null
-        return entity.getEyePosition(partialTick)
+    private fun lockTarget(partialTick: Float): Position? {
+        val uuid = lockEntity ?: return Position(lockX, lockY, lockZ)
+        return port.eyePosition(uuid, partialTick)
     }
 
     private fun smooth(w: Float): Float = w * w * (3f - 2f * w)
 
     private fun lerp(w: Float, from: Float, to: Float): Float = from + (to - from) * w
+
+    /** 角度归一到 [-180, 180)（与 Mth.wrapDegrees 同式） */
+    private fun wrapDegrees(degrees: Float): Float {
+        var f = degrees % 360f
+        if (f >= 180f) f -= 360f
+        if (f < -180f) f += 360f
+        return f
+    }
+
+    /** 角度插值走最短弧（与 Mth.rotLerp 同式：start + wrapDegrees(end - start) * t） */
+    private fun rotLerp(t: Float, from: Float, to: Float): Float = from + wrapDegrees(to - from) * t
 }

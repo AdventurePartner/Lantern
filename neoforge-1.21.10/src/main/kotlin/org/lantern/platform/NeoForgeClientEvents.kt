@@ -170,7 +170,9 @@ object NeoForgeClientEvents {
         parsedKeys.clear()
         wasMouseDown = false
         // 相机演出状态（lock/shake/fov/offset）不跨服残留
-        org.lantern.camera.control.CameraControl.hardReset()
+        org.lantern.core.camera.CameraControl.hardReset()
+        // 越肩偏移是服务端会话态下发，同样归零
+        org.lantern.core.camera.ShoulderCameraState.clear()
     }
 
     private fun onEntityLeaveLevel(event: EntityLeaveLevelEvent) {

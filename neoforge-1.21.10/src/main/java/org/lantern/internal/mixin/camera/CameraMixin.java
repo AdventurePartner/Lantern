@@ -5,7 +5,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.phys.Vec3;
-import org.lantern.camera.ShoulderCameraState;
+import org.lantern.core.camera.ShoulderCameraState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -21,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 生效条件是 F5 虚拟视角 active（越肩是第四视角，不占用原版背后形态）。
  *
  * setup 尾部叠加演出指令（阶段二）：offset（朝向叠加）→ lock（朝向覆写）→ shake（位置扰动），
- * 计算在 [org.lantern.camera.control.CameraControl]，本类只负责应用。
+ * 计算在 [org.lantern.core.camera.CameraControl]，本类只负责应用。
  */
 @Mixin(Camera.class)
 public abstract class CameraMixin {
@@ -89,14 +89,15 @@ public abstract class CameraMixin {
             return;
         }
         Vec3 position = this.getPosition();
-        org.lantern.camera.control.CameraControl.Pose pose = org.lantern.camera.control.CameraControl.apply(
+        org.lantern.core.camera.CameraControl.Pose pose = org.lantern.core.camera.CameraControl.apply(
             this.yRot, this.xRot, partialTick, position.x, position.y, position.z);
         if (pose != null) {
             this.setRotation(pose.getYaw(), pose.getPitch(), pose.getRoll());
             // path/watch/回程为绝对位置覆写（shake 扰动照常叠加）；其余为相对扰动
-            Vec3 base = pose.getAbsolutePos() != null ? pose.getAbsolutePos() : position;
+            org.lantern.core.camera.Position base = pose.getAbsolutePos() != null
+                ? pose.getAbsolutePos() : new org.lantern.core.camera.Position(position.x, position.y, position.z);
             this.setPosition(new Vec3(
-                base.x + pose.getDx(), base.y + pose.getDy(), base.z + pose.getDz()));
+                base.getX() + pose.getDx(), base.getY() + pose.getDy(), base.getZ() + pose.getDz()));
         }
         // 拾取修正必须在 setup 尾部（本帧位姿定稿后）而非 GameRenderer.pick 尾部：
         // 帧内顺序是 pick 在前 setup 在后，后者只能拿到上一帧相机（详见 CameraPick）

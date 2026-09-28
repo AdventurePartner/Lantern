@@ -3,7 +3,7 @@ package org.lantern.internal.mixin.camera;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
-import org.lantern.camera.control.CameraControl;
+import org.lantern.core.camera.CameraControl;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
