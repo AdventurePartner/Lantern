@@ -12,7 +12,8 @@ import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.EntityHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
-import org.lantern.camera.ShoulderCameraState
+import org.lantern.core.camera.CameraControl
+import org.lantern.core.camera.ShoulderCameraState
 
 /**
  * 准星拾取修正：以**本帧相机位姿**重算方块/实体命中并写回 Minecraft.hitResult。

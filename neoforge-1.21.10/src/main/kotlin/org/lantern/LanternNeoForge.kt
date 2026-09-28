@@ -49,7 +49,8 @@ class LanternNeoForge(modBus: IEventBus) {
         org.lantern.core.anim.molang.MolangVariableStore.compiler = org.lantern.animation.GeckoLibMolang
         NetworkParser.molangVariableHandler = org.lantern.core.anim.molang.MolangVariableStore::update
         // packet 18 相机（shoulder + 演出指令）：NetworkParser 统一调度到主线程后更新渲染状态
-        NetworkParser.cameraActionHandler = org.lantern.camera.control.CameraControl::handle
+        org.lantern.core.camera.CameraControl.port = org.lantern.camera.control.CameraPortNeoForge
+        NetworkParser.cameraActionHandler = org.lantern.core.camera.CameraControl::handle
         NetworkParser.playerActionHandler = org.lantern.core.action.PlayerActionDefs::load
         // packet 20：只写 ConcurrentHashMap，与 packet 17 同理，网络线程直接执行
         NetworkParser.entityBindHandler = org.lantern.core.bind.BindStore::handle
