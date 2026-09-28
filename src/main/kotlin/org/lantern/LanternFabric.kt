@@ -21,6 +21,7 @@ import org.lantern.costume.renderer.CostumeRenderLayer
 import org.lantern.item.plugin.LanternModelPlugin
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.entity.EntityRendererProvider
+import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.resources.ResourceLocation
 import org.lantern.platform.IdentifierBridge
 import net.minecraft.server.packs.PackType
@@ -39,6 +40,7 @@ import org.lantern.internal.network.PacketNetwork
 import org.lantern.model.util.EntityStateUtil
 import org.lantern.uix.renderer.CanvasRenderer
 import org.lantern.uix.renderer.OverlayRenderer
+import org.lantern.worldimage.WorldImageRenderer
 import org.slf4j.LoggerFactory
 
 class LanternFabric : ClientModInitializer {
@@ -158,6 +160,17 @@ class LanternFabric : ClientModInitializer {
                 Lantern.logger.info("[Lantern]   No BlockEntity at first tracked position!")
             }
             Lantern.logger.info("[Lantern] ====== END DIAGNOSTIC ======")
+        }
+
+        // 世界图片：实体阶段之后画世界空间面片/文字。顶点写进实体批处理缓冲，
+        // 随实体阶段收尾的统一 endBatch 一起提交，这里不单独 flush
+        WorldRenderEvents.AFTER_ENTITIES.register { context ->
+            val consumers = context.consumers() as? MultiBufferSource.BufferSource ?: return@register
+            val matrixStack = context.matrixStack() ?: return@register
+            WorldImageRenderer.render(
+                matrixStack, consumers, context.camera(),
+                context.tickCounter().getGameTimeDeltaPartialTick(false)
+            )
         }
     }
 

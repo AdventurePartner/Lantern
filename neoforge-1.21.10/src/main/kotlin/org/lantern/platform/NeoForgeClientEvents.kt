@@ -11,6 +11,7 @@ import net.neoforged.neoforge.client.event.MovementInputUpdateEvent
 import net.neoforged.neoforge.client.event.ScreenEvent
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 import org.lantern.animation.AnimationHost
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.chat.ChatChannelHandler
@@ -73,6 +74,22 @@ object NeoForgeClientEvents {
             InputEvent.InteractionKeyMappingTriggered::class.java,
             Consumer<InputEvent.InteractionKeyMappingTriggered>(::onInteractionKey)
         )
+        // 世界图片：AfterEntities 是唯一带非空 PoseStack 的阶段，与实体同批、
+        // 被地形深度正确遮挡；partialTick 在 1.21.2+ 走 DeltaTracker
+        NeoForge.EVENT_BUS.addListener(
+            RenderLevelStageEvent.AfterEntities::class.java,
+            Consumer<RenderLevelStageEvent.AfterEntities>(::onAfterEntities)
+        )
+    }
+
+    private fun onAfterEntities(event: RenderLevelStageEvent.AfterEntities) {
+        val client = Minecraft.getInstance()
+        val buffers = client.renderBuffers().bufferSource()
+        val partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false)
+        org.lantern.worldimage.WorldImageRenderer.render(
+            event.poseStack, buffers, client.gameRenderer.getMainCamera(), partialTick
+        )
+        buffers.endBatch()
     }
 
     /**
