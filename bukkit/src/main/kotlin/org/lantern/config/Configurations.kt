@@ -74,7 +74,7 @@ object Configurations {
         LanternPlugin.instance.saveResource("blockModels.yml", "blockModels.yml", false) {
             CacheHandler.blockModels.clear()
             val data = YamlConfiguration.loadConfiguration(it)
-            CacheHandler.blockModels.keys.forEach { key ->
+            data.getKeys(false).forEach { key ->
                 val section = data.getConfigurationSection(key) ?: return@forEach
                 CacheHandler.blockModels[key] = BlockModelCache(section)
             }
