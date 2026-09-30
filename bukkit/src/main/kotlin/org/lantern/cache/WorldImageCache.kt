@@ -21,17 +21,17 @@ class WorldImageCache(data: YamlConfiguration) {
     val damage: Damage = Damage(data.getConfigurationSection("damage"))
 
     init {
+        // getValues 直取直接子层：get/getConfigurationSection 按 '.' 拆路径，
+        // 模板名或动画名带点的条目会静默取不到
         val imageMap = LinkedHashMap<String, JsonObject>()
-        data.getConfigurationSection("images")?.getKeys(false)?.forEach { name ->
-            val section = data.getConfigurationSection("images")?.getConfigurationSection(name) ?: return@forEach
-            imageMap[name] = sectionToJson(section)
+        data.getConfigurationSection("images")?.getValues(false)?.forEach { (name, value) ->
+            if (value is ConfigurationSection) imageMap[name] = sectionToJson(value)
         }
         images = imageMap
 
         val animObj = JsonObject()
-        data.getConfigurationSection("animations")?.getKeys(false)?.forEach { name ->
-            val section = data.getConfigurationSection("animations")?.getConfigurationSection(name) ?: return@forEach
-            animObj.add(name, sectionToJson(section))
+        data.getConfigurationSection("animations")?.getValues(false)?.forEach { (name, value) ->
+            anyToJson(value)?.let { animObj.add(name, it) }
         }
         animations = animObj
     }
@@ -39,7 +39,21 @@ class WorldImageCache(data: YamlConfiguration) {
     /** 伤害数值弹出的参数（默认值与 worldImages.yml 出厂模板一致，模板节被删也能工作）。 */
     class Damage(section: ConfigurationSection?) {
         val enabled: Boolean = section?.getBoolean("enabled", true) ?: true
-        val format: String = section?.getString("format", "%.0f") ?: "%.0f"
+
+        /** 装载时试格式化一次：非法格式串回退 "%.0f" 并告警，否则每次伤害事件都抛异常刷日志 */
+        val format: String = run {
+            val raw = section?.getString("format", "%.0f") ?: "%.0f"
+            try {
+                String.format(java.util.Locale.ROOT, raw, 1.0)
+                raw
+            } catch (e: Exception) {
+                org.lantern.LanternPlugin.instance.logger.warning(
+                    "[Lantern] worldImages.yml damage.format '$raw' 不是合法的数值格式（${e.message}），回退 %.0f"
+                )
+                "%.0f"
+            }
+        }
+
         val color: String = section?.getString("color", "#FF5555") ?: "#FF5555"
         val minDamage: Double = section?.getDouble("min-damage", 0.5) ?: 0.5
         val mergeMs: Long = section?.getLong("merge-ms", 250L) ?: 250L
@@ -54,8 +68,8 @@ class WorldImageCache(data: YamlConfiguration) {
         /** yml 配置节 -> JsonObject：递归处理子节、列表（动画关键帧是 map 列表）与标量。 */
         private fun sectionToJson(section: ConfigurationSection): JsonObject {
             val obj = JsonObject()
-            section.getKeys(false).forEach { key ->
-                anyToJson(section.get(key))?.let { obj.add(key, it) }
+            section.getValues(false).forEach { (key, value) ->
+                anyToJson(value)?.let { obj.add(key, it) }
             }
             return obj
         }

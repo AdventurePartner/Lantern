@@ -24,6 +24,8 @@ import net.md_5.bungee.api.chat.TextComponent
 
 class LanternCommand : CommandExecutor, TabCompleter {
     private val validSlots = setOf("full_body", "back", "tail", "head", "effect")
+    /** 调试用世界图片 id 序号：同毫秒连发也保持唯一，避免客户端按"同 id 替换"吞掉前一条 */
+    private val imageSeq = java.util.concurrent.atomic.AtomicLong()
 
     /** 子命令 -> 所需权限节点；不在表内 = 对所有人开放（help）。 */
     private val subPerms: Map<String, String> = mapOf(
@@ -189,7 +191,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 "campath" -> when (args[1]?.lowercase()) {
                     "start" -> emptyList()
                     "add" -> listOf("linear", "smooth", "hold")
-                        .filter { it.startsWith(args[3] ?: "", ignoreCase = true) }
+                        .filter { it.startsWith(args[2] ?: "", ignoreCase = true) }
                     else -> emptyList()
                 }
                 else -> emptyList()
@@ -781,12 +783,23 @@ class LanternCommand : CommandExecutor, TabCompleter {
             }
             "text" -> {
                 val player = playerSender(sender) ?: return
-                val text = args.getOrNull(2) ?: run { imageUsage(sender); return }
-                val scale = args.getOrNull(3)?.toDoubleOrNull() ?: 1.0
+                val words = args.drop(2).filterNotNull().toMutableList()
+                if (words.isEmpty()) {
+                    imageUsage(sender)
+                    return
+                }
+                // 多词内容以空格拼接；末位是纯数字且词数大于 1 时解析为缩放
+                var scale = 1.0
+                if (words.size > 1) {
+                    words.last().toDoubleOrNull()?.let {
+                        scale = it
+                        words.removeAt(words.size - 1)
+                    }
+                }
                 val instance = com.google.gson.JsonObject()
-                instance.addProperty("id", "cmd-${System.currentTimeMillis()}")
+                instance.addProperty("id", "cmd-${imageSeq.incrementAndGet()}")
                 instance.addProperty("type", "text")
-                instance.addProperty("text", text)
+                instance.addProperty("text", words.joinToString(" "))
                 instance.addProperty("scale", scale)
                 instance.addProperty("age", 60)
                 spawnDebugImage(player, instance)
@@ -797,7 +810,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
                 val path = args.getOrNull(2) ?: run { imageUsage(sender); return }
                 val size = args.getOrNull(3)?.toDoubleOrNull() ?: 1.0
                 val instance = com.google.gson.JsonObject()
-                instance.addProperty("id", "cmd-${System.currentTimeMillis()}")
+                instance.addProperty("id", "cmd-${imageSeq.incrementAndGet()}")
                 instance.addProperty("type", "texture")
                 instance.addProperty("texture", path)
                 instance.addProperty("size", size)
@@ -813,7 +826,7 @@ class LanternCommand : CommandExecutor, TabCompleter {
                     return
                 }
                 val instance = com.google.gson.JsonObject()
-                instance.addProperty("id", "cmd-${System.currentTimeMillis()}")
+                instance.addProperty("id", "cmd-${imageSeq.incrementAndGet()}")
                 instance.addProperty("template", template)
                 instance.addProperty("age", 60)
                 spawnDebugImage(player, instance)

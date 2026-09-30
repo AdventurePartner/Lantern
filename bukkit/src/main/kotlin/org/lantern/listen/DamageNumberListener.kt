@@ -16,11 +16,16 @@ import java.util.UUID
  * 伤害数值弹出（世界图片系统的首个应用）。
  *
  * MONITOR 只读不改伤害结算，数值取 finalDamage（修正后）。
- * 同一实体以固定 id "dmg-<uuid>" spawn：merge-ms 窗口外的下一跳是替换语义，
- * 客户端会把数字刷新为最新值并重启动画；窗口内的伤害不另起数字，当前数字播完为止。
+ * 同一实体以固定 id "dmg-<uuid>" spawn：merge-ms 是一个固定累计窗口——
+ * 窗口内的多段伤害累加成一个数字并即时替换刷新（同 id 替换语义，动画重播、
+ * 数字滚动增长），跨过窗口的下一跳重开累计。多段技能不再丢跳。
  */
 class DamageNumberListener : Listener {
-    private val lastSpawn = HashMap<UUID, Long>()
+
+    /** 窗口锚点创建时定死（固定窗口，非滑动）：连续 DOT 不会无限续窗口 */
+    private class Accumulator(val at: Long, var amount: Double)
+
+    private val pending = HashMap<UUID, Accumulator>()
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onDamage(event: EntityDamageEvent) {
@@ -34,24 +39,30 @@ class DamageNumberListener : Listener {
         if (amount < cfg.minDamage) return
 
         val now = System.currentTimeMillis()
-        val last = lastSpawn[target.uniqueId]
-        if (last != null && now - last < cfg.mergeMs) return
-        lastSpawn[target.uniqueId] = now
-        if (lastSpawn.size > 256) {
-            // 逐出已过刷新窗口的条目，防长期运行无界增长；正常流量到不了这个量
-            lastSpawn.entries.removeIf { now - it.value > cfg.mergeMs }
+        val acc = pending[target.uniqueId]
+        val total: Double
+        if (acc == null || now - acc.at >= cfg.mergeMs) {
+            val fresh = Accumulator(now, amount)
+            pending[target.uniqueId] = fresh
+            total = amount
+        } else {
+            acc.amount += amount
+            total = acc.amount
+        }
+        if (pending.size > 256) {
+            // 逐出已过窗口的条目，防长期运行无界增长；正常流量到不了这个量
+            pending.entries.removeIf { now - it.value.at > cfg.mergeMs }
         }
 
         val instance = JsonObject()
         instance.addProperty("id", "dmg-${target.uniqueId}")
         instance.addProperty("type", "text")
-        instance.addProperty("text", String.format(Locale.ROOT, cfg.format, amount))
+        instance.addProperty("text", String.format(Locale.ROOT, cfg.format, total))
         instance.addProperty("color", cfg.color)
         instance.addProperty("size", cfg.size)
         instance.addProperty("scale", cfg.scale)
         instance.addProperty("animation", cfg.animation)
         instance.addProperty("first-person", cfg.firstPerson)
-        // 多段伤害横向抖开，避免同一实体的连续数字叠在一条竖线上
         val bind = JsonObject()
         bind.addProperty("entity", target.uniqueId.toString())
         instance.add("bind", bind)
