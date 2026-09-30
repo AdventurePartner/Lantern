@@ -24,16 +24,21 @@ object WorldImageManager {
 
     /** opcode 22：模板与动画表整体重建（实例是瞬时态，不受配置重载影响）。 */
     fun handleConfig(obj: JsonObject) {
+        // 先全量解析、后原子提交：中途任何一条抛异常都不会留下"新模板 + 旧动画"的半更新状态
         val newTemplates = LinkedHashMap<String, WorldImageSpec>()
-        obj.getAsJsonObject("images")?.entrySet()?.forEach { (name, element) ->
+        jsonSection(obj, "images")?.entrySet()?.forEach { (name, element) ->
             if (!element.isJsonObject) return@forEach
-            val spec = WorldImageCodec.parseSpec(element.asJsonObject, null) ?: return@forEach
+            val spec = runCatching { WorldImageCodec.parseSpec(element.asJsonObject, null) }
+                .getOrElse {
+                    Lantern.logger.warn("[Lantern] world image template '$name' 解析失败：${it.message}")
+                    null
+                } ?: return@forEach
             newTemplates[name] = spec
         }
+        val customs = WorldImageCodecs.parseAnimations(jsonSection(obj, "animations"))
+
         templates.clear()
         templates.putAll(newTemplates)
-
-        val customs = WorldImageCodecs.parseAnimations(obj.getAsJsonObject("animations"))
         animations.clear()
         animations.putAll(ImageAnims.BUILT_INS)
         animations.putAll(customs)
@@ -43,24 +48,35 @@ object WorldImageManager {
         )
     }
 
-    /** opcode 23：spawn 同 id = 整体替换（重启动画，即外部"更新"语义），remove 按 id，clear 清空。 */
+    /** opcode 23：spawn 同 id = 整体替换（重启动画），remove 按 id，clear 清空。 */
     fun handleCommand(obj: JsonObject) {
         when (obj.get("action")?.takeIf { it.isJsonPrimitive }?.asString) {
             "spawn" -> {
-                val array = obj.getAsJsonArray("images") ?: return
+                val array = obj.get("images")?.takeIf { it.isJsonArray }?.asJsonArray ?: return
                 array.forEach { element ->
                     if (!element.isJsonObject) return@forEach
-                    val instance = WorldImageCodec.parseInstance(
-                        element.asJsonObject, templates::get, animations::get
-                    ) ?: return@forEach
+                    val instance = runCatching {
+                        WorldImageCodec.parseInstance(element.asJsonObject, templates::get, animations::get)
+                    }.getOrElse {
+                        Lantern.logger.warn("[Lantern] world image instance 解析失败：${it.message}")
+                        null
+                    } ?: return@forEach
                     instances[instance.id] = instance
                 }
             }
-            "remove" -> obj.getAsJsonArray("ids")?.forEach { element ->
+            "remove" -> obj.get("ids")?.takeIf { it.isJsonArray }?.asJsonArray?.forEach { element ->
                 if (element.isJsonPrimitive) instances.remove(element.asString)
             }
             "clear" -> instances.clear()
         }
+    }
+
+    /** 断线/换服清空：实例与模板随会话作废（否则跨服残留成幽灵图），动画表回内置基线。 */
+    fun clear() {
+        templates.clear()
+        animations.clear()
+        animations.putAll(ImageAnims.BUILT_INS)
+        instances.clear()
     }
 
     /** 渲染帧调用：先剔除到期实例，再给出快照（渲染线程与主线程同为渲染侧调用）。 */
@@ -72,4 +88,8 @@ object WorldImageManager {
         }
         return instances.values.toList()
     }
+
+    /** 字段存在且是 JsonObject 才取出，否则 null——getAsJsonObject 对异类型字段会抛异常。 */
+    private fun jsonSection(obj: JsonObject, key: String): JsonObject? =
+        obj.get(key)?.takeIf { it.isJsonObject }?.asJsonObject
 }

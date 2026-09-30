@@ -8,19 +8,27 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
 import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
+import org.lantern.Lantern
 import org.lantern.core.image.ImageAnims
 import org.lantern.core.image.ImagePose
+import org.lantern.internal.handler.TextureHandler
+import org.lantern.platform.IdentifierBridge
 
 /**
  * 世界图片渲染器的 1.20.1 版本（同 FQN 替换根源码，根源码在 build.gradle.kts 里 exclude）。
  *
- * 与 1.21.x 版的唯一差异是 VertexConsumer 的提交链：1.20.1 是
- * vertex().color().uv().uv2().endVertex()（float 分量），1.21.1+ 是
- * addVertex().setColor().setUv().setLight()。其余逻辑与根源码逐行一致。
+ * 与根源码的三处平台差异（改动本文件时必须逐处对照根源码，其余逻辑保持逐行一致）：
+ * 1. VertexConsumer 提交链：1.20.1 是 vertex(double×3).color(f×4).uv().uv2().endVertex()，
+ *    1.21.1+ 是 addVertex(f×3).setColor(int).setUv().setLight()；
+ * 2. 相机约定：Camera.rotation() 在 1.21.2 前后翻转（1.20.1 的 q·e1 是相机**左**，
+ *    1.21.x 是相机右），BILLBOARD 分支补 rotateY(PI) 把 1.20.1 四元数换算到 1.21.x
+ *    约定（q_1.21 = q_1.20 · rotY(PI)，字节码推导实证），下游基向量/文字矩阵与根源码统一；
+ * 3. Camera.getPosition() 用方法调用而非 Kotlin 属性糖（等价）。
  */
 object WorldImageRenderer {
 
@@ -41,6 +49,9 @@ object WorldImageRenderer {
         val firstPerson = client.options.getCameraType().isFirstPerson
         val camPos = camera.getPosition()
         val font = client.font
+        // 每帧惰性索引：ENTITY/PLAYER 绑定从 O(实例×实体) 的全表扫降为 O(1)
+        var entitiesByUuid: Map<java.util.UUID, Entity>? = null
+        var playersByName: Map<String, Entity>? = null
 
         for (instance in instances) {
             val spec = instance.spec
@@ -50,14 +61,20 @@ object WorldImageRenderer {
             val baseZ: Double
             when (instance.bind) {
                 ImageBind.PLAYER -> {
-                    val player = level.players().firstOrNull { it.name.string == instance.bindPlayer }
+                    val index = playersByName ?: level.players()
+                        .associateBy { it.name.string }
+                        .also { playersByName = it }
+                    val player = index[instance.bindPlayer]
                     if (player == null) continue
                     boundEntity = player
                     val p = player.getPosition(partialTick)
                     baseX = p.x; baseY = p.y; baseZ = p.z
                 }
                 ImageBind.ENTITY -> {
-                    val entity = level.entitiesForRendering().firstOrNull { it.uuid == instance.bindEntity }
+                    val index = entitiesByUuid ?: level.entitiesForRendering()
+                        .associateBy { it.uuid }
+                        .also { entitiesByUuid = it }
+                    val entity = index[instance.bindEntity]
                     if (entity == null) continue
                     boundEntity = entity
                     val p = entity.getPosition(partialTick)
@@ -77,6 +94,9 @@ object WorldImageRenderer {
             val ticks = (now - instance.spawnAtMillis) / 50.0
             val pose = ImageAnims.sample(instance.anim, ticks)
             val alpha = pose.alpha.coerceIn(0.0, 1.0)
+            // alpha 低于文字着色器丢弃阈值（0.1）时，Font 会把高位为 0 的颜色强制改回
+            // 不透明（0xFC000000 规则），表现为淡出末尾闪回——直接跳过绘制
+            if (alpha < 0.1) continue
 
             // 世界对齐、相机相对的中心点（基础偏移 + 动画偏移）
             val centerX = (baseX - camPos.x + spec.offsetX + pose.offsetX).toFloat()
@@ -98,13 +118,15 @@ object WorldImageRenderer {
     }
 
     /**
-     * 面片朝向四元数：BILLBOARD = 相机旋转（世界→视角，拷贝后可安全叠加增量）；
-     * FIXED = 实体 yaw/pitch 同语义（yaw 0 面向 +Z）；动画 rot 增量叠加在后——
-     * billboard 下即"面向观察者的同时自旋"
+     * 面片朝向四元数：BILLBOARD = 相机旋转换算到 1.21.x 约定
+     * （1.20.1 的 q·e1 是相机左，补 rotateY(PI) 后 q·e1 恢复为相机右）；
+     * FIXED = 实体 yaw/pitch 同语义（yaw 0 面向 +Z，世界系欧拉角与相机约定无关）；
+     * 动画 rot 增量叠加在后——billboard 下即"面向观察者的同时自旋"
      */
     private fun orientation(camera: Camera, spec: WorldImageSpec, pose: ImagePose): Quaternionf {
         val rotation = when (spec.facing) {
             ImageFacing.BILLBOARD -> Quaternionf(camera.rotation())
+                .rotateY(Math.PI.toFloat())
             ImageFacing.FIXED -> Quaternionf()
                 .rotationY(Math.toRadians(-spec.rotYaw).toFloat())
                 .rotateX(Math.toRadians(spec.rotPitch).toFloat())
@@ -114,7 +136,11 @@ object WorldImageRenderer {
         return rotation
     }
 
-    /** 贴图面片：RenderType.text 走名牌渲染管线（混合 + 顶点色 alpha），FULL_LIGHT 全亮。 */
+    /**
+     * 贴图面片：RenderType.text 走名牌渲染管线（混合 + 顶点色 alpha），FULL_LIGHT 全亮。
+     * 贴图每帧按 texturePath 现解析——http 直链首次返回缺失占位、下载完成后自动换上，
+     * 不在 spec 里缓存首次解析结果
+     */
     private fun drawTexture(
         matrix: Matrix4f,
         buffers: MultiBufferSource,
@@ -127,7 +153,7 @@ object WorldImageRenderer {
         right: Vector3f,
         up: Vector3f
     ) {
-        val texture = spec.texture ?: return
+        val texture = resolveTexture(spec.texturePath) ?: return
         val renderType = if (spec.seeThrough) RenderType.textSeeThrough(texture) else RenderType.text(texture)
         val consumer = buffers.getBuffer(renderType)
         val half = (spec.size * scale / 2.0).toFloat()
@@ -140,9 +166,9 @@ object WorldImageRenderer {
 
     /**
      * 原版字体文字：drawInBatch 复用文字批处理（支持投影/穿墙模式）。
-     * size 为字符行高（9px 行高映射为 size 格），水平按 font.width 居中。
-     * 字体局部 y 向下：基向量 (right, -up, -forward) 等于朝向四元数再绕 X 翻 180°，
-     * 所以文本矩阵直接用 rotate(朝向.copy.rotateX(PI)) 表达
+     * 矩阵与原版名牌同构（rotate(朝向) + scale(s, -s, s)）：局部 y 翻转适配字体
+     * 向下增长的坐标、z 保持正向让正文落在投影前方（原版名牌同款投影层次）；
+     * 字符行高 9px 映射为 size 格，水平按 font.width 居中
      */
     private fun drawText(
         baseMatrix: Matrix4f,
@@ -159,8 +185,8 @@ object WorldImageRenderer {
         val textScale = (spec.size * scale / 9.0).toFloat()
         val matrix = Matrix4f(baseMatrix)
             .translate(centerX, centerY, centerZ)
-            .rotate(Quaternionf(rotation).rotateX(Math.PI.toFloat()))
-            .scale(textScale, textScale, textScale)
+            .rotate(rotation)
+            .scale(textScale, -textScale, textScale)
         val width = font.width(spec.text).toFloat()
         val color = ((alpha * 255).toInt() shl 24) or (spec.color and 0x00FFFFFF)
         font.drawInBatch(
@@ -202,5 +228,17 @@ object WorldImageRenderer {
         consumer.vertex(point.x.toDouble(), point.y.toDouble(), point.z.toDouble())
             .color(1.0f, 1.0f, 1.0f, alpha)
             .uv(u, v).uv2(FULL_LIGHT).endVertex()
+    }
+
+    /** 渲染时现解析：http 走 TextureHandler（下载完成后自动换真图），本地路径走动态资源包。 */
+    private fun resolveTexture(path: String?): ResourceLocation? {
+        if (path == null) return null
+        return runCatching {
+            if (TextureHandler.isHttpUrl(path)) TextureHandler.getTexture(path)
+            else IdentifierBridge.of(Lantern.MOD_ID, path)
+        }.getOrElse {
+            Lantern.logger.warn("[Lantern] world image: 非法贴图路径 '$path'：${it.message}")
+            null
+        }
     }
 }

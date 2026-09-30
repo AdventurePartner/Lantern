@@ -2,11 +2,8 @@ package org.lantern.worldimage
 
 import com.google.gson.JsonObject
 import net.minecraft.Util
-import net.minecraft.resources.ResourceLocation
 import org.lantern.Lantern
 import org.lantern.core.image.ImageAnimSpec
-import org.lantern.internal.handler.TextureHandler
-import org.lantern.platform.IdentifierBridge
 import java.util.Locale
 import java.util.UUID
 
@@ -24,11 +21,12 @@ enum class ImageBind { PLAYER, ENTITY, POSITION }
  * template 字段引用模板，其余字段按"实例 > 模板 > 默认"逐项覆盖合并。
  *
  * size 语义随类型变化：TEXTURE = 面片边长（格），TEXT = 字符行高（格，9px 映射）。
+ * 贴图只存路径不存解析产物——http 直链首次解析是缺失占位，缓存会把占位定格在
+ * 实例整个寿命里，渲染时现解析才能在下载完成后自动换上真图。
  */
 class WorldImageSpec(
     val type: ImageType,
     val texturePath: String?,
-    val texture: ResourceLocation?,
     val text: String,
     val color: Int,
     val size: Float,
@@ -89,14 +87,10 @@ object WorldImageCodec {
         }
 
         val texturePath = primitive(obj, "texture") ?: base?.texturePath
-        val texture = texturePath?.let { path ->
-            if (TextureHandler.isHttpUrl(path)) TextureHandler.getTexture(path)
-            else IdentifierBridge.of(Lantern.MOD_ID, path)
-        }
         val text = primitive(obj, "text") ?: base?.text ?: ""
 
-        // 类型完备性：texture 型必须有贴图，text 型必须有内容
-        if (type == ImageType.TEXTURE && texture == null) {
+        // 类型完备性：texture 型必须有贴图路径，text 型必须有内容
+        if (type == ImageType.TEXTURE && texturePath == null) {
             Lantern.logger.warn("[Lantern] world image: texture 型缺少 texture 路径，丢弃")
             return null
         }
@@ -112,7 +106,6 @@ object WorldImageCodec {
         return WorldImageSpec(
             type = type,
             texturePath = texturePath,
-            texture = texture,
             text = text,
             color = parseColor(primitive(obj, "color")) ?: base?.color ?: WHITE,
             size = (primitive(obj, "size")?.toDoubleOrNull() ?: base?.size?.toDouble()
@@ -197,8 +190,9 @@ object WorldImageCodec {
             null
         }
         val age = primitive(obj, "age")?.toIntOrNull()?.takeIf { it > 0 }
-        if (anim == null && age == null) {
-            Lantern.logger.warn("[Lantern] world image instance '$id': 无动画且缺 age，没有寿命，丢弃")
+        // 寿命完备性：非循环动画播完自灭；循环/无动画必须给 age，否则永不到期
+        if ((anim == null || anim.loop) && age == null) {
+            Lantern.logger.warn("[Lantern] world image instance '$id': 循环或无动画实例缺 age，没有寿命，丢弃")
             return null
         }
 

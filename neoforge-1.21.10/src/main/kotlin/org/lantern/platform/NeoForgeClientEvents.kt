@@ -84,12 +84,13 @@ object NeoForgeClientEvents {
 
     private fun onAfterEntities(event: RenderLevelStageEvent.AfterEntities) {
         val client = Minecraft.getInstance()
-        val buffers = client.renderBuffers().bufferSource()
         val partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false)
+        // 顶点写入共享 BufferSource，由主 pass 末尾的无参 endBatch 兜底提交；
+        // 不在这里 flush——事件时点原版尚有未完成批次，提前全刷会打乱绘制顺序
         org.lantern.worldimage.WorldImageRenderer.render(
-            event.poseStack, buffers, client.gameRenderer.getMainCamera(), partialTick
+            event.poseStack, client.renderBuffers().bufferSource(),
+            client.gameRenderer.getMainCamera(), partialTick
         )
-        buffers.endBatch()
     }
 
     /**
@@ -184,6 +185,8 @@ object NeoForgeClientEvents {
         org.lantern.core.bind.BindStore.clear()
         // 输入锁同理，不跨服残留
         org.lantern.core.input.InputLockStore.clear()
+        // 世界图片的实例与模板随会话作废，不跨服残留
+        org.lantern.worldimage.WorldImageManager.clear()
         parsedKeys.clear()
         wasMouseDown = false
         // 相机演出状态（lock/shake/fov/offset）不跨服残留

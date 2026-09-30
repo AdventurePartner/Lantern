@@ -22,7 +22,12 @@ object WorldImageCodecs {
                 CoreLog.logger.warning("world image animation '$name': 不是对象，丢弃")
                 continue
             }
-            val spec = parseAnimation(name, element.asJsonObject) ?: continue
+            // 条目级捕获：坏数值/坏结构只丢这一条，不炸整份配置
+            val spec = runCatching { parseAnimation(name, element.asJsonObject) }
+                .getOrElse {
+                    CoreLog.logger.warning("world image animation '$name' 解析异常：${it.message}")
+                    null
+                } ?: continue
             result[name] = spec
         }
         return result

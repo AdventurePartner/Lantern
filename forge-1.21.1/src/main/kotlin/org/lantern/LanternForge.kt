@@ -99,6 +99,7 @@ class LanternForge {
             BlockRendererHandler.clearPositions()
             BlockRendererHandler.resetDiagnosticFlags()
             RendererHandler.reload()
+            org.lantern.worldimage.WorldImageManager.clear()
         }
     }
 }

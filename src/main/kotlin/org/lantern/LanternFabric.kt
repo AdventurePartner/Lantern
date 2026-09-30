@@ -81,6 +81,7 @@ class LanternFabric : ClientModInitializer {
             BlockRendererHandler.clearPositions()
             BlockRendererHandler.resetDiagnosticFlags()
             RendererHandler.reload()
+            org.lantern.worldimage.WorldImageManager.clear()
         }
 
         // 注册 Overlay Screen 鼠标事件

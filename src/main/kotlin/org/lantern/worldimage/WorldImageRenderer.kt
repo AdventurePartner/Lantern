@@ -8,21 +8,27 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
 import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
+import org.lantern.Lantern
 import org.lantern.core.image.ImageAnims
 import org.lantern.core.image.ImagePose
+import org.lantern.internal.handler.TextureHandler
+import org.lantern.platform.IdentifierBridge
 
 /**
  * 世界图片的统一绘制入口，四平台的每帧世界渲染钩子都调到这里。
  *
- * 坐标系约定：传入的 poseStack 是实体阶段的基（1.21.10 为 identity、相机旋转在
- * 全局矩阵；旧管线基里带相机旋转），顶点一律以"世界对齐、相机原点"坐标书写，
- * 平移与朝向只做加法/基向量旋转——这套写法在两种管线下几何结果一致。
- * billboard 不用 mulPose(camera.rotation())（基里已含旋转的管线会二次旋转），
- * 而是把相机右/上向量旋进世界系后直接张成四边形。
+ * 坐标系约定（三代管线字节码实证一致）：实体阶段的 posestack 为 identity、
+ * 相机旋转在全局 RenderSystem 矩阵——钩子一律传空 PoseStack，顶点以
+ * "世界对齐、相机原点"坐标书写，billboard 用相机右/上基向量张成四边形
+ * （`mulPose(camera.rotation())` 会与全局矩阵二次旋转，禁用）。
+ * 贴图与文字写入共享 BufferSource 后由 renderLevel 末尾的无参 endBatch
+ * 兜底提交，钩子不做任何 flush（AFTER_ENTITIES 时点原版尚有未完成批次，
+ * 提前全刷会改变绘制顺序）。
  * 时间轴用真实毫秒换算（50ms = 1 tick），不挂客户端 tick 事件。
  */
 object WorldImageRenderer {
@@ -44,6 +50,9 @@ object WorldImageRenderer {
         val firstPerson = client.options.getCameraType().isFirstPerson
         val camPos = camera.position
         val font = client.font
+        // 每帧惰性索引：ENTITY/PLAYER 绑定从 O(实例×实体) 的全表扫降为 O(1)
+        var entitiesByUuid: Map<java.util.UUID, Entity>? = null
+        var playersByName: Map<String, Entity>? = null
 
         for (instance in instances) {
             val spec = instance.spec
@@ -53,14 +62,20 @@ object WorldImageRenderer {
             val baseZ: Double
             when (instance.bind) {
                 ImageBind.PLAYER -> {
-                    val player = level.players().firstOrNull { it.name.string == instance.bindPlayer }
+                    val index = playersByName ?: level.players()
+                        .associateBy { it.name.string }
+                        .also { playersByName = it }
+                    val player = index[instance.bindPlayer]
                     if (player == null) continue
                     boundEntity = player
                     val p = player.getPosition(partialTick)
                     baseX = p.x; baseY = p.y; baseZ = p.z
                 }
                 ImageBind.ENTITY -> {
-                    val entity = level.entitiesForRendering().firstOrNull { it.uuid == instance.bindEntity }
+                    val index = entitiesByUuid ?: level.entitiesForRendering()
+                        .associateBy { it.uuid }
+                        .also { entitiesByUuid = it }
+                    val entity = index[instance.bindEntity]
                     if (entity == null) continue
                     boundEntity = entity
                     val p = entity.getPosition(partialTick)
@@ -80,6 +95,9 @@ object WorldImageRenderer {
             val ticks = (now - instance.spawnAtMillis) / 50.0
             val pose = ImageAnims.sample(instance.anim, ticks)
             val alpha = pose.alpha.coerceIn(0.0, 1.0)
+            // alpha 低于文字着色器丢弃阈值（0.1）时，Font 会把高位为 0 的颜色强制改回
+            // 不透明（0xFC000000 规则），表现为淡出末尾闪回——直接跳过绘制
+            if (alpha < 0.1) continue
 
             // 世界对齐、相机相对的中心点（基础偏移 + 动画偏移）
             val centerX = (baseX - camPos.x + spec.offsetX + pose.offsetX).toFloat()
@@ -117,7 +135,11 @@ object WorldImageRenderer {
         return rotation
     }
 
-    /** 贴图面片：RenderType.text 走名牌渲染管线（混合 + 顶点色 alpha），FULL_LIGHT 全亮。 */
+    /**
+     * 贴图面片：RenderType.text 走名牌渲染管线（混合 + 顶点色 alpha），FULL_LIGHT 全亮。
+     * 贴图每帧按 texturePath 现解析——http 直链首次返回缺失占位、下载完成后自动换上，
+     * 不在 spec 里缓存首次解析结果
+     */
     private fun drawTexture(
         matrix: Matrix4f,
         buffers: MultiBufferSource,
@@ -130,7 +152,7 @@ object WorldImageRenderer {
         right: Vector3f,
         up: Vector3f
     ) {
-        val texture = spec.texture ?: return
+        val texture = resolveTexture(spec.texturePath) ?: return
         val renderType = if (spec.seeThrough) RenderType.textSeeThrough(texture) else RenderType.text(texture)
         val consumer = buffers.getBuffer(renderType)
         val half = (spec.size * scale / 2.0).toFloat()
@@ -144,9 +166,9 @@ object WorldImageRenderer {
 
     /**
      * 原版字体文字：drawInBatch 复用文字批处理（支持投影/穿墙模式）。
-     * size 为字符行高（9px 行高映射为 size 格），水平按 font.width 居中。
-     * 字体局部 y 向下：基向量 (right, -up, -forward) 等于朝向四元数再绕 X 翻 180°，
-     * 所以文本矩阵直接用 rotate(朝向.copy.rotateX(PI)) 表达
+     * 矩阵与原版名牌同构（rotate(朝向) + scale(s, -s, s)）：局部 y 翻转适配字体
+     * 向下增长的坐标、z 保持正向让正文落在投影前方（原版名牌同款投影层次）；
+     * 字符行高 9px 映射为 size 格，水平按 font.width 居中
      */
     private fun drawText(
         baseMatrix: Matrix4f,
@@ -163,8 +185,8 @@ object WorldImageRenderer {
         val textScale = (spec.size * scale / 9.0).toFloat()
         val matrix = Matrix4f(baseMatrix)
             .translate(centerX, centerY, centerZ)
-            .rotate(Quaternionf(rotation).rotateX(Math.PI.toFloat()))
-            .scale(textScale, textScale, textScale)
+            .rotate(rotation)
+            .scale(textScale, -textScale, textScale)
         val width = font.width(spec.text).toFloat()
         val color = ((alpha * 255).toInt() shl 24) or (spec.color and 0x00FFFFFF)
         font.drawInBatch(
@@ -204,5 +226,17 @@ object WorldImageRenderer {
         )
         matrix.transformPosition(point)
         consumer.addVertex(point.x, point.y, point.z).setColor(color).setUv(u, v).setLight(FULL_LIGHT)
+    }
+
+    /** 渲染时现解析：http 走 TextureHandler（下载完成后自动换真图），本地路径走动态资源包。 */
+    private fun resolveTexture(path: String?): ResourceLocation? {
+        if (path == null) return null
+        return runCatching {
+            if (TextureHandler.isHttpUrl(path)) TextureHandler.getTexture(path)
+            else IdentifierBridge.of(Lantern.MOD_ID, path)
+        }.getOrElse {
+            Lantern.logger.warn("[Lantern] world image: 非法贴图路径 '$path'：${it.message}")
+            null
+        }
     }
 }
