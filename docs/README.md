@@ -40,6 +40,7 @@ Lantern 分为两部分：
 | `plugins/Lantern/animationGroups.yml` | 按条件自动切换动作组 |
 | `plugins/Lantern/itemIcons.yml` | 物品图标替换 |
 | `plugins/Lantern/characters.yml` | 用一个文字显示一张小图片 |
+| `plugins/Lantern/worldImages.yml` | 世界图片（伤害数值弹出、贴图与文字图片模板） |
 | `plugins/Lantern/data/blocks.yml` | 已放置自定义方块的位置记录，通常不要手动修改 |
 
 ## 常用指令
@@ -90,4 +91,5 @@ chat-channels:
 - [玩家动作](player-actions.md)
 - [载体绑定与输入锁](bind-and-input-lock.md)
 - [按键绑定](keys.md)
+- [世界图片](world-images.md)
 - [图片文字、物品图标和资源包](assets-and-icons.md)
