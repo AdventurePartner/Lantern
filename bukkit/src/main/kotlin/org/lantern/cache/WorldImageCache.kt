@@ -47,7 +47,8 @@ class WorldImageCache(data: YamlConfiguration) {
                 String.format(java.util.Locale.ROOT, raw, 1.0)
                 raw
             } catch (e: Exception) {
-                org.lantern.LanternPlugin.instance.logger.warning(
+                // 不走 LanternPlugin.instance：解析时机可能早于插件实例就绪，且解耦后可纯 JVM 测试
+                java.util.logging.Logger.getLogger("Lantern").warning(
                     "[Lantern] worldImages.yml damage.format '$raw' 不是合法的数值格式（${e.message}），回退 %.0f"
                 )
                 "%.0f"
