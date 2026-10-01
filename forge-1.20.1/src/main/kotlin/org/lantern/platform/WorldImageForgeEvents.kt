@@ -1,6 +1,5 @@
 package org.lantern.platform
 
-import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Minecraft
 import net.minecraftforge.client.event.RenderLevelStageEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
@@ -9,9 +8,11 @@ import org.lantern.worldimage.WorldImageRenderer
 /**
  * 世界图片的 Forge 1.20.1 世界渲染钩子：AFTER_ENTITIES 阶段向共享 BufferSource 提交顶点。
  *
- * 与 1.21.1 同架构（相机旋转在全局 RenderSystem 矩阵、实体阶段 posestack 为 identity），
- * 用空 PoseStack，不消费事件下发的姿态矩阵。顶点写入共享缓冲后由 renderLevel 末尾的
- * 无参 endBatch 兜底提交，这里不 flush（提前全刷会打乱原版批次顺序）
+ * 1.20.1 是旧架构（与 1.21.x 相反，字节码实证）：renderLevel 直接接收**含相机旋转的
+ * PoseStack**（GameRenderer 构建后传入），Forge 事件原样下发它，全局 modelview 矩阵
+ * 在实体段/AFTER_ENTITIES 期间是 identity——所以这里必须用事件的 poseStack 与原版
+ * 实体共用同一个基，传空栈会让图片失去视角旋转（按"永远朝北、俯仰 0"画）。
+ * 顶点写入共享缓冲后由 renderLevel 末尾的无参 endBatch 兜底提交，这里不 flush
  */
 object WorldImageForgeEvents {
 
@@ -19,7 +20,7 @@ object WorldImageForgeEvents {
     fun onRenderLevel(event: RenderLevelStageEvent) {
         if (event.stage != RenderLevelStageEvent.Stage.AFTER_ENTITIES) return
         WorldImageRenderer.render(
-            PoseStack(),
+            event.poseStack,
             Minecraft.getInstance().renderBuffers().bufferSource(),
             event.camera,
             event.partialTick

@@ -4,6 +4,8 @@ import com.google.gson.JsonObject
 import net.minecraft.Util
 import org.lantern.Lantern
 import org.lantern.core.image.ImageAnimSpec
+import org.lantern.internal.handler.TextureHandler
+import org.lantern.platform.IdentifierBridge
 import java.util.Locale
 import java.util.UUID
 
@@ -92,6 +94,15 @@ object WorldImageCodec {
         // 类型完备性：texture 型必须有贴图路径，text 型必须有内容
         if (type == ImageType.TEXTURE && texturePath == null) {
             Lantern.logger.warn("[Lantern] world image: texture 型缺少 texture 路径，丢弃")
+            return null
+        }
+        // 本地路径装载即校验：非法路径（大写/空格等会抛 ResourceLocationException）在这里
+        // 拦下只记一条日志，否则渲染期每帧解析失败刷 warn 直到实例到期
+        if (type == ImageType.TEXTURE && texturePath != null &&
+            !TextureHandler.isHttpUrl(texturePath) &&
+            runCatching { IdentifierBridge.of(Lantern.MOD_ID, texturePath) }.isFailure
+        ) {
+            Lantern.logger.warn("[Lantern] world image: 非法贴图路径 '$texturePath'，丢弃")
             return null
         }
         if (type == ImageType.TEXT && text.isBlank()) {

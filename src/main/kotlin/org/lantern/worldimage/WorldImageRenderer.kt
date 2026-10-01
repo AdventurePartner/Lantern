@@ -22,10 +22,12 @@ import org.lantern.platform.IdentifierBridge
 /**
  * 世界图片的统一绘制入口，四平台的每帧世界渲染钩子都调到这里。
  *
- * 坐标系约定（三代管线字节码实证一致）：实体阶段的 posestack 为 identity、
- * 相机旋转在全局 RenderSystem 矩阵——钩子一律传空 PoseStack，顶点以
- * "世界对齐、相机原点"坐标书写，billboard 用相机右/上基向量张成四边形
- * （`mulPose(camera.rotation())` 会与全局矩阵二次旋转，禁用）。
+ * 坐标系约定（两派架构，字节码实证）：1.21.1/1.21.10 的实体阶段 posestack 为
+ * identity、相机旋转在全局 RenderSystem 矩阵，钩子传空 PoseStack；1.20.1 相反——
+ * renderLevel 直接接收含相机旋转的 PoseStack（Forge 事件原样下发）、全局矩阵在
+ * 实体段为 identity，钩子传事件的 poseStack。顶点一律以"世界对齐、相机原点"
+ * 坐标书写，billboard 用相机右/上基向量张成四边形（`mulPose(camera.rotation())`
+ * 在基含旋转的管线里会二次旋转，禁用）。
  * 贴图与文字写入共享 BufferSource 后由 renderLevel 末尾的无参 endBatch
  * 兜底提交，钩子不做任何 flush（AFTER_ENTITIES 时点原版尚有未完成批次，
  * 提前全刷会改变绘制顺序）。
@@ -188,7 +190,9 @@ object WorldImageRenderer {
             .rotate(rotation)
             .scale(textScale, -textScale, textScale)
         val width = font.width(spec.text).toFloat()
-        val color = ((alpha * 255).toInt() shl 24) or (spec.color and 0x00FFFFFF)
+        // 动画 alpha 与 #AARRGGBB 自带 alpha 相乘：颜色高 8 位参与淡出而不是被覆盖
+        val colorAlpha = alpha * ((spec.color ushr 24) / 255.0)
+        val color = ((colorAlpha * 255).toInt() shl 24) or (spec.color and 0x00FFFFFF)
         font.drawInBatch(
             spec.text,
             -width / 2.0f,

@@ -28,7 +28,9 @@ import org.lantern.platform.IdentifierBridge
  * 2. 相机约定：Camera.rotation() 在 1.21.2 前后翻转（1.20.1 的 q·e1 是相机**左**，
  *    1.21.x 是相机右），BILLBOARD 分支补 rotateY(PI) 把 1.20.1 四元数换算到 1.21.x
  *    约定（q_1.21 = q_1.20 · rotY(PI)，字节码推导实证），下游基向量/文字矩阵与根源码统一；
- * 3. Camera.getPosition() 用方法调用而非 Kotlin 属性糖（等价）。
+ * 3. 基矩阵层级：1.20.1 是旧架构（钩子传含相机旋转的事件 poseStack，见
+ *    WorldImageForgeEvents 注释），1.21.x 钩子传空栈——渲染器对两种基都成立，
+ *    但符号组合（rotateY(PI) 与事件 poseStack）以 1.20.1 真机显示为最终裁决。
  */
 object WorldImageRenderer {
 
@@ -188,7 +190,9 @@ object WorldImageRenderer {
             .rotate(rotation)
             .scale(textScale, -textScale, textScale)
         val width = font.width(spec.text).toFloat()
-        val color = ((alpha * 255).toInt() shl 24) or (spec.color and 0x00FFFFFF)
+        // 动画 alpha 与 #AARRGGBB 自带 alpha 相乘：颜色高 8 位参与淡出而不是被覆盖
+        val colorAlpha = alpha * ((spec.color ushr 24) / 255.0)
+        val color = ((colorAlpha * 255).toInt() shl 24) or (spec.color and 0x00FFFFFF)
         font.drawInBatch(
             spec.text,
             -width / 2.0f,
