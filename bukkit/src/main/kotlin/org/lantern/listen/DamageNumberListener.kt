@@ -39,23 +39,22 @@ class DamageNumberListener : Listener {
         if (amount < cfg.minDamage) return
 
         val now = System.currentTimeMillis()
-        val acc = pending[target.uniqueId]
-        val total: Double
+        var acc = pending[target.uniqueId]
         if (acc == null || now - acc.at >= cfg.mergeMs) {
-            val fresh = Accumulator(now, amount)
-            pending[target.uniqueId] = fresh
-            total = amount
-        } else {
-            acc.amount += amount
-            total = acc.amount
+            acc = Accumulator(now, 0.0)
+            pending[target.uniqueId] = acc
         }
+        acc.amount += amount
+        val total = acc.amount
         if (pending.size > 256) {
             // 逐出已过窗口的条目，防长期运行无界增长；正常流量到不了这个量
             pending.entries.removeIf { now - it.value.at > cfg.mergeMs }
         }
 
         val instance = JsonObject()
-        instance.addProperty("id", "dmg-${target.uniqueId}")
+        // 窗口起点进 id：新窗口是全新实例，上一窗口的累计数字自然播完淡出，
+        // 而不是被新窗口的小数值瞬间顶掉
+        instance.addProperty("id", "dmg-${target.uniqueId}-${acc.at}")
         instance.addProperty("type", "text")
         instance.addProperty("text", String.format(Locale.ROOT, cfg.format, total))
         instance.addProperty("color", cfg.color)
