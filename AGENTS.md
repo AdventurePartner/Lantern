@@ -156,7 +156,9 @@ bukkit/src/main/
 2. **界面类型** (`screen-type`): `hud`（常驻）、`gui`（弹窗 GuiCanvas）、`overlay`（贴在原版界面上）
 3. **HUD 渲染挂钩（各平台不同）**: Fabric/Forge 1.21.1 用共享 `GuiHudRenderMixin`（顶层 `Gui.render` TAIL、原版层 `renderCameraOverlays` TAIL）；Forge 1.20.1 用 `RegisterGuiOverlaysEvent`（ForgeGui 不调用 `Gui.render`，注入它的 Mixin 永远不执行）；NeoForge 用 `RegisterGuiLayersEvent`（`hud_base` registerAbove CAMERA_OVERLAYS，顶层 registerAboveAll）
 4. **隐藏原版 HUD**: HUD 配置 `hide-vanilla` → `VanillaHudVisibility`（元素枚举 `VanillaHudElement`），1.21.1 由 `GuiVanillaHudMixin` 取消渲染，Forge 1.20.1 取消 `RenderGuiOverlayEvent.Pre`，NeoForge 取消 `RenderGuiLayerEvent.Pre`；新增元素要同时补三处平台映射
-5. **HUD 分层**: `index < 0` 画进原版 HUD 图层栈（替代原版元素用），`index >= 0` 画在最上层；slot 节点在容器 overlay 里是槽位位置声明（SlotLayoutManager），在 HUD 里是背包物品镜像
+5. **摆放原版 HUD**: HUD 节点 `type: vanilla` + `source` → `VanillaHudPlacement`（按节点绝对位置与元素本帧的原版参考点算平移量），`VanillaHudPoses.begin/end` 推入/弹出位姿（共享 PoseStack 版，NeoForge 有 Matrix3x2fStack 同名副本）。1.21.1 在 `GuiVanillaHudMixin` 各方法 HEAD 推入、RETURN 弹出（气泡在 blitSprite 重定向里）；Forge 1.20.1 在 overlay Pre（MONITOR）推入、Post（LOWEST）弹出，经验条/等级在 `ExperienceBar1201Mixin` 的重定向里分开处理；NeoForge 在图层 Pre（LOWEST）推入、Post（LOWEST）弹出，contextual 信息栏经 `GuiContextualBarAccessor` 判断是经验条还是跳跃条。三平台都在下一图层 Pre / 整帧结束时 `popPending` 兜底。新增元素要同时补隐藏与摆放两套映射
+6. **自绘状态控件**: `icon-bar`（心/鸡腿式图标行）、`progress-bar`（按比例裁切的进度条）读 `HudStat`；`text` 里的 `{health}` 等由 `HudStatTokens` 在客户端每帧替换。贴图裁切走 `ImageRenderer.drawTextureCropped`（共享版与 NeoForge 副本各一份）
+7. **HUD 分层**: `index < 0` 画进原版 HUD 图层栈（替代原版元素用），`index >= 0` 画在最上层；slot 节点在容器 overlay 里是槽位位置声明（SlotLayoutManager），在 HUD 里是背包物品镜像
 
 ### Mixin 使用
 

@@ -74,6 +74,7 @@ sourceSets {
             "org/lantern/costume/handler/**",
             "org/lantern/costume/renderer/**",
             "org/lantern/uix/canvas/impl/GuiCanvas.kt",
+            "org/lantern/uix/hud/VanillaHudPoses.kt",
             "org/lantern/uix/renderer/TooltipRenderer.kt",
             "org/lantern/uix/renderer/impl/ImageRenderer.kt",
             "org/lantern/uix/renderer/impl/PanelRenderer.kt"

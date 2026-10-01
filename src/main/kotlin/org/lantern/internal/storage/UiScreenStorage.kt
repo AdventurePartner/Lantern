@@ -3,6 +3,7 @@ package org.lantern.internal.storage
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.gui.screens.inventory.InventoryScreen
 import org.lantern.uix.hud.VanillaHudElement
+import org.lantern.uix.hud.VanillaHudPlacement
 import org.lantern.uix.hud.VanillaHudVisibility
 import org.lantern.uix.widget.IWidget
 import java.util.EnumSet
@@ -126,6 +127,7 @@ object UiScreenStorage {
         hudBase = emptyList()
         hudTop = emptyList()
         VanillaHudVisibility.update(emptySet())
+        VanillaHudPlacement.clear()
     }
 
     private fun rebuildCache() {
@@ -142,5 +144,6 @@ object UiScreenStorage {
         VanillaHudVisibility.update(
             huds.flatMapTo(EnumSet.noneOf(VanillaHudElement::class.java)) { it.hideVanilla }
         )
+        VanillaHudPlacement.rebuild(huds.map { it.rootWidget })
     }
 }

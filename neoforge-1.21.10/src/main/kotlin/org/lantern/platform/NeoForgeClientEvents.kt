@@ -1,10 +1,13 @@
 package org.lantern.platform
 
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.contextualbar.JumpableVehicleBarRenderer
 import net.minecraft.client.gui.screens.ChatScreen
 import net.minecraft.resources.ResourceLocation
+import net.neoforged.bus.api.EventPriority
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
+import net.neoforged.neoforge.client.event.RenderGuiEvent
 import net.neoforged.neoforge.client.event.RenderGuiLayerEvent
 import net.neoforged.neoforge.client.event.ScreenEvent
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers
@@ -16,6 +19,7 @@ import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatChannelTabsRenderer
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.handler.TextureHandler
+import org.lantern.internal.mixin.accessor.GuiContextualBarAccessor
 import org.lantern.internal.placeholder.PlaceholderStore
 import org.lantern.internal.storage.HudLayer
 import org.lantern.internal.storage.UiScreenStorage
@@ -24,6 +28,7 @@ import org.lantern.model.renderstate.AnimationControlStore
 import org.lantern.uix.canvas.impl.GuiCanvas
 import org.lantern.uix.event.EventDispatcher
 import org.lantern.uix.hud.VanillaHudElement
+import org.lantern.uix.hud.VanillaHudPoses
 import org.lantern.uix.hud.VanillaHudVisibility
 import org.lantern.uix.input.FocusManager
 import org.lantern.uix.layout.LayoutCache
@@ -61,6 +66,32 @@ object NeoForgeClientEvents {
             RenderGuiLayerEvent.Pre::class.java,
             Consumer<RenderGuiLayerEvent.Pre>(::onRenderGuiLayer)
         )
+        // 原版元素摆放：NeoForge 没有 MONITOR，排在 LOWEST 之后的监听仍可能取消，
+        // 推入后没等到 Post 的在下一图层 Pre（HIGHEST）与整帧 Post 补弹
+        NeoForge.EVENT_BUS.addListener(
+            EventPriority.HIGHEST,
+            true,
+            RenderGuiLayerEvent.Pre::class.java,
+            Consumer<RenderGuiLayerEvent.Pre> { event -> VanillaHudPoses.popPending(event.guiGraphics) }
+        )
+        NeoForge.EVENT_BUS.addListener(
+            EventPriority.LOWEST,
+            false,
+            RenderGuiLayerEvent.Pre::class.java,
+            Consumer<RenderGuiLayerEvent.Pre>(::onPlaceGuiLayer)
+        )
+        // LOWEST：其他模组在 Post 里补画的内容也跟着平移
+        NeoForge.EVENT_BUS.addListener(
+            EventPriority.LOWEST,
+            RenderGuiLayerEvent.Post::class.java,
+            Consumer<RenderGuiLayerEvent.Post> { event ->
+                placedElementFor(event.name)?.let { VanillaHudPoses.end(event.guiGraphics, it) }
+            }
+        )
+        NeoForge.EVENT_BUS.addListener(
+            RenderGuiEvent.Post::class.java,
+            Consumer<RenderGuiEvent.Post> { event -> VanillaHudPoses.popPending(event.guiGraphics) }
+        )
     }
 
     // 1.21.6+ 经验条、坐骑跳跃条、定位栏共用上下文信息栏（每帧只显示其一），
@@ -88,6 +119,65 @@ object NeoForgeClientEvents {
         // 旁观模式的 HOTBAR 图层画的是旁观菜单，保持原版
         if (event.name == VanillaGuiLayers.HOTBAR && Minecraft.getInstance().player?.isSpectator == true) return
         event.isCanceled = true
+    }
+
+    private val placeableLayers: Map<ResourceLocation, VanillaHudElement> = mapOf(
+        VanillaGuiLayers.HOTBAR to VanillaHudElement.HOTBAR,
+        VanillaGuiLayers.SELECTED_ITEM_NAME to VanillaHudElement.SELECTED_ITEM_NAME,
+        VanillaGuiLayers.PLAYER_HEALTH to VanillaHudElement.HEALTH,
+        VanillaGuiLayers.ARMOR_LEVEL to VanillaHudElement.ARMOR,
+        VanillaGuiLayers.FOOD_LEVEL to VanillaHudElement.FOOD,
+        VanillaGuiLayers.VEHICLE_HEALTH to VanillaHudElement.VEHICLE_HEALTH,
+        VanillaGuiLayers.AIR_LEVEL to VanillaHudElement.AIR,
+        VanillaGuiLayers.EXPERIENCE_LEVEL to VanillaHudElement.EXPERIENCE_LEVEL,
+        VanillaGuiLayers.CROSSHAIR to VanillaHudElement.CROSSHAIR,
+        VanillaGuiLayers.EFFECTS to VanillaHudElement.EFFECTS
+    )
+
+    private fun placedElementFor(layer: ResourceLocation): VanillaHudElement? = when (layer) {
+        VanillaGuiLayers.CONTEXTUAL_INFO_BAR_BACKGROUND, VanillaGuiLayers.CONTEXTUAL_INFO_BAR -> contextualBarElement()
+        else -> placeableLayers[layer]
+    }
+
+    // 经验条与定位栏共用位置、跟随 experience_bar；只有坐骑跳跃条跟随 jump_bar
+    private fun contextualBarElement(): VanillaHudElement {
+        val gui = Minecraft.getInstance().gui as GuiContextualBarAccessor
+        val renderer = gui.`lantern$getContextualInfoBar`().value
+        return if (renderer is JumpableVehicleBarRenderer) VanillaHudElement.JUMP_BAR else VanillaHudElement.EXPERIENCE_BAR
+    }
+
+    private fun onPlaceGuiLayer(event: RenderGuiLayerEvent.Pre) {
+        val element = placedElementFor(event.name) ?: return
+        val client = Minecraft.getInstance()
+        // 旁观模式下 HOTBAR / SELECTED_ITEM_NAME 画的是旁观菜单与提示，不移动
+        if (client.player?.isSpectator == true &&
+            (element == VanillaHudElement.HOTBAR || element == VanillaHudElement.SELECTED_ITEM_NAME)
+        ) return
+        val gui = client.gui
+        val graphics = event.guiGraphics
+        val width = graphics.guiWidth()
+        val height = graphics.guiHeight()
+        // 左右两列从底部向上堆叠：元素在本图层 Pre 时读取当前 leftHeight / rightHeight 定位
+        val x: Int
+        val y: Int
+        when (element) {
+            VanillaHudElement.HOTBAR -> { x = width / 2 - 91; y = height - 22 }
+            VanillaHudElement.SELECTED_ITEM_NAME -> {
+                x = width / 2
+                y = height - maxOf(gui.leftHeight, gui.rightHeight, 59) +
+                    if (client.gameMode?.canHurtPlayer() == false) 14 else 0
+            }
+            VanillaHudElement.HEALTH, VanillaHudElement.ARMOR -> { x = width / 2 - 91; y = height - gui.leftHeight }
+            VanillaHudElement.FOOD, VanillaHudElement.AIR, VanillaHudElement.VEHICLE_HEALTH -> {
+                x = width / 2 + 91
+                y = height - gui.rightHeight
+            }
+            VanillaHudElement.EXPERIENCE_BAR, VanillaHudElement.JUMP_BAR -> { x = width / 2 - 91; y = height - 29 }
+            VanillaHudElement.EXPERIENCE_LEVEL -> { x = width / 2; y = height - 35 }
+            VanillaHudElement.CROSSHAIR -> { x = (width - 15) / 2; y = (height - 15) / 2 }
+            VanillaHudElement.EFFECTS -> { x = width; y = 0 }
+        }
+        VanillaHudPoses.begin(graphics, element, x, y)
     }
 
     private fun onClientTick(event: ClientTickEvent.Post) {

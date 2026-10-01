@@ -1,0 +1,100 @@
+# 隐藏原版状态条、用 icon-bar / progress-bar / 数值文字自己画的示例。
+# 复制为 custom_status.yml（去掉 .example 后缀）后生效。
+#
+# 贴图直接引用 1.21 原版的 GUI 精灵文件，1.21.x 客户端开箱即可看效果；
+# 换成自己的资源包路径（如 lantern:textures/hud/heart_full.png）即可替换外观。
+# 1.20.1 没有这些独立贴图文件，需要改成资源包里的贴图。
+#
+# icon-bar 的 textures：
+#   empty / half / full           空槽、半格、满格（缺 half 时用 full，缺 empty 不画空槽）
+#   <状态>-<部位>                  状态变体，缺省回退到常规贴图：
+#                                 血量 poison / wither / frozen，饥饿 hunger
+#   absorption-full / -half       吸收心，接在普通心后面（只对 source: health 生效）
+#   blink-empty / -full / -half   受伤闪烁（只对 source: health 生效，不配就不闪）
+# progress-bar 的 textures：background 整张画，fill 按比例裁切（也支持 <状态>-fill）。
+#
+# 文字里的 {health} {max_health} {food} {armor} {level} 等是客户端实时数值。
+id: custom_status
+screen-type: hud
+index: -10
+hide-vanilla: [health, armor, food, air, experience_bar, experience_level]
+
+styles:
+  wiggle:
+    animate: true
+
+root:
+  type: panel
+  style:
+    position: absolute
+    anchor: bottom-center
+    width: 182
+    height: 39
+    margin-bottom: 6
+  children:
+    # 血量：心多于 10 颗时向上另起一行
+    - type: icon-bar
+      source: health
+      style-ref: wiggle
+      textures:
+        empty: "minecraft:textures/gui/sprites/hud/heart/container.png"
+        full: "minecraft:textures/gui/sprites/hud/heart/full.png"
+        half: "minecraft:textures/gui/sprites/hud/heart/half.png"
+        poison-full: "minecraft:textures/gui/sprites/hud/heart/poisoned_full.png"
+        poison-half: "minecraft:textures/gui/sprites/hud/heart/poisoned_half.png"
+        wither-full: "minecraft:textures/gui/sprites/hud/heart/withered_full.png"
+        wither-half: "minecraft:textures/gui/sprites/hud/heart/withered_half.png"
+        frozen-full: "minecraft:textures/gui/sprites/hud/heart/frozen_full.png"
+        frozen-half: "minecraft:textures/gui/sprites/hud/heart/frozen_half.png"
+        absorption-full: "minecraft:textures/gui/sprites/hud/heart/absorbing_full.png"
+        absorption-half: "minecraft:textures/gui/sprites/hud/heart/absorbing_half.png"
+        blink-empty: "minecraft:textures/gui/sprites/hud/heart/container_blinking.png"
+        blink-full: "minecraft:textures/gui/sprites/hud/heart/full_blinking.png"
+        blink-half: "minecraft:textures/gui/sprites/hud/heart/half_blinking.png"
+      style: { x: 0, y: 0 }
+
+    # 护甲：没有护甲时自动隐藏（auto-hide 默认开启）
+    - type: icon-bar
+      source: armor
+      textures:
+        empty: "minecraft:textures/gui/sprites/hud/armor_empty.png"
+        full: "minecraft:textures/gui/sprites/hud/armor_full.png"
+        half: "minecraft:textures/gui/sprites/hud/armor_half.png"
+      style: { x: 0, y: -10 }
+
+    # 饥饿：默认从右往左排，饥饿效果时换 hunger 贴图
+    - type: icon-bar
+      source: food
+      style-ref: wiggle
+      textures:
+        empty: "minecraft:textures/gui/sprites/hud/food_empty.png"
+        full: "minecraft:textures/gui/sprites/hud/food_full.png"
+        half: "minecraft:textures/gui/sprites/hud/food_half.png"
+        hunger-empty: "minecraft:textures/gui/sprites/hud/food_empty_hunger.png"
+        hunger-full: "minecraft:textures/gui/sprites/hud/food_full_hunger.png"
+        hunger-half: "minecraft:textures/gui/sprites/hud/food_half_hunger.png"
+      style: { x: 101, y: 0 }
+
+    # 氧气：只在水下或氧气不满时显示
+    - type: icon-bar
+      source: air
+      textures:
+        full: "minecraft:textures/gui/sprites/hud/air.png"
+        half: "minecraft:textures/gui/sprites/hud/air_bursting.png"
+      style: { x: 101, y: -10 }
+
+    # 经验条与等级数字
+    - type: progress-bar
+      source: experience
+      textures:
+        background: "minecraft:textures/gui/sprites/hud/experience_bar_background.png"
+        fill: "minecraft:textures/gui/sprites/hud/experience_bar_progress.png"
+      style: { x: 0, y: 10, width: 182, height: 5 }
+    - type: text
+      text: "{level}"
+      style: { x: 87, y: 2, color: "#80FF20" }
+
+    # 数值文字（客户端每帧刷新）
+    - type: text
+      text: "{health}/{max_health}"
+      style: { x: 0, y: -20, color: "#FF5555" }

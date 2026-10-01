@@ -3,11 +3,14 @@ package org.lantern.uix.renderer
 import net.minecraft.client.gui.GuiGraphics
 import org.lantern.uix.renderer.impl.ButtonRenderer
 import org.lantern.uix.renderer.impl.HotbarSelectionRenderer
+import org.lantern.uix.renderer.impl.IconBarRenderer
 import org.lantern.uix.renderer.impl.ImageRenderer
 import org.lantern.uix.renderer.impl.InputRenderer
 import org.lantern.uix.renderer.impl.PanelRenderer
+import org.lantern.uix.renderer.impl.ProgressBarRenderer
 import org.lantern.uix.renderer.impl.SlotRenderer
 import org.lantern.uix.renderer.impl.TextRenderer
+import org.lantern.uix.renderer.impl.VanillaElementRenderer
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.widget.IWidget
 
@@ -23,6 +26,9 @@ object WidgetRendererRegistry {
         register("input", InputRenderer)
         register("slot", SlotRenderer)
         register("hotbar-selection", HotbarSelectionRenderer)
+        register("vanilla", VanillaElementRenderer)
+        register("icon-bar", IconBarRenderer)
+        register("progress-bar", ProgressBarRenderer)
     }
 
     fun register(type: String, renderer: IWidgetRenderer<*>) {

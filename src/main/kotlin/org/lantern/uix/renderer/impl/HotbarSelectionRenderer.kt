@@ -3,7 +3,7 @@ package org.lantern.uix.renderer.impl
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import org.lantern.platform.InventoryBridge
-import org.lantern.uix.layout.LayoutCache
+import org.lantern.uix.layout.WidgetGeometry
 import org.lantern.uix.renderer.BackgroundPainter
 import org.lantern.uix.renderer.IWidgetRenderer
 import org.lantern.uix.style.StyleProperty
@@ -32,10 +32,10 @@ object HotbarSelectionRenderer : IWidgetRenderer<HotbarSelectionWidgetImpl> {
 
         // 画布已平移到选中框父容器的原点，把目标 slot 的绝对坐标换算回这个局部坐标系
         val parent = widget.parent as? IWidget
-        val originX = parent?.let { absoluteX(it) } ?: 0
-        val originY = parent?.let { absoluteY(it) } ?: 0
-        val x = absoluteX(slot) - originX + style.getInt(StyleProperty.X)
-        val y = absoluteY(slot) - originY + style.getInt(StyleProperty.Y)
+        val originX = parent?.let { WidgetGeometry.absoluteX(it) } ?: 0
+        val originY = parent?.let { WidgetGeometry.absoluteY(it) } ?: 0
+        val x = WidgetGeometry.absoluteX(slot) - originX + style.getInt(StyleProperty.X)
+        val y = WidgetGeometry.absoluteY(slot) - originY + style.getInt(StyleProperty.Y)
         val w = style.getInt(StyleProperty.WIDTH, DEFAULT_SIZE)
         val h = style.getInt(StyleProperty.HEIGHT, DEFAULT_SIZE)
         BackgroundPainter.paint(graphics, style, x, y, w, h)
@@ -55,26 +55,5 @@ object HotbarSelectionRenderer : IWidgetRenderer<HotbarSelectionWidgetImpl> {
             for (child in widget.children) findSlot(child, slotIndex)?.let { return it }
         }
         return null
-    }
-
-    // 根 rect 为绝对坐标，子组件 rect 相对父容器（与 SlotLayoutManager 同一约定）
-    private fun absoluteX(widget: IWidget): Int {
-        var sum = 0
-        var current: IWidget? = widget
-        while (current != null) {
-            sum += LayoutCache.findRect(current)?.x ?: current.style.getInt(StyleProperty.X)
-            current = current.parent as? IWidget
-        }
-        return sum
-    }
-
-    private fun absoluteY(widget: IWidget): Int {
-        var sum = 0
-        var current: IWidget? = widget
-        while (current != null) {
-            sum += LayoutCache.findRect(current)?.y ?: current.style.getInt(StyleProperty.Y)
-            current = current.parent as? IWidget
-        }
-        return sum
     }
 }

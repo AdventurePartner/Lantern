@@ -17,10 +17,15 @@ import org.lantern.uix.widget.button.ButtonWidgetImpl
 import org.lantern.uix.widget.image.ImageWidgetImpl
 import org.lantern.uix.widget.input.InputWidgetImpl
 import org.lantern.uix.widget.panel.PanelWidgetImpl
+import org.lantern.uix.hud.HudStat
 import org.lantern.uix.hud.VanillaHudElement
+import org.lantern.uix.hud.VanillaHudPlacement
 import org.lantern.uix.widget.slot.HotbarSelectionWidgetImpl
 import org.lantern.uix.widget.slot.SlotWidgetImpl
+import org.lantern.uix.widget.stat.IconBarWidgetImpl
+import org.lantern.uix.widget.stat.ProgressBarWidgetImpl
 import org.lantern.uix.widget.text.TextWidgetImpl
+import org.lantern.uix.widget.vanilla.VanillaElementWidgetImpl
 import org.lantern.uix.properties.impl.ImageProperties
 import java.util.EnumSet
 
@@ -57,6 +62,12 @@ object UiParser {
             val rootObj = screenObj.getAsJsonObject("root") ?: return@forEach
             val rootWidget = parseNode(rootObj, styleSheet)
             UiScreenStorage.put(id, rootWidget, screenType, matchTitle, matchScreen, index, cancelVanillaBg, hideVanilla)
+        }
+        VanillaHudPlacement.duplicates().forEach { element ->
+            Lantern.logger.warn(
+                "[Lantern] 原版 HUD 元素 '{}' 被多个 vanilla 节点摆放，只有 index 最小的 HUD 里的第一个生效",
+                element.key
+            )
         }
     }
 
@@ -112,6 +123,9 @@ object UiParser {
             "hotbar-selection" -> HotbarSelectionWidgetImpl(
                 texture = node.get("texture")?.asString ?: ""
             )
+            "vanilla" -> VanillaElementWidgetImpl(parseVanillaElement(node))
+            "icon-bar" -> IconBarWidgetImpl(parseStat(type, node), parseTextures(node))
+            "progress-bar" -> ProgressBarWidgetImpl(parseStat(type, node), parseTextures(node))
             else -> PanelWidgetImpl()
         }
 
@@ -131,6 +145,42 @@ object UiParser {
         }
 
         return widget
+    }
+
+    private fun sourceOf(node: JsonObject): String? =
+        node.get("source")?.takeIf { it.isJsonPrimitive }?.asString
+
+    /** vanilla 节点的 `source` 取值同 hide-vanilla（不含 all）；未知值告警，节点只占位不摆放。 */
+    private fun parseVanillaElement(node: JsonObject): VanillaHudElement? {
+        val source = sourceOf(node)
+        val element = VanillaHudElement.fromKey(source)
+        if (element == null) {
+            Lantern.logger.warn(
+                "[Lantern] vanilla 节点的 source '{}' 无效，可用值: {}",
+                source, VanillaHudElement.entries.joinToString { it.key }
+            )
+        }
+        return element
+    }
+
+    private fun parseStat(type: String, node: JsonObject): HudStat? {
+        val source = sourceOf(node)
+        val stat = HudStat.fromKey(source)
+        if (stat == null) {
+            Lantern.logger.warn(
+                "[Lantern] {} 节点的 source '{}' 无效，可用值: {}",
+                type, source, HudStat.entries.joinToString { it.key }
+            )
+        }
+        return stat
+    }
+
+    /** `textures` 映射：键统一小写（empty/half/full、fill/background，可带 `<状态>-` 前缀）。 */
+    private fun parseTextures(node: JsonObject): Map<String, String> {
+        val obj = node.get("textures")?.takeIf { it.isJsonObject }?.asJsonObject ?: return emptyMap()
+        return obj.entrySet()
+            .filter { (_, value) -> value.isJsonPrimitive }
+            .associate { (key, value) -> key.trim().lowercase() to value.asString.trim() }
     }
 
     /** slot 旧写法 `texture: none|路径` 等同 `style.background`；两者都写时以 style 为准。 */

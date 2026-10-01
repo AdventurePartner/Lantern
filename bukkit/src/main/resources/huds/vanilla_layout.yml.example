@@ -1,0 +1,78 @@
+# 把原版状态条（血量、护甲、饥饿、氧气、坐骑血量、经验条、等级、物品名）整体上移的示例。
+# 适合自定义快捷栏比原版高、原版血条挡住它的情况。
+# 复制为 vanilla_layout.yml（去掉 .example 后缀）后生效。
+#
+# type: vanilla 节点只决定原版元素画在哪里，元素本身仍由原版绘制，
+#   受伤闪烁、吸收心、中毒/凋零心、饥饿抖动等表现全部保留。
+#   source 取值同 hide-vanilla：hotbar, selected_item_name, health, armor, food, air,
+#   vehicle_health, experience_bar, experience_level, jump_bar, crosshair, effects。
+#
+# 对齐方式：health/armor/经验条/跳跃条用节点左上角；food/air/vehicle_health 用右上角
+#   （图标从右往左排）；experience_level、selected_item_name 在节点宽度内水平居中。
+#
+# stacking: vanilla 表示节点对应原版默认布局（一行心）里的位置，相当于整体平移，
+#   原版的动态避让照常：心变两行时护甲、物品名会自动上移。
+#   不写（默认 fixed）则元素钉死在节点上，适合把元素摆到别处。
+#
+# 下面的坐标按原版相对位置排好，改 margin-bottom 即可调整整体上移的距离。
+# 调位置时可以给节点加 background: "#40ff0000" 看占位框。
+id: vanilla_layout
+screen-type: hud
+index: -10
+
+styles:
+  keep-vanilla:
+    stacking: vanilla
+
+root:
+  type: panel
+  style:
+    position: absolute
+    anchor: bottom-center
+    width: 182
+    height: 39
+    margin-bottom: 6
+  children:
+    # 左列：血量（最下面一行心）与护甲
+    - type: vanilla
+      source: health
+      style-ref: keep-vanilla
+      style: { x: 0, y: 0 }
+    - type: vanilla
+      source: armor
+      style-ref: keep-vanilla
+      style: { x: 0, y: -10 }
+
+    # 右列：饥饿、坐骑血量、氧气（节点右缘对齐原版右缘，x = 182 - 81）
+    - type: vanilla
+      source: food
+      style-ref: keep-vanilla
+      style: { x: 101, y: 0 }
+    - type: vanilla
+      source: vehicle_health
+      style-ref: keep-vanilla
+      style: { x: 101, y: 0 }
+    - type: vanilla
+      source: air
+      style-ref: keep-vanilla
+      style: { x: 101, y: -10 }
+
+    # 经验条 / 坐骑跳跃条（1.21.10 的定位栏跟随经验条）与等级数字
+    - type: vanilla
+      source: experience_bar
+      style-ref: keep-vanilla
+      style: { x: 0, y: 10 }
+    - type: vanilla
+      source: jump_bar
+      style-ref: keep-vanilla
+      style: { x: 0, y: 10 }
+    - type: vanilla
+      source: experience_level
+      style-ref: keep-vanilla
+      style: { x: 0, y: 4 }
+
+    # 切换物品时的物品名
+    - type: vanilla
+      source: selected_item_name
+      style-ref: keep-vanilla
+      style: { x: 0, y: -20 }

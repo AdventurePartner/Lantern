@@ -3,11 +3,14 @@ package org.lantern.platform
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent
+import net.minecraftforge.client.event.RenderGuiEvent
 import net.minecraftforge.client.event.RenderGuiOverlayEvent
 import net.minecraftforge.client.event.ScreenEvent
+import net.minecraftforge.client.gui.overlay.ForgeGui
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent
+import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import org.lantern.LanternForge
 import org.lantern.internal.handler.ResourceHandler
@@ -17,6 +20,7 @@ import org.lantern.model.util.EntityStateUtil
 import org.lantern.uix.canvas.impl.GuiCanvas
 import org.lantern.uix.event.EventDispatcher
 import org.lantern.uix.hud.VanillaHudElement
+import org.lantern.uix.hud.VanillaHudPoses
 import org.lantern.uix.hud.VanillaHudVisibility
 import org.lantern.uix.input.FocusManager
 import org.lantern.uix.renderer.OverlayRenderer
@@ -74,15 +78,70 @@ object ForgeClientListener {
 
     @SubscribeEvent
     fun onRenderGuiOverlay(event: RenderGuiOverlayEvent.Pre) {
-        val element = hideableOverlays[event.overlay.id()] ?: return
+        val element = vanillaOverlays[event.overlay.id()] ?: return
         if (!VanillaHudVisibility.isHidden(element)) return
         // 旁观模式的 HOTBAR overlay 画的是旁观菜单，保持原版
         if (element == VanillaHudElement.HOTBAR && Minecraft.getInstance().player?.isSpectator == true) return
         event.isCanceled = true
     }
 
-    // EXPERIENCE_BAR 不在表里：经验条与等级数字画在同一方法内，由 ExperienceBar1201Mixin 分开隐藏
-    private val hideableOverlays: Map<ResourceLocation, VanillaHudElement> = mapOf(
+    // 上一个 overlay 的摆放推入若没等到 Post（ForgeGui 对每个 overlay try/catch，抛异常会跳过 Post），先补弹
+    @SubscribeEvent(priority = EventPriority.HIGHEST, receiveCanceled = true)
+    fun onOverlayPreCleanup(event: RenderGuiOverlayEvent.Pre) {
+        VanillaHudPoses.popPending(event.guiGraphics)
+    }
+
+    // MONITOR 只收到最终未被取消的事件，且此阶段之后不允许再取消，随后必定有 Post
+    @SubscribeEvent(priority = EventPriority.MONITOR)
+    fun onOverlayPrePlace(event: RenderGuiOverlayEvent.Pre) {
+        val element = vanillaOverlays[event.overlay.id()] ?: return
+        val client = Minecraft.getInstance()
+        // 旁观模式下 HOTBAR / ITEM_NAME 画的是旁观菜单与提示，不移动
+        if (client.player?.isSpectator == true &&
+            (element == VanillaHudElement.HOTBAR || element == VanillaHudElement.SELECTED_ITEM_NAME)
+        ) return
+        val gui = client.gui as? ForgeGui ?: return
+        val graphics = event.guiGraphics
+        val width = graphics.guiWidth()
+        val height = graphics.guiHeight()
+        // ForgeGui 的左右两列从底部向上堆叠：元素在 Pre 时读取当前 leftHeight / rightHeight 定位
+        val x: Int
+        val y: Int
+        when (element) {
+            VanillaHudElement.HOTBAR -> { x = width / 2 - 91; y = height - 22 }
+            VanillaHudElement.SELECTED_ITEM_NAME -> {
+                x = width / 2
+                y = height - maxOf(gui.leftHeight, gui.rightHeight, 59) +
+                    if (client.gameMode?.canHurtPlayer() == false) 14 else 0
+            }
+            VanillaHudElement.HEALTH, VanillaHudElement.ARMOR -> { x = width / 2 - 91; y = height - gui.leftHeight }
+            VanillaHudElement.FOOD, VanillaHudElement.AIR, VanillaHudElement.VEHICLE_HEALTH -> {
+                x = width / 2 + 91
+                y = height - gui.rightHeight
+            }
+            VanillaHudElement.JUMP_BAR -> { x = width / 2 - 91; y = height - 29 }
+            VanillaHudElement.CROSSHAIR -> { x = (width - 15) / 2; y = (height - 15) / 2 }
+            VanillaHudElement.EFFECTS -> { x = width; y = 0 }
+            else -> return
+        }
+        VanillaHudPoses.begin(graphics, element, x, y)
+    }
+
+    // LOWEST：其他模组在 Post 里补画的内容也跟着平移
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    fun onOverlayPost(event: RenderGuiOverlayEvent.Post) {
+        val element = vanillaOverlays[event.overlay.id()] ?: return
+        VanillaHudPoses.end(event.guiGraphics, element)
+    }
+
+    @SubscribeEvent
+    fun onRenderGuiPost(event: RenderGuiEvent.Post) {
+        VanillaHudPoses.popPending(event.guiGraphics)
+    }
+
+    // 隐藏与摆放共用。EXPERIENCE_BAR 不在表里：经验条与等级数字画在同一方法内，
+    // 由 ExperienceBar1201Mixin 按调用分开隐藏与摆放
+    private val vanillaOverlays: Map<ResourceLocation, VanillaHudElement> = mapOf(
         VanillaGuiOverlay.HOTBAR.id() to VanillaHudElement.HOTBAR,
         VanillaGuiOverlay.ITEM_NAME.id() to VanillaHudElement.SELECTED_ITEM_NAME,
         VanillaGuiOverlay.PLAYER_HEALTH.id() to VanillaHudElement.HEALTH,

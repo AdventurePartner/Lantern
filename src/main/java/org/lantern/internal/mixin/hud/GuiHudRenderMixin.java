@@ -4,6 +4,7 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiGraphics;
 import org.lantern.internal.chat.ChatChannelNotificationRenderer;
+import org.lantern.uix.hud.VanillaHudPoses;
 import org.lantern.uix.renderer.HudRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -31,6 +32,8 @@ public abstract class GuiHudRenderMixin {
 
     @Inject(method = "render", at = @At("TAIL"))
     private void lantern$renderHudTop(GuiGraphics graphics, DeltaTracker deltaTracker, CallbackInfo ci) {
+        // 原版元素摆放的推入若被其他模组取消打断，在这里补弹，避免后续绘制整体偏移
+        VanillaHudPoses.popPending(graphics);
         graphics.pose().pushPose();
         graphics.pose().translate(0.0F, 0.0F, LANTERN$TOP_LAYER_Z);
         HudRenderer.INSTANCE.renderTop(graphics);

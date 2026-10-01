@@ -39,7 +39,7 @@ root:
 | `match-screen` | 只给 `overlay` 用，按界面类型匹配，如 `player_inventory`（生存背包），不受客户端语言影响 |
 | `match-title` | 只给 `overlay` 用，按界面标题匹配，必须完全一样（优先级低于 `match-screen`） |
 | `index` | z 轴深度，越大越靠前；`overlay` 里负值＝画在物品之下，`hud` 里负值＝原版层（见下） |
-| `hide-vanilla` | 只给 `hud` 用，要隐藏的原版 HUD 元素列表，如 `[hotbar, health]` |
+| `hide-vanilla` | 只给 `hud` 用，要隐藏的原版 HUD 元素列表，如 `[hotbar, health]`；只想挪位置用 [`type: vanilla`](#摆放原版元素-type-vanilla) 节点 |
 | `cancel-vanilla-bg` | 只给容器 `overlay` 用，`true` 时不画原版面板背景 |
 | `placeholders` | 要使用的变量插件文字，例如 `%player_name%` |
 | `update-interval` | 变量刷新间隔，单位是毫秒；不填时是 2000 |
@@ -118,7 +118,60 @@ root:
   原版元素立即恢复。
 - Forge 1.20.1 和 NeoForge 上，血量/护甲/饥饿等左右两侧的元素会向上堆叠；
   隐藏其中一个，上面的剩余元素会往下补位。1.21.1 的位置是固定的。
-- 完整的快捷栏替换示例见服务端 `plugins/Lantern/huds/hotbar.yml.example`。
+- 完整的快捷栏替换示例见服务端 `plugins/Lantern/huds/hotbar.yml.example`
+  （`huds` 目录第一次生成时释放；老服务器可从插件 jar 里取）。
+
+### 摆放原版元素 `type: vanilla`
+
+不想隐藏、只想挪位置时（比如自定义快捷栏比原版高，血条挡住了它），在 HUD 里放
+`type: vanilla` 节点。元素仍由原版绘制、只是画到节点处，所以受伤闪烁、吸收心、
+中毒/凋零心、饥饿抖动等表现全部保留。
+
+```yml
+- type: vanilla
+  source: health          # 取值同 hide-vanilla（不含 all）
+  style: { x: 0, y: -6 }
+```
+
+位置写法和其它节点完全一样（`style` 里的 x/y、anchor、flex 都能用）；不写 width/height
+时用元素的原生尺寸。节点框与元素的对齐方式：
+
+| source | 原生尺寸 | 对齐方式 |
+|---|---|---|
+| `hotbar` | 182×22 | 左上角（副手格、选中框照原版向外伸出） |
+| `selected_item_name` | 182×9 | 在节点宽度内水平居中，顶部对齐 |
+| `health` | 81×9 | 左上角＝最下面一行心，多行时向上叠 |
+| `armor` | 81×9 | 左上角 |
+| `food`、`air` | 81×9 | 右上角（图标从右往左排，同原版） |
+| `vehicle_health` | 81×9 | 右上角＝第一行，多行时向上叠 |
+| `experience_bar`、`jump_bar` | 182×5 | 左上角 |
+| `experience_level` | 182×9 | 水平居中，顶部对齐 |
+| `crosshair` | 15×15 | 左上角（15×15 的节点 `anchor: center` 即与原版重合） |
+| `effects` | 25×51 | 右上角（图标从节点右缘向左排） |
+
+`stacking`（写在 style 里）决定原版元素之间的避让是否保留：
+
+| 值 | 效果 |
+|---|---|
+| `fixed`（默认） | 元素永远画在节点处，四个客户端一致。原版的互相避让不再生效：心变两行（血量上限超过 20 或有吸收）会向上长、可能压到摆在上方的护甲 |
+| `vanilla` | 节点对应元素在原版默认布局（一行心、元素齐全）里的位置，相当于整体平移；原版的动态避让照常（多行心时护甲、物品名上移）。整组挪动时用它 |
+
+注意：
+
+- 节点本身不画东西。调位置时写 `background: "#40ff0000"` 可以看到占位框。
+- 只在 `screen-type: hud` 里生效，`index` 正负都行；打开背包等界面时原版元素仍在节点位置。
+- 同一个元素被多个 vanilla 节点摆放时，只有 index 最小的 HUD 里的第一个生效，客户端日志会提示。
+- 同一个元素也写在 `hide-vanilla` 里时，隐藏优先。
+- 1.21.10 的经验条、坐骑跳跃条、定位栏共用一个位置：骑可跳跃的坐骑时跟随 `jump_bar` 的节点，
+  其余情况（含定位栏）跟随 `experience_bar` 的节点。
+- 旁观模式的快捷栏菜单不会被移动。
+- 整组上移的完整示例见 `plugins/Lantern/huds/vanilla_layout.yml.example`。
+
+### 自绘血量、饥饿、经验条
+
+想完全换外观时，用 `hide-vanilla` 隐藏原版元素，再用 [`icon-bar`](#图标条-icon-bar)、
+[`progress-bar`](#进度条-progress-bar) 和文字里的[实时数值](#实时数值)自己画。
+完整示例见 `plugins/Lantern/huds/custom_status.yml.example`。
 
 ### 弹出界面 `gui`
 
@@ -347,6 +400,93 @@ styles:
     height: 22
 ```
 
+### 原版元素 `vanilla`
+
+把一个原版 HUD 元素（血量、饥饿、快捷栏……）摆到这个节点的位置，见
+[摆放原版元素](#摆放原版元素-type-vanilla)。
+
+### 图标条 `icon-bar`
+
+像原版的心、鸡腿那样，按数值画一排满/半/空图标。`source` 选数据来源，
+`textures` 给贴图：
+
+```yml
+- type: icon-bar
+  source: health
+  textures:
+    empty: "lantern:textures/hud/heart_empty.png"   # 空槽，每个图标位都会先画
+    full: "lantern:textures/hud/heart_full.png"
+    half: "lantern:textures/hud/heart_half.png"
+    poison-full: "lantern:textures/hud/heart_poison_full.png"   # 可选：状态变体
+  style:
+    x: 0
+    y: 0
+    animate: true
+```
+
+| source | 数值 / 上限 | 默认每个图标代表 | 默认方向 | 何时显示（`auto-hide`） | 可用状态 |
+|---|---|---|---|---|---|
+| `health` | 血量 / 最大血量 | 2 | 从左往右 | 可受伤的模式 | `poison` > `wither` > `frozen` |
+| `absorption` | 吸收值 / 最大血量 | 2 | 从左往右 | 吸收值大于 0 | — |
+| `food` | 饥饿值 / 20 | 2 | 从右往左 | 没骑有血量的坐骑 | `hunger` |
+| `saturation` | 饱和度 / 20 | 2 | 从右往左 | 同 food | `hunger` |
+| `armor` | 护甲值 / 20 | 2 | 从左往右 | 护甲大于 0 | — |
+| `armor_toughness` | 盔甲韧性 / 20 | 2 | 从左往右 | 韧性大于 0 | — |
+| `air` | 氧气 / 最大氧气 | 上限的 1/10 | 从右往左 | 在水下或氧气不满 | — |
+| `vehicle_health` | 坐骑血量 / 坐骑最大血量 | 2 | 从右往左 | 骑着有血量的坐骑 | — |
+| `experience` | 本级经验进度 / 1 | 0.1 | 从左往右 | 当前模式有经验 | — |
+| `jump` | 坐骑跳跃蓄力 / 1 | 0.1 | 从左往右 | 骑着可跳跃的坐骑 | — |
+
+创造、旁观模式下不显示生存类数值（血量、饥饿、护甲、氧气）。
+
+`textures` 的写法：
+
+| 键 | 说明 |
+|---|---|
+| `empty`、`half`、`full` | 空槽、半格、满格。缺 `half` 时用 `full`，缺 `empty` 时不画空槽 |
+| `<状态>-<部位>` | 状态变体，如 `poison-full`、`hunger-empty`；没写的部位回退到常规贴图 |
+| `absorption-full`、`absorption-half` | 吸收心，接在普通心后面（只对 `source: health` 生效） |
+| `blink-empty`、`blink-full`、`blink-half` | 受伤闪烁，同原版：掉的那几颗心闪烁、空槽换成 `blink-empty`（只对 `source: health` 生效，不写就不闪） |
+
+style 里的设置：
+
+| 设置名 | 默认值 | 说明 |
+|---|---|---|
+| `icon-width`、`icon-height` | 9 | 单个图标的尺寸 |
+| `icon-spacing` | 8 | 相邻图标的间距（原版图标重叠 1 像素） |
+| `icons-per-row` | 10 | 每行几个，多的另起一行 |
+| `row-spacing` | 10 | 行距 |
+| `row-direction` | `up` | 多行时往上叠（`up`）还是往下排（`down`） |
+| `fill-direction` | 见上表 | `right` 从左往右，`left` 从右往左（以整行宽度的右缘为起点） |
+| `value-per-icon` | 见上表 | 每个图标代表的数值，半格＝一半 |
+| `auto-hide` | `true` | 按上表条件自动隐藏；`false` 时一直显示 |
+| `animate` | `false` | 原版的动态效果：血量 ≤ 4 时心抖动、生命恢复时的波浪、饱和度为 0 时鸡腿抖动 |
+
+不写 width/height 时，尺寸是一行排满的宽度 × 图标高度（默认 81×9）。
+
+### 进度条 `progress-bar`
+
+像经验条那样按比例显示。`background` 整张画，`fill` 按「数值 ÷ 上限」裁切后画在上面：
+
+```yml
+- type: progress-bar
+  source: experience
+  textures:
+    background: "lantern:textures/hud/xp_bg.png"
+    fill: "lantern:textures/hud/xp_fill.png"
+  style:
+    x: 0
+    y: 10
+    width: 182
+    height: 5
+    fill-direction: right
+```
+
+- `source` 与图标条相同，`auto-hide` 规则也相同。
+- `fill-direction`：`right`（从左往右填，默认）、`left`、`up`（从下往上）、`down`。
+- `textures` 同样支持状态变体，如 `poison-fill`、`hunger-background`。
+- 不写 width/height 时默认 182×5。
+
 ## 外观写法
 
 常用设置：
@@ -366,8 +506,8 @@ styles:
 
 ### 背景 `background`
 
-和 CSS 一样，所有组件（panel、button、input、slot、text、image、hotbar-selection）
-都用同一个 `background`，写法与效果完全一致：
+和 CSS 一样，所有组件（panel、button、input、slot、text、image、hotbar-selection、
+vanilla、icon-bar、progress-bar）都用同一个 `background`，写法与效果完全一致：
 
 | 写法 | 效果 |
 |---|---|
@@ -380,7 +520,7 @@ styles:
 
 | 组件 | 默认背景 |
 |---|---|
-| panel、text、image、hotbar-selection | 无 |
+| panel、text、image、hotbar-selection、vanilla、icon-bar、progress-bar | 无 |
 | button | `#333333` |
 | input | `#1a1a1a`（边框另由 `border-color` 控制） |
 | slot | 原版风格灰框 |
@@ -479,3 +619,29 @@ root:
 ```
 
 如果没有安装 PlaceholderAPI，变量文字不会自动变成真实数值。
+
+### 实时数值
+
+文字里还可以写下面这些 `{...}`，由客户端每帧取值，不需要 PlaceholderAPI，
+也不受 `update-interval` 限制。不认识的 `{...}` 原样显示。
+
+| 写法 | 含义 |
+|---|---|
+| `{health}`、`{max_health}` | 血量、最大血量（保留一位小数） |
+| `{absorption}` | 吸收值 |
+| `{food}`、`{saturation}` | 饥饿值、饱和度 |
+| `{armor}`、`{armor_toughness}` | 护甲值、盔甲韧性 |
+| `{air}`、`{max_air}` | 氧气、最大氧气 |
+| `{level}`、`{exp_progress}` | 经验等级、本级经验进度（0–100） |
+| `{vehicle_health}`、`{vehicle_max_health}` | 坐骑血量、坐骑最大血量 |
+
+```yml
+- type: text
+  text: "{health}/{max_health}"
+  style:
+    x: 0
+    y: -20
+    color: "#FF5555"
+```
+
+在自动排列（flex）的面板里，含 `{...}` 的文字宽度按原文计算，建议写明 `width`。

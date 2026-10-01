@@ -19,7 +19,16 @@ object UiConfigurations {
     fun load() {
         screens.clear()
         placeholderConfigs.clear()
-        loadDir("huds", defaultResources = listOf("huds/example.yml"))
+        // .example 示例只在首次创建目录时释放，加载器只读 .yml，不会生效
+        loadDir(
+            "huds",
+            defaultResources = listOf(
+                "huds/example.yml",
+                "huds/hotbar.yml.example",
+                "huds/vanilla_layout.yml.example",
+                "huds/custom_status.yml.example"
+            )
+        )
         loadDir("screens", defaultResources = listOf("screens/example.yml"))
     }
 
@@ -98,6 +107,10 @@ object UiConfigurations {
         if (section.contains("index")) node.addProperty("index", section.getInt("index"))
 
         section.getConfigurationSection("style")?.let { node.add("style", parseStyleSection(it)) }
+        // icon-bar / progress-bar 的贴图表（empty/half/full、fill/background 等）
+        section.getConfigurationSection("textures")?.let { textures ->
+            node.add("textures", parseTexturesFromMap(textures.getValues(false)))
+        }
 
         val childrenList = section.getList("children")
         if (!childrenList.isNullOrEmpty()) {
@@ -130,6 +143,7 @@ object UiConfigurations {
 
         @Suppress("UNCHECKED_CAST")
         (map["style"] as? Map<*, *>)?.let { node.add("style", parseStyleFromMap(it)) }
+        (map["textures"] as? Map<*, *>)?.let { node.add("textures", parseTexturesFromMap(it)) }
 
         @Suppress("UNCHECKED_CAST")
         (map["children"] as? List<*>)?.filterIsInstance<Map<*, *>>()?.takeIf { it.isNotEmpty() }?.let { children ->
@@ -139,6 +153,14 @@ object UiConfigurations {
         }
 
         return node
+    }
+
+    private fun parseTexturesFromMap(map: Map<*, *>): JsonObject {
+        val textures = JsonObject()
+        map.forEach { (key, value) ->
+            if (key != null && value != null) textures.addProperty(key.toString(), value.toString())
+        }
+        return textures
     }
 
     private fun parseStyleSection(section: org.bukkit.configuration.ConfigurationSection): JsonObject {

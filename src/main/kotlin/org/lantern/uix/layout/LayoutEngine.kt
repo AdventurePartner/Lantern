@@ -13,7 +13,10 @@ import org.lantern.uix.widget.image.ImageWidgetImpl
 import org.lantern.uix.widget.input.InputWidgetImpl
 import org.lantern.uix.widget.panel.PanelWidgetImpl
 import org.lantern.uix.widget.slot.SlotWidgetImpl
+import org.lantern.uix.widget.stat.IconBarWidgetImpl
+import org.lantern.uix.widget.stat.ProgressBarWidgetImpl
 import org.lantern.uix.widget.text.TextWidgetImpl
+import org.lantern.uix.widget.vanilla.VanillaElementWidgetImpl
 
 /**
  * 无状态布局引擎核心。
@@ -324,6 +327,21 @@ object LayoutEngine {
             is SlotWidgetImpl -> MeasuredSize(
                 width = explicitWidth.takeIf { it > 0 } ?: DEFAULT_SLOT_SIZE,
                 height = explicitHeight.takeIf { it > 0 } ?: DEFAULT_SLOT_SIZE
+            )
+
+            is VanillaElementWidgetImpl -> MeasuredSize(
+                width = explicitWidth.takeIf { it > 0 } ?: widget.element?.naturalWidth ?: 0,
+                height = explicitHeight.takeIf { it > 0 } ?: widget.element?.naturalHeight ?: 0
+            )
+
+            is IconBarWidgetImpl -> MeasuredSize(
+                width = explicitWidth.takeIf { it > 0 } ?: widget.rowWidth,
+                height = explicitHeight.takeIf { it > 0 } ?: widget.iconHeight
+            )
+
+            is ProgressBarWidgetImpl -> MeasuredSize(
+                width = explicitWidth.takeIf { it > 0 } ?: ProgressBarWidgetImpl.DEFAULT_WIDTH,
+                height = explicitHeight.takeIf { it > 0 } ?: ProgressBarWidgetImpl.DEFAULT_HEIGHT
             )
 
             is PanelWidgetImpl -> measurePanel(widget, explicitWidth, explicitHeight)

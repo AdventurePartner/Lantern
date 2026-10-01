@@ -35,7 +35,22 @@ enum class StyleProperty(val key: String) {
     MARGIN_TOP("margin-top"),
     MARGIN_BOTTOM("margin-bottom"),
     MARGIN_LEFT("margin-left"),
-    MARGIN_RIGHT("margin-right");
+    MARGIN_RIGHT("margin-right"),
+
+    // 原版元素节点（vanilla）
+    STACKING("stacking"),
+
+    // 自绘状态控件（icon-bar / progress-bar）
+    ICON_WIDTH("icon-width"),
+    ICON_HEIGHT("icon-height"),
+    ICON_SPACING("icon-spacing"),
+    ICONS_PER_ROW("icons-per-row"),
+    ROW_SPACING("row-spacing"),
+    ROW_DIRECTION("row-direction"),
+    VALUE_PER_ICON("value-per-icon"),
+    FILL_DIRECTION("fill-direction"),
+    AUTO_HIDE("auto-hide"),
+    ANIMATE("animate");
 
     companion object {
         private val BY_KEY = entries.associateBy { it.key }

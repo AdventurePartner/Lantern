@@ -14,7 +14,9 @@ import org.lantern.uix.widget.image.ImageWidgetImpl
 import java.util.concurrent.ConcurrentHashMap
 
 object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
-    private val rlCache = ConcurrentHashMap<String, ResourceLocation?>()
+    private val rlCache = ConcurrentHashMap<String, ResourceLocation>()
+    // ConcurrentHashMap 不能存 null，非法路径单独记下，避免每帧重复解析
+    private val invalidPaths = ConcurrentHashMap.newKeySet<String>()
 
     override fun render(
         widget: ImageWidgetImpl,
@@ -36,14 +38,41 @@ object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
 
     /** 整张贴图拉伸画到 (x, y, w, h)；texture 为资源路径或 http(s) URL。 */
     fun drawTexture(graphics: GuiGraphics, texture: String, x: Int, y: Int, w: Int, h: Int) {
-        if (texture.isBlank()) return
-        val loc = if (TextureHandler.isHttpUrl(texture)) {
-            TextureHandler.getTexture(texture)
-        } else {
-            rlCache.getOrPut(texture) {
-                try { IdentifierBridge.parse(texture) } catch (_: Exception) { null }
-            } ?: return
-        }
+        val loc = resolve(texture) ?: return
         graphics.blit(loc, x, y, w, h, 0f, 0f, w, h, w, h)
+    }
+
+    /**
+     * 整张贴图按 (x, y, fullW, fullH) 拉伸后，只画其中 (cropX, cropY, cropW, cropH) 一块
+     * （裁切坐标相对 (x, y)）；进度条按比例显示填充贴图用。
+     */
+    fun drawTextureCropped(
+        graphics: GuiGraphics,
+        texture: String,
+        x: Int,
+        y: Int,
+        fullW: Int,
+        fullH: Int,
+        cropX: Int,
+        cropY: Int,
+        cropW: Int,
+        cropH: Int
+    ) {
+        if (fullW <= 0 || fullH <= 0 || cropW <= 0 || cropH <= 0) return
+        val loc = resolve(texture) ?: return
+        graphics.blit(loc, x + cropX, y + cropY, cropW, cropH, cropX.toFloat(), cropY.toFloat(), cropW, cropH, fullW, fullH)
+    }
+
+    private fun resolve(texture: String): ResourceLocation? {
+        if (texture.isBlank() || texture in invalidPaths) return null
+        if (TextureHandler.isHttpUrl(texture)) return TextureHandler.getTexture(texture)
+        rlCache[texture]?.let { return it }
+        val parsed = try { IdentifierBridge.parse(texture) } catch (_: Exception) { null }
+        if (parsed == null) {
+            invalidPaths.add(texture)
+            return null
+        }
+        rlCache[texture] = parsed
+        return parsed
     }
 }

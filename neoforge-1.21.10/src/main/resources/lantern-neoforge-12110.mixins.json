@@ -6,6 +6,7 @@
   "client": [
     "accessor.ChatComponentAccessor",
     "accessor.AbstractContainerScreenAccessor",
+    "accessor.GuiContextualBarAccessor",
     "accessor.SlotAccessor",
     "block.BarrelBlockMixin",
     "camera.CameraMixin",
