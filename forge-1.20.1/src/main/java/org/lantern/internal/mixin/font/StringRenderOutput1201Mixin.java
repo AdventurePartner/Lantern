@@ -63,11 +63,13 @@ public abstract class StringRenderOutput1201Mixin implements FormattedCharSink {
 
         float width = wrapper.getWidth();
         float height = wrapper.getHeight();
+        float iconX = x + wrapper.getOffsetX();
+        float iconY = y + wrapper.getOffsetY();
 
-        consumer.vertex(this.pose, x, y + height, 0).color(r, g, b, a).uv(0, 1).uv2(packedLightCoords).endVertex();
-        consumer.vertex(this.pose, x + width, y + height, 0).color(r, g, b, a).uv(1, 1).uv2(packedLightCoords).endVertex();
-        consumer.vertex(this.pose, x + width, y, 0).color(r, g, b, a).uv(1, 0).uv2(packedLightCoords).endVertex();
-        consumer.vertex(this.pose, x, y, 0).color(r, g, b, a).uv(0, 0).uv2(packedLightCoords).endVertex();
+        consumer.vertex(this.pose, iconX, iconY + height, 0).color(r, g, b, a).uv(0, 1).uv2(packedLightCoords).endVertex();
+        consumer.vertex(this.pose, iconX + width, iconY + height, 0).color(r, g, b, a).uv(1, 1).uv2(packedLightCoords).endVertex();
+        consumer.vertex(this.pose, iconX + width, iconY, 0).color(r, g, b, a).uv(1, 0).uv2(packedLightCoords).endVertex();
+        consumer.vertex(this.pose, iconX, iconY, 0).color(r, g, b, a).uv(0, 0).uv2(packedLightCoords).endVertex();
     }
 
     @Unique

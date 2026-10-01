@@ -74,13 +74,15 @@ public abstract class FontPreparedTextBuilderMixin implements IconSink {
         if (this.lantern$icons == null) {
             this.lantern$icons = new ArrayList<>();
         }
+        float iconX = this.x + wrapper.getOffsetX();
+        float iconY = this.y + wrapper.getOffsetY();
         this.lantern$icons.add(new Icon(
-            this.x, this.y,
+            iconX, iconY,
             wrapper.getWidth(), wrapper.getHeight(),
             wrapper.getResource(),
             baseColor, shadowColor
         ));
-        this.markSize(this.x, this.y, this.x + wrapper.getWidth(), this.y + wrapper.getHeight());
+        this.markSize(iconX, iconY, iconX + wrapper.getWidth(), iconY + wrapper.getHeight());
         this.x += wrapper.getWide();
         cir.setReturnValue(true);
     }

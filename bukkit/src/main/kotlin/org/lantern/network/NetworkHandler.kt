@@ -157,6 +157,8 @@ object NetworkHandler {
                 obj.addProperty("width", section.getDouble("width"))
                 obj.addProperty("height", section.getDouble("height"))
                 obj.addProperty("wide", section.getDouble("wide"))
+                obj.addProperty("offset-x", section.getDouble("offset-x", 0.0))
+                obj.addProperty("offset-y", section.getDouble("offset-y", 0.0))
                 array.add(obj)
             }
             val packet = JsonObject()
