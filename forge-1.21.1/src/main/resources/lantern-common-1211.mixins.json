@@ -16,6 +16,7 @@
     "resource.FallbackResourceManagerMixin",
     "costume.ItemInHandRendererMixin",
     "hud.GuiHudRenderMixin",
+    "hud.GuiVanillaHudMixin",
     "chat.ChatComponentMixin",
     "chat.ChatScreenMixin",
     "hud.PlayerTabOverlayMixin",

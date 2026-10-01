@@ -31,6 +31,7 @@ import org.lantern.internal.handler.CycleHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.listen.FabricClientListener
+import org.lantern.internal.parser.UiParser
 import org.lantern.model.block.LanternBlockEntity
 import org.lantern.model.block.LanternBlockRenderer
 import org.lantern.model.handler.BlockRendererHandler
@@ -79,6 +80,7 @@ class LanternFabric : ClientModInitializer {
             BlockRendererHandler.clearPositions()
             BlockRendererHandler.resetDiagnosticFlags()
             RendererHandler.reload()
+            UiParser.resetAll()
         }
 
         // 注册 Overlay Screen 鼠标事件

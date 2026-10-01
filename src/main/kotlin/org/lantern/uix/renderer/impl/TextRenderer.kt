@@ -3,6 +3,7 @@ package org.lantern.uix.renderer.impl
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import org.lantern.uix.layout.LayoutCache
+import org.lantern.uix.renderer.BackgroundPainter
 import org.lantern.uix.renderer.IWidgetRenderer
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
@@ -23,9 +24,13 @@ object TextRenderer : IWidgetRenderer<TextWidgetImpl> {
         val rect = LayoutCache.findRect(widget)
         val x = rect?.x ?: style.getInt(StyleProperty.X)
         val y = rect?.y ?: style.getInt(StyleProperty.Y)
+        val font = Minecraft.getInstance().font
+        val w = rect?.width ?: style.getInt(StyleProperty.WIDTH, font.width(widget.text))
+        val h = rect?.height ?: style.getInt(StyleProperty.HEIGHT, font.lineHeight)
+        BackgroundPainter.paint(graphics, style, x, y, w, h)
+
         val colorHex = style.getString(StyleProperty.COLOR, "#ffffff")
         val color = ColorUtil.parseColor(colorHex)
-        val font = Minecraft.getInstance().font
         graphics.drawString(font, widget.text, x, y, color, false)
     }
 }

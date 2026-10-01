@@ -1,0 +1,91 @@
+# 用自定义贴图完整替换原版快捷栏的示例。
+# 复制为 hotbar.yml（去掉 .example 后缀）后生效，或参考它写自己的配置。
+#
+# hide-vanilla: 隐藏原版 HUD 元素（本文件隐藏快捷栏与切换物品名）。
+#   可用值: hotbar, selected_item_name, health, armor, food, air,
+#           vehicle_health, experience_bar, experience_level,
+#           jump_bar, crosshair, effects；all = 全部隐藏。
+#   多个 HUD 配置的隐藏列表会取并集。
+#
+# index: -10 把本 HUD 放进"原版层"——画在原版 HUD 的图层栈里
+#   （暗角/准星之下、聊天与标题之下），可见性跟随原版：
+#   打开背包/箱子/聊天时依然显示，按 F1 隐藏。替代原版元素的配置放这一层。
+#   不写 index（默认 0）则是顶层：画在所有原版 HUD 之上，打开任何界面即隐藏。
+#
+# 贴图需放在客户端资源包（mod 不内置），例如
+#   资源包 assets/lantern/textures/ui/hotbar.png -> lantern:textures/ui/hotbar.png
+#
+# 布局对照原版：底板 182x22，9 格物品每格 20px 间距，物品 16x16，
+# 选中框 24x24（比物品格大一圈，故 x/y 偏移 -3/-3，原版是 -1/-1 加上自带的 -2 边框）。
+id: custom_hotbar
+screen-type: hud
+index: -10
+hide-vanilla: [hotbar, selected_item_name]
+
+# 共用样式：slot 通过 style-ref 引用。
+# background: none = 不画格子底（底板贴图自带格子），写法对所有组件通用。
+styles:
+  bare-slot:
+    background: none
+
+root:
+  type: panel
+  style:
+    position: absolute
+    anchor: bottom-center
+    width: 182
+    height: 22
+    # margin-bottom 可整体上移，例如 margin-bottom: 4
+  children:
+    # 快捷栏底板
+    - type: image
+      texture: "lantern:textures/ui/hotbar.png"
+      style:
+        x: 0
+        y: 0
+        width: 182
+        height: 22
+
+    # 9 个快捷栏格：source 用 hotbar_0..hotbar_8（也可写 slot_36..slot_44）
+    - type: slot
+      source: hotbar_0
+      style-ref: bare-slot
+      style: { x: 3, y: 3, width: 16, height: 16 }
+    - type: slot
+      source: hotbar_1
+      style-ref: bare-slot
+      style: { x: 23, y: 3, width: 16, height: 16 }
+    - type: slot
+      source: hotbar_2
+      style-ref: bare-slot
+      style: { x: 43, y: 3, width: 16, height: 16 }
+    - type: slot
+      source: hotbar_3
+      style-ref: bare-slot
+      style: { x: 63, y: 3, width: 16, height: 16 }
+    - type: slot
+      source: hotbar_4
+      style-ref: bare-slot
+      style: { x: 83, y: 3, width: 16, height: 16 }
+    - type: slot
+      source: hotbar_5
+      style-ref: bare-slot
+      style: { x: 103, y: 3, width: 16, height: 16 }
+    - type: slot
+      source: hotbar_6
+      style-ref: bare-slot
+      style: { x: 123, y: 3, width: 16, height: 16 }
+    - type: slot
+      source: hotbar_7
+      style-ref: bare-slot
+      style: { x: 143, y: 3, width: 16, height: 16 }
+    - type: slot
+      source: hotbar_8
+      style-ref: bare-slot
+      style: { x: 163, y: 3, width: 16, height: 16 }
+
+    # 选中框：自动跟随当前选中格（滚轮/数字键切换实时更新）
+    # 贴图中心需透明（只留边框），否则会盖住格子里的物品
+    - type: hotbar-selection
+      texture: "lantern:textures/ui/hotbar_selection.png"
+      style: { x: -3, y: -3, width: 22, height: 22 }

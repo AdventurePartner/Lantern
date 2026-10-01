@@ -12,7 +12,8 @@ class SlotWidgetImpl(
 
     override val widgetType: String = "slot"
 
-    val slotIndex: Int = source?.substringAfterLast('_')?.toIntOrNull() ?: -1
+    /** 生存背包 InventoryMenu 下标（0 合成结果、1-4 合成格、5-8 盔甲、9-35 主背包、36-44 快捷栏、45 副手）。 */
+    val slotIndex: Int = parseSlotIndex(source)
 
     init {
         if (slotIndex >= 0) {
@@ -30,5 +31,21 @@ class SlotWidgetImpl(
 
     override fun render(arg: GuiGraphics, i: Int, j: Int, f: Float) {
         super.render(arg, i, j, f)
+    }
+
+    companion object {
+        const val HOTBAR_START = 36
+        const val OFFHAND = 45
+
+        /** `hotbar_0..8` → 36..44，`offhand` → 45，其余取 `*_N` 的 N（兼容 `slot_36` 写法）。 */
+        fun parseSlotIndex(source: String?): Int {
+            val key = source?.trim()?.lowercase() ?: return -1
+            if (key == "offhand") return OFFHAND
+            val number = key.substringAfterLast('_').toIntOrNull() ?: return -1
+            if (key.startsWith("hotbar_")) {
+                return if (number in 0..8) HOTBAR_START + number else -1
+            }
+            return number
+        }
     }
 }

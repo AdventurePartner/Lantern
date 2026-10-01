@@ -10,6 +10,7 @@ import net.neoforged.neoforge.client.event.ModelEvent
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent
 import net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent
 import net.neoforged.neoforge.client.gui.GuiLayer
+import net.neoforged.neoforge.client.gui.VanillaGuiLayers
 import net.neoforged.neoforge.client.renderstate.RegisterRenderStateModifiersEvent
 import net.neoforged.neoforge.event.AddPackFindersEvent
 import org.lantern.internal.chat.ChatChannelNotificationRenderer
@@ -97,13 +98,18 @@ class LanternNeoForge(modBus: IEventBus) {
     }
 
     private fun registerGuiLayers(event: RegisterGuiLayersEvent) {
+        // 原版层（index < 0 的 HUD）：相机覆盖层之上、准星/快捷栏之下，
+        // 可见性跟随原版 HUD（界面打开时仍绘制），用于替代原版元素
+        event.registerAbove(
+            VanillaGuiLayers.CAMERA_OVERLAYS,
+            IdentifierBridge.of(Lantern.MOD_ID, "hud_base"),
+            GuiLayer { graphics, _ -> HudRenderer.renderBase(graphics) }
+        )
         // registerAboveAll：vignette（暗角）在 CAMERA_OVERLAYS 图层按环境光照绘制，
-        // BelowAll 会被它在黑暗环境下压暗；HUD 必须画在所有原版图层之上
+        // BelowAll 会被它在黑暗环境下压暗；顶层 HUD 必须画在所有原版图层之上
         event.registerAboveAll(
             IdentifierBridge.of(Lantern.MOD_ID, "hud"),
-            GuiLayer { graphics, delta ->
-                HudRenderer.render(graphics, delta.getGameTimeDeltaPartialTick(false))
-            }
+            GuiLayer { graphics, _ -> HudRenderer.renderTop(graphics) }
         )
         event.registerAboveAll(
             IdentifierBridge.of(Lantern.MOD_ID, "chat_notification"),

@@ -1,18 +1,23 @@
 package org.lantern.platform
 
 import net.minecraft.client.Minecraft
+import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent
+import net.minecraftforge.client.event.RenderGuiOverlayEvent
 import net.minecraftforge.client.event.ScreenEvent
+import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import org.lantern.LanternForge
 import org.lantern.internal.handler.ResourceHandler
-import org.lantern.internal.storage.ScreenType
+import org.lantern.internal.storage.HudLayer
 import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.model.util.EntityStateUtil
 import org.lantern.uix.canvas.impl.GuiCanvas
 import org.lantern.uix.event.EventDispatcher
+import org.lantern.uix.hud.VanillaHudElement
+import org.lantern.uix.hud.VanillaHudVisibility
 import org.lantern.uix.input.FocusManager
 import org.lantern.uix.renderer.OverlayRenderer
 import org.lwjgl.glfw.GLFW
@@ -67,6 +72,29 @@ object ForgeClientListener {
         }
     }
 
+    @SubscribeEvent
+    fun onRenderGuiOverlay(event: RenderGuiOverlayEvent.Pre) {
+        val element = hideableOverlays[event.overlay.id()] ?: return
+        if (!VanillaHudVisibility.isHidden(element)) return
+        // 旁观模式的 HOTBAR overlay 画的是旁观菜单，保持原版
+        if (element == VanillaHudElement.HOTBAR && Minecraft.getInstance().player?.isSpectator == true) return
+        event.isCanceled = true
+    }
+
+    // EXPERIENCE_BAR 不在表里：经验条与等级数字画在同一方法内，由 ExperienceBar1201Mixin 分开隐藏
+    private val hideableOverlays: Map<ResourceLocation, VanillaHudElement> = mapOf(
+        VanillaGuiOverlay.HOTBAR.id() to VanillaHudElement.HOTBAR,
+        VanillaGuiOverlay.ITEM_NAME.id() to VanillaHudElement.SELECTED_ITEM_NAME,
+        VanillaGuiOverlay.PLAYER_HEALTH.id() to VanillaHudElement.HEALTH,
+        VanillaGuiOverlay.ARMOR_LEVEL.id() to VanillaHudElement.ARMOR,
+        VanillaGuiOverlay.FOOD_LEVEL.id() to VanillaHudElement.FOOD,
+        VanillaGuiOverlay.AIR_LEVEL.id() to VanillaHudElement.AIR,
+        VanillaGuiOverlay.MOUNT_HEALTH.id() to VanillaHudElement.VEHICLE_HEALTH,
+        VanillaGuiOverlay.JUMP_BAR.id() to VanillaHudElement.JUMP_BAR,
+        VanillaGuiOverlay.CROSSHAIR.id() to VanillaHudElement.CROSSHAIR,
+        VanillaGuiOverlay.POTION_ICONS.id() to VanillaHudElement.EFFECTS
+    )
+
     private fun handleMouseInput(client: Minecraft) {
         val window = client.window.window
         val scale = client.window.guiScale
@@ -76,13 +104,13 @@ object ForgeClientListener {
         val leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
         if (leftDown && !wasMouseDown) {
             FocusManager.blur()
-            UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { root ->
+            UiScreenStorage.hudRoots(HudLayer.TOP).forEach { root ->
                 EventDispatcher.dispatchClick(root, mx, my)
             }
         }
         wasMouseDown = leftDown
 
-        UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { root ->
+        UiScreenStorage.hudRoots(HudLayer.TOP).forEach { root ->
             EventDispatcher.updateHover(root, mx, my)
         }
     }

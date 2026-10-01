@@ -4,7 +4,9 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
 import org.lantern.uix.layout.LayoutCache
+import org.lantern.uix.renderer.BackgroundPainter
 import org.lantern.uix.renderer.IWidgetRenderer
+import org.lantern.uix.style.Background
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.widget.input.InputWidgetImpl
@@ -13,6 +15,7 @@ import org.lantern.uix.util.ColorUtil
 object InputRenderer : IWidgetRenderer<InputWidgetImpl> {
 
     private const val PADDING = 4
+    private val DEFAULT_BACKGROUND = Background.Color(0xFF1A1A1A.toInt())
 
     override fun render(
         widget: InputWidgetImpl,
@@ -29,9 +32,7 @@ object InputRenderer : IWidgetRenderer<InputWidgetImpl> {
         val w = rect?.width ?: style.getInt(StyleProperty.WIDTH, 120)
         val h = rect?.height ?: style.getInt(StyleProperty.HEIGHT, 20)
 
-        // Background
-        val bgHex = style.getString(StyleProperty.BACKGROUND, "#1a1a1a")
-        graphics.fill(x, y, x + w, y + h, ColorUtil.parseColor(bgHex, 0xFF1a1a1a.toInt()))
+        BackgroundPainter.paint(graphics, style, x, y, w, h, DEFAULT_BACKGROUND)
 
         // Border — brighter blue when focused
         val borderDefault = if (widget.focused) "#5588ff" else "#555555"

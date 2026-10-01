@@ -57,6 +57,14 @@ object UiConfigurations {
         // z 轴深度：负值 = 背景层（物品之下），非负 = 顶层（默认 0）；数值越大渲染越靠前
         if (config.contains("index")) screen.addProperty("index", config.getInt("index"))
         if (config.getBoolean("cancel-vanilla-bg", false)) screen.addProperty("cancel-vanilla-bg", true)
+        // 隐藏原版 HUD 元素（hotbar/health/...，all=全部）；接受列表或单个字符串
+        val hideVanilla = config.getList("hide-vanilla")?.mapNotNull { v -> v?.toString() }
+            ?: config.getString("hide-vanilla")?.let { listOf(it) }
+        if (!hideVanilla.isNullOrEmpty()) {
+            val array = JsonArray()
+            hideVanilla.forEach { array.add(it) }
+            screen.add("hide-vanilla", array)
+        }
 
         // parse named styles
         val stylesObj = JsonObject()

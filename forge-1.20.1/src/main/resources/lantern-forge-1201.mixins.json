@@ -17,7 +17,7 @@
     "resource.FallbackResourceManager1201Mixin",
     "network.ClientPacketListener1201Mixin",
     "costume.ItemInHandRenderer1201Mixin",
-    "hud.GuiHudRender1201Mixin",
+    "hud.ExperienceBar1201Mixin",
     "chat.ChatComponent1201Mixin",
     "chat.ChatScreenMixin",
     "hud.PlayerTabOverlayMixin",

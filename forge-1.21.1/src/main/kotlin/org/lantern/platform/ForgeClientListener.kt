@@ -8,7 +8,7 @@ import net.minecraftforge.event.entity.EntityLeaveLevelEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import org.lantern.LanternForge
 import org.lantern.internal.handler.ResourceHandler
-import org.lantern.internal.storage.ScreenType
+import org.lantern.internal.storage.HudLayer
 import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.model.util.EntityStateUtil
 import org.lantern.uix.canvas.impl.GuiCanvas
@@ -76,13 +76,13 @@ object ForgeClientListener {
         val leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
         if (leftDown && !wasMouseDown) {
             FocusManager.blur()
-            UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { root ->
+            UiScreenStorage.hudRoots(HudLayer.TOP).forEach { root ->
                 EventDispatcher.dispatchClick(root, mx, my)
             }
         }
         wasMouseDown = leftDown
 
-        UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { root ->
+        UiScreenStorage.hudRoots(HudLayer.TOP).forEach { root ->
             EventDispatcher.updateHover(root, mx, my)
         }
     }

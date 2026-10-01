@@ -5,6 +5,7 @@ import net.minecraft.resources.ResourceLocation
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.platform.IdentifierBridge
 import org.lantern.uix.layout.LayoutCache
+import org.lantern.uix.renderer.BackgroundPainter
 import org.lantern.uix.renderer.IWidgetRenderer
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
@@ -22,17 +23,24 @@ object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
         mouseY: Int,
         delta: Float
     ) {
-        if (!style.getBoolean(StyleProperty.VISIBLE) || widget.texture.isBlank()) return
+        if (!style.getBoolean(StyleProperty.VISIBLE)) return
         val rect = LayoutCache.findRect(widget)
         val x = rect?.x ?: style.getInt(StyleProperty.X)
         val y = rect?.y ?: style.getInt(StyleProperty.Y)
         val width = rect?.width ?: style.getInt(StyleProperty.WIDTH, 16)
         val height = rect?.height ?: style.getInt(StyleProperty.HEIGHT, 16)
-        val location = if (TextureHandler.isHttpUrl(widget.texture)) {
-            TextureHandler.getTexture(widget.texture)
+        BackgroundPainter.paint(graphics, style, x, y, width, height)
+        drawTexture(graphics, widget.texture, x, y, width, height)
+    }
+
+    /** 整张贴图拉伸画到 (x, y, width, height)；texture 为资源路径或 http(s) URL。 */
+    fun drawTexture(graphics: GuiGraphics, texture: String, x: Int, y: Int, width: Int, height: Int) {
+        if (texture.isBlank()) return
+        val location = if (TextureHandler.isHttpUrl(texture)) {
+            TextureHandler.getTexture(texture)
         } else {
-            locations.getOrPut(widget.texture) {
-                runCatching { IdentifierBridge.parse(widget.texture) }.getOrNull()
+            locations.getOrPut(texture) {
+                runCatching { IdentifierBridge.parse(texture) }.getOrNull()
             } ?: return
         }
         // 1.21.9+ 该重载的四个 int 是左上/右下角点 (x1, y1, x2, y2)，不是 x/y/width/height

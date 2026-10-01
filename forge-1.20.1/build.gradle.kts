@@ -60,6 +60,7 @@ sourceSets {
             "org/lantern/internal/mixin/block/BlockItemMixin.java",
             "org/lantern/internal/mixin/block/BarrelBlockMixin.java",
             "org/lantern/internal/mixin/hud/GuiHudRenderMixin.java",
+            "org/lantern/internal/mixin/hud/GuiVanillaHudMixin.java",
             "org/lantern/internal/mixin/model/ModelBakeryMixin.java",
             "org/lantern/internal/mixin/font/StringRenderOutputMixin.java",
             "org/lantern/internal/mixin/renderer/EntityRendererMixin.java",

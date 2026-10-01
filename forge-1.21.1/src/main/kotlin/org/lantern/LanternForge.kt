@@ -18,6 +18,7 @@ import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.handler.CycleHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.handler.TextureHandler
+import org.lantern.internal.parser.UiParser
 import org.lantern.model.block.LanternBlockEntity
 import org.lantern.model.block.LanternBlockRenderer
 import org.lantern.model.block.TrackedBarrelRenderer
@@ -98,6 +99,7 @@ class LanternForge {
             BlockRendererHandler.clearPositions()
             BlockRendererHandler.resetDiagnosticFlags()
             RendererHandler.reload()
+            UiParser.resetAll()
         }
     }
 }

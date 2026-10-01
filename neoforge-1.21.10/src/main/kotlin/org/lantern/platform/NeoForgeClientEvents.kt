@@ -2,9 +2,12 @@ package org.lantern.platform
 
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.screens.ChatScreen
+import net.minecraft.resources.ResourceLocation
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
+import net.neoforged.neoforge.client.event.RenderGuiLayerEvent
 import net.neoforged.neoforge.client.event.ScreenEvent
+import net.neoforged.neoforge.client.gui.VanillaGuiLayers
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent
 import org.lantern.animation.AnimationHost
@@ -14,12 +17,14 @@ import org.lantern.internal.chat.ChatChannelTabsRenderer
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.placeholder.PlaceholderStore
-import org.lantern.internal.storage.ScreenType
+import org.lantern.internal.storage.HudLayer
 import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.model.handler.RendererHandler
 import org.lantern.model.renderstate.AnimationControlStore
 import org.lantern.uix.canvas.impl.GuiCanvas
 import org.lantern.uix.event.EventDispatcher
+import org.lantern.uix.hud.VanillaHudElement
+import org.lantern.uix.hud.VanillaHudVisibility
 import org.lantern.uix.input.FocusManager
 import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.renderer.OverlayRenderer
@@ -52,6 +57,37 @@ object NeoForgeClientEvents {
             ScreenEvent.MouseButtonPressed.Pre::class.java,
             Consumer<ScreenEvent.MouseButtonPressed.Pre>(::onMousePressed)
         )
+        NeoForge.EVENT_BUS.addListener(
+            RenderGuiLayerEvent.Pre::class.java,
+            Consumer<RenderGuiLayerEvent.Pre>(::onRenderGuiLayer)
+        )
+    }
+
+    // 1.21.6+ 经验条、坐骑跳跃条、定位栏共用上下文信息栏（每帧只显示其一），
+    // 隐藏 experience_bar 或 jump_bar 任一都会让整个信息栏消失
+    private val hideableLayers: Map<ResourceLocation, List<VanillaHudElement>> = mapOf(
+        VanillaGuiLayers.HOTBAR to listOf(VanillaHudElement.HOTBAR),
+        VanillaGuiLayers.SELECTED_ITEM_NAME to listOf(VanillaHudElement.SELECTED_ITEM_NAME),
+        VanillaGuiLayers.PLAYER_HEALTH to listOf(VanillaHudElement.HEALTH),
+        VanillaGuiLayers.ARMOR_LEVEL to listOf(VanillaHudElement.ARMOR),
+        VanillaGuiLayers.FOOD_LEVEL to listOf(VanillaHudElement.FOOD),
+        VanillaGuiLayers.AIR_LEVEL to listOf(VanillaHudElement.AIR),
+        VanillaGuiLayers.VEHICLE_HEALTH to listOf(VanillaHudElement.VEHICLE_HEALTH),
+        VanillaGuiLayers.CONTEXTUAL_INFO_BAR_BACKGROUND to
+            listOf(VanillaHudElement.EXPERIENCE_BAR, VanillaHudElement.JUMP_BAR),
+        VanillaGuiLayers.CONTEXTUAL_INFO_BAR to
+            listOf(VanillaHudElement.EXPERIENCE_BAR, VanillaHudElement.JUMP_BAR),
+        VanillaGuiLayers.EXPERIENCE_LEVEL to listOf(VanillaHudElement.EXPERIENCE_LEVEL),
+        VanillaGuiLayers.CROSSHAIR to listOf(VanillaHudElement.CROSSHAIR),
+        VanillaGuiLayers.EFFECTS to listOf(VanillaHudElement.EFFECTS)
+    )
+
+    private fun onRenderGuiLayer(event: RenderGuiLayerEvent.Pre) {
+        val elements = hideableLayers[event.name] ?: return
+        if (elements.none { VanillaHudVisibility.isHidden(it) }) return
+        // 旁观模式的 HOTBAR 图层画的是旁观菜单，保持原版
+        if (event.name == VanillaGuiLayers.HOTBAR && Minecraft.getInstance().player?.isSpectator == true) return
+        event.isCanceled = true
     }
 
     private fun onClientTick(event: ClientTickEvent.Post) {
@@ -127,12 +163,12 @@ object NeoForgeClientEvents {
         val leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
         if (leftDown && !wasMouseDown) {
             FocusManager.blur()
-            UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { root ->
+            UiScreenStorage.hudRoots(HudLayer.TOP).forEach { root ->
                 EventDispatcher.dispatchClick(root, mouseX, mouseY)
             }
         }
         wasMouseDown = leftDown
-        UiScreenStorage.getAllOfType(ScreenType.HUD).values.forEach { root ->
+        UiScreenStorage.hudRoots(HudLayer.TOP).forEach { root ->
             EventDispatcher.updateHover(root, mouseX, mouseY)
         }
     }

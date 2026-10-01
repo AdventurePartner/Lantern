@@ -150,12 +150,13 @@ bukkit/src/main/
 3. Mixin `EntityMixin` 修改实体碰撞箱
 4. Mixin `EntityRendererMixin` 注入自定义渲染逻辑
 
-### UI 组件系统
+### UI 组件系统 (uix)
 
-1. **组件基类**: `BaseComponent` - 提供挂载点计算和渲染基础
-2. **层级系统**: `BaseLayer` -> `HudLayerImpl`, `GuiLayerImpl`
-3. **组件类型**: `HudComponent`, `ImageComponent`, `ButtonComponent`
-4. **渲染回调**: 使用 `HudRenderCallback` 注册 HUD 渲染
+1. **组件基类**: `BaseComponent`/`BaseWidget` + `WidgetRendererRegistry` 按类型分发渲染
+2. **界面类型** (`screen-type`): `hud`（常驻）、`gui`（弹窗 GuiCanvas）、`overlay`（贴在原版界面上）
+3. **HUD 渲染挂钩（各平台不同）**: Fabric/Forge 1.21.1 用共享 `GuiHudRenderMixin`（顶层 `Gui.render` TAIL、原版层 `renderCameraOverlays` TAIL）；Forge 1.20.1 用 `RegisterGuiOverlaysEvent`（ForgeGui 不调用 `Gui.render`，注入它的 Mixin 永远不执行）；NeoForge 用 `RegisterGuiLayersEvent`（`hud_base` registerAbove CAMERA_OVERLAYS，顶层 registerAboveAll）
+4. **隐藏原版 HUD**: HUD 配置 `hide-vanilla` → `VanillaHudVisibility`（元素枚举 `VanillaHudElement`），1.21.1 由 `GuiVanillaHudMixin` 取消渲染，Forge 1.20.1 取消 `RenderGuiOverlayEvent.Pre`，NeoForge 取消 `RenderGuiLayerEvent.Pre`；新增元素要同时补三处平台映射
+5. **HUD 分层**: `index < 0` 画进原版 HUD 图层栈（替代原版元素用），`index >= 0` 画在最上层；slot 节点在容器 overlay 里是槽位位置声明（SlotLayoutManager），在 HUD 里是背包物品镜像
 
 ### Mixin 使用
 
