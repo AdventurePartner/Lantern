@@ -16,6 +16,7 @@ object RendererHandler {
     private val customModelWrappers = mutableMapOf<String, CustomModelWrapper>()
     private val renderers = mutableMapOf<EntityType<*>, MutableMap<String, GenericGeoRenderer<*>>>()
     private val formatCodeRegex = Regex("\u00A7.")
+    private val unmatchedLogged = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     var version: Int = 0
         private set
 
@@ -99,14 +100,22 @@ object RendererHandler {
 
     fun getRenderer(entityType: EntityType<*>, customName: String): GenericGeoRenderer<*>? {
         if (CycleHandler.context == null) return null
-        val wrapper = getCustomModelWrapper(customName) ?: return null
+        val wrapper = getCustomModelWrapper(customName) ?: run {
+            // 名字未匹配时原版渲染器无声接管，是模型不渲染且无日志的主要静默分支，DEBUG 级留痕
+            if (unmatchedLogged.add(customName)) {
+                Lantern.logger.debug("[Lantern] 实体自定义名 \"{}\" 未匹配任何已注册模型，回退原版渲染器", customName)
+            }
+            return null
+        }
         val renderers = renderers.computeIfAbsent(entityType) { mutableMapOf() }
-        return renderers.computeIfAbsent(customName) { GenericGeoRenderer(entityType, wrapper) }
+        return renderers.computeIfAbsent(customName) { GenericGeoRenderer(entityType, customName, wrapper) }
     }
 
     fun getCustomModelWrapper(customName: String): CustomModelWrapper? {
         return customModelWrappers[customName] ?: customModelWrappers[normalizeName(customName)]
     }
+
+    fun getCustomModelWrappers(): Map<String, CustomModelWrapper> = customModelWrappers
 
     private fun normalizeName(name: String): String {
         if (name.indexOf('§') < 0) return name

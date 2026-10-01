@@ -17,6 +17,7 @@ import software.bernie.geckolib.renderer.GeoReplacedEntityRenderer
 
 class GenericGeoRenderer<T : Entity>(
     entityType: EntityType<T>,
+    private val rendererKey: String,
     private val wrapper: CustomModelWrapper
 ) : GeoReplacedEntityRenderer<Entity, GenericReplacedEntity<T>>(
     CycleHandler.context,
@@ -51,7 +52,11 @@ class GenericGeoRenderer<T : Entity>(
 
         if (GeckoLibCache.getBakedModels()[wrapper.modelLocation] == null) {
             if (warnedModels.add(wrapper.modelLocation)) {
-                Lantern.logger.warn("[Lantern] Entity model not yet cached, deferring render: {}", wrapper.modelLocation)
+                Lantern.logger.warn(
+                    "[Lantern] 实体模型 {}（{}）不在 GeckoLib 缓存中，跳过渲染；" +
+                        "请确认文件位于客户端资源包 assets/lantern/geo/ 且 entityModels.yml 路径以 geo/ 开头",
+                    rendererKey, wrapper.modelLocation
+                )
             }
             return
         }

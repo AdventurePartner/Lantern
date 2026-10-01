@@ -205,6 +205,8 @@ object ResourceHandler {
 
         RendererHandler.reload()
         clientStorage.entityModels.forEach(RendererHandler::addEntityModel)
+        // 资源重载完成后校验实体模型路径前缀与文件存在性，缺失时 WARN 暴露配置错误
+        ModelDiagnostics.validateEntityModels(RendererHandler.getWrappers())
     }
 
     fun clearSession() {

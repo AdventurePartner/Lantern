@@ -304,6 +304,8 @@ object ResourceHandler {
         clientStorage.entityModels.forEach { (name, data) ->
             RendererHandler.addEntityModel(name, data)
         }
+        // 资源重载完成后校验实体模型路径前缀与文件存在性，缺失时 WARN 暴露配置错误
+        ModelDiagnostics.validateEntityModels(RendererHandler.getCustomModelWrappers())
         CostumeHandler.refreshRenderers()
         Lantern.logger.debug("[Lantern] rebuild: restored {} entity models", clientStorage.entityModels.size)
         Lantern.logger.debug("[Lantern] rebuild: END - itemCustomIcons={}, blockCustomModels={}", itemCustomIcons.size, blockCustomModels.size)

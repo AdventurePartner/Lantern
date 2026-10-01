@@ -173,10 +173,32 @@ object NetworkHandler {
             val array = JsonArray()
             config.getKeys(false).forEach {
                 val section = config.getConfigurationSection(it) ?: return@forEach
+                val name = section.getString("name")
+                val geo = section.getString("geo")
+                val texture = section.getString("texture")
+                // 必填字段缺失会让客户端解析崩溃或模型静默不渲染，服务端提前拦截并告警
+                if (name.isNullOrBlank() || geo.isNullOrBlank() || texture.isNullOrBlank()) {
+                    LanternPlugin.instance.logger.warning(
+                        "entityModels.yml 的 $it 缺少必填字段（name=$name, geo=$geo, texture=$texture），已跳过下发"
+                    )
+                    return@forEach
+                }
+                if (!geo.startsWith("geo/")) {
+                    LanternPlugin.instance.logger.warning(
+                        "entityModels.yml 的 $it.geo = \"$geo\" 不以 geo/ 开头：GeckoLib 只扫描客户端 assets/lantern/geo/，该模型大概率不会渲染"
+                    )
+                }
+                val animationFile = section.getConfigurationSection("animations")?.getString("file")
+                    ?: section.getString("animation")
+                if (!animationFile.isNullOrBlank() && !animationFile.startsWith("animations/")) {
+                    LanternPlugin.instance.logger.warning(
+                        "entityModels.yml 的 $it 动画文件 = \"$animationFile\" 不以 animations/ 开头：GeckoLib 只扫描客户端 assets/lantern/animations/"
+                    )
+                }
                 val obj = JsonObject()
-                obj.addProperty("name", section.getString("name")!!.colorify())
-                obj.addProperty("geo", section.getString("geo"))
-                obj.addProperty("texture", section.getString("texture"))
+                obj.addProperty("name", name.colorify())
+                obj.addProperty("geo", geo)
+                obj.addProperty("texture", texture)
 
                 // 支持新格式 animations 和旧格式 animation
                 if (section.contains("animations")) {

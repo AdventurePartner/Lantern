@@ -124,8 +124,9 @@ public final class GenericGeoRenderer<R extends EntityRenderState & GeoRenderSta
         if (!GeckoLibResources.getBakedModels().containsKey(this.modelId)) {
             if (WARNED_MODELS.add(this.modelId)) {
                 Lantern.INSTANCE.getLogger().warn(
-                    "[Lantern] Entity model not yet cached, deferring render: {}",
-                    this.modelId
+                    "[Lantern] 实体模型 {}（geo={}, cacheId={}）不在 GeckoLib 缓存中，跳过渲染；" +
+                        "请确认文件位于客户端资源包 assets/lantern/geo/ 且 entityModels.yml 路径以 geo/ 开头",
+                    this.rendererKey, this.wrapper.getModelLocation(), this.modelId
                 );
             }
             return;
