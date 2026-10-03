@@ -124,6 +124,8 @@ object NetworkParser {
             19 -> playerActionHandler?.invoke(obj)
             20 -> entityBindHandler?.invoke(obj)
             21 -> inputLockHandler?.invoke(obj)
+            22 -> parseWorldImageConfig(obj)
+            23 -> parseWorldImageCommand(obj)
             99 -> reloadResourcePack()
         }
     }
@@ -511,6 +513,19 @@ object NetworkParser {
         val exitTicks = obj.get("exit")?.asInt ?: -1
         if (action == "seek" && seekSeconds < 0f) return
         handler(uuid, action, animation, transition, loop, speed, seekSeconds, uninterruptible, toCombatLayer, library, seq, exitTicks)
+    }
+
+    /**
+     * packetId 22（世界图片配置同步）：模板表与动画表整体重建，在播实例不受影响。
+     * 写共享渲染状态统一调度到主线程（NeoForge 收包在网络线程）
+     */
+    private fun parseWorldImageConfig(obj: JsonObject) {
+        Minecraft.getInstance().execute { org.lantern.worldimage.WorldImageManager.handleConfig(obj) }
+    }
+
+    /** packetId 23（世界图片实例指令）：spawn 同 id = 替换并重启动画，remove 按 id，clear 清空。 */
+    private fun parseWorldImageCommand(obj: JsonObject) {
+        Minecraft.getInstance().execute { org.lantern.worldimage.WorldImageManager.handleCommand(obj) }
     }
 
     private fun reloadResourcePack() {

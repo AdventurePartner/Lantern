@@ -80,6 +80,9 @@ object Configurations {
             }
             CacheHandler.rebuildBlockModelIndices()
         }
+        LanternPlugin.instance.saveResource("worldImages.yml", "worldImages.yml", false) {
+            CacheHandler.worldImages = org.lantern.cache.WorldImageCache(YamlConfiguration.loadConfiguration(it))
+        }
         UiConfigurations.load()
         WardrobeConfig.load()
     }

@@ -47,6 +47,7 @@ class LanternForge {
 
         ForgePacketNetwork.registerPackets()
         MinecraftForge.EVENT_BUS.register(ForgeClientListener)
+        MinecraftForge.EVENT_BUS.register(org.lantern.platform.WorldImageForgeEvents)
 
         Lantern.logger.info("Lantern Forge 1.20.1 initialized successfully!")
     }
@@ -100,6 +101,7 @@ class LanternForge {
             BlockRendererHandler.clearPositions()
             BlockRendererHandler.resetDiagnosticFlags()
             RendererHandler.reload()
+            org.lantern.worldimage.WorldImageManager.clear()
         }
     }
 }

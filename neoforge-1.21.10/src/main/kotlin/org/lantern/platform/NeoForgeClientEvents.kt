@@ -11,6 +11,7 @@ import net.neoforged.neoforge.client.event.MovementInputUpdateEvent
 import net.neoforged.neoforge.client.event.ScreenEvent
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 import org.lantern.animation.AnimationHost
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.chat.ChatChannelHandler
@@ -72,6 +73,23 @@ object NeoForgeClientEvents {
         NeoForge.EVENT_BUS.addListener(
             InputEvent.InteractionKeyMappingTriggered::class.java,
             Consumer<InputEvent.InteractionKeyMappingTriggered>(::onInteractionKey)
+        )
+        // 世界图片：AfterEntities 是唯一带非空 PoseStack 的阶段，与实体同批、
+        // 被地形深度正确遮挡；partialTick 在 1.21.2+ 走 DeltaTracker
+        NeoForge.EVENT_BUS.addListener(
+            RenderLevelStageEvent.AfterEntities::class.java,
+            Consumer<RenderLevelStageEvent.AfterEntities>(::onAfterEntities)
+        )
+    }
+
+    private fun onAfterEntities(event: RenderLevelStageEvent.AfterEntities) {
+        val client = Minecraft.getInstance()
+        val partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false)
+        // 顶点写入共享 BufferSource，由主 pass 末尾的无参 endBatch 兜底提交；
+        // 不在这里 flush——事件时点原版尚有未完成批次，提前全刷会打乱绘制顺序
+        org.lantern.worldimage.WorldImageRenderer.render(
+            event.poseStack, client.renderBuffers().bufferSource(),
+            client.gameRenderer.getMainCamera(), partialTick
         )
     }
 
@@ -167,6 +185,8 @@ object NeoForgeClientEvents {
         org.lantern.core.bind.BindStore.clear()
         // 输入锁同理，不跨服残留
         org.lantern.core.input.InputLockStore.clear()
+        // 世界图片的实例与模板随会话作废，不跨服残留
+        org.lantern.worldimage.WorldImageManager.clear()
         parsedKeys.clear()
         wasMouseDown = false
         // 相机演出状态（lock/shake/fov/offset）不跨服残留

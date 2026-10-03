@@ -10,7 +10,7 @@ api-version: 1.20
 commands:
   lantern:
     description: Lantern 管理命令。
-    usage: /lantern [reload|open <界面ID> [玩家]|give <方块ID> [玩家] [数量]|anim play <动画名> [过渡tick] [loop|once]|anim stop <动画名> [过渡tick]|skill <玩家> <技能名>|cam info [玩家]|cam toggle [玩家]|cam set <offset-x|offset-y|distance> <值> [玩家]|cam lock <x> <y> <z> [平滑秒] [持续秒] [sync] [玩家]|cam lockentity [平滑秒] [持续秒] [sync] [玩家]|cam unlock [玩家]|cam shake [幅度] [频率] [时长秒] [玩家]|cam fov [度数] [过渡秒] [玩家]|cam offset <pitch> <yaw> [roll] [过渡秒] [玩家]|cam path <路径ID> [玩家] [速度]|cam watch <x> <y> <z> <看向x> <看向y> <看向z> [持续秒] [平滑秒] [玩家]|cam clear [玩家]|campath start <路径ID>|campath add [t] [linear|smooth|hold] [fov]|campath undo|clear|list|preview|play [速度]|save|stop|costume equip <玩家> <槽位> <装扮ID>|costume unequip <玩家> [槽位]|wardrobe [玩家]|bind <宿主UUID> <载体UUID> [x y z] [rotate] [visible] [毫秒]|unbind <载体UUID>|binds|lock <玩家> <动作,动作> <毫秒>|unlock <玩家>]
+    usage: /lantern [reload|open <界面ID> [玩家]|give <方块ID> [玩家] [数量]|anim play <动画名> [过渡tick] [loop|once]|anim stop <动画名> [过渡tick]|skill <玩家> <技能名>|cam info [玩家]|cam toggle [玩家]|cam set <offset-x|offset-y|distance> <值> [玩家]|cam lock <x> <y> <z> [平滑秒] [持续秒] [sync] [玩家]|cam lockentity [平滑秒] [持续秒] [sync] [玩家]|cam unlock [玩家]|cam shake [幅度] [频率] [时长秒] [玩家]|cam fov [度数] [过渡秒] [玩家]|cam offset <pitch> <yaw> [roll] [过渡秒] [玩家]|cam path <路径ID> [玩家] [速度]|cam watch <x> <y> <z> <看向x> <看向y> <看向z> [持续秒] [平滑秒] [玩家]|cam clear [玩家]|campath start <路径ID>|campath add [t] [linear|smooth|hold] [fov]|campath undo|clear|list|preview|play [速度]|save|stop|costume equip <玩家> <槽位> <装扮ID>|costume unequip <玩家> [槽位]|wardrobe [玩家]|bind <宿主UUID> <载体UUID> [x y z] [rotate] [visible] [毫秒]|unbind <载体UUID>|binds|lock <玩家> <动作,动作> <毫秒>|unlock <玩家>|image text <内容> [缩放]|image texture <贴图路径> [边长]|image spawn <模板名>|image clear]
 permissions:
   lantern.*:
     description: Lantern 全部权限
@@ -26,6 +26,7 @@ permissions:
       lantern.wardrobe: true
       lantern.bind: true
       lantern.lock: true
+      lantern.image: true
   lantern.reload:
     description: 重载全部配置并推送在线玩家
     default: op
@@ -55,4 +56,7 @@ permissions:
     default: op
   lantern.lock:
     description: 玩家输入锁管理
+    default: op
+  lantern.image:
+    description: 世界图片调试（生成/清空）
     default: op
