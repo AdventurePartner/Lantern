@@ -1,5 +1,8 @@
 package org.lantern.cache
 
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonPrimitive
 import org.bukkit.configuration.ConfigurationSection
 
 class CostumeCache(section: ConfigurationSection) {
@@ -7,11 +10,34 @@ class CostumeCache(section: ConfigurationSection) {
     val geo: String = section.getString("geo") ?: ""
     val texture: String = section.getString("texture") ?: ""
     val animationFile: String = section.getString("animations.file") ?: ""
-    val animationStates: Map<String, String> = run {
-        val states = mutableMapOf<String, String>()
+
+    /**
+     * 状态表（双形态，客户端 AnimationStateMapping.fromStatesJson 对应解析）：
+     * string = 纯动画名（LOOP/5tick，旧格式）；
+     * object = animation + mode（loop/once/hold）+ transition 三字段——玩家动作的
+     * 一次性（jump）与持有（sneak）语义需要 mode，随 P1 玩家宿主化引入
+     */
+    /**
+     * 上身骨骼集：出招层在这些骨骼上满权重，其余（腿部）让位给移动层。
+     * 不配则用客户端内置的 15 关节规范默认值；骨架命名与标准人模不同的外观在此声明
+     */
+    val upperBodyBones: List<String> = section.getStringList("animations.upper-body-bones")
+
+    val animationStates: Map<String, JsonElement> = run {
+        val states = LinkedHashMap<String, JsonElement>()
         val statesSection = section.getConfigurationSection("animations.states")
         statesSection?.getKeys(false)?.forEach { key ->
-            statesSection.getString(key)?.let { states[key] = it }
+            when (val value = statesSection.get(key)) {
+                is String -> states[key] = JsonPrimitive(value)
+                is ConfigurationSection -> {
+                    val animation = value.getString("animation") ?: return@forEach
+                    val obj = JsonObject()
+                    obj.addProperty("animation", animation)
+                    value.getString("mode")?.let { obj.addProperty("mode", it) }
+                    if (value.isInt("transition")) obj.addProperty("transition", value.getInt("transition"))
+                    states[key] = obj
+                }
+            }
         }
         states
     }
@@ -21,6 +47,9 @@ class CostumeCache(section: ConfigurationSection) {
     val offsetZ: Double = section.getDouble("offset.z", 0.0)
     val slot: String = section.getString("slot") ?: "full_body"
     val boneSync: Boolean = section.getBoolean("bone-sync", true)
+
+    /** P1 玩家宿主化：客户端由 AnimationHost 四层层栈驱动（决策 A 整替路线） */
+    val hostDriven: Boolean = section.getBoolean("host-driven", false)
     val boneMappingHead: String = section.getString("bone-mapping.head") ?: "head"
     val boneMappingBody: String = section.getString("bone-mapping.body") ?: "body"
     val boneMappingLeftArm: String = section.getString("bone-mapping.left_arm") ?: "left_arm"

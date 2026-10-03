@@ -9,6 +9,7 @@ import io.lumine.mythic.bukkit.MythicBukkit
 import io.lumine.mythic.core.skills.SkillMechanic
 import io.lumine.mythic.core.skills.SkillExecutor
 import io.lumine.mythic.bukkit.events.MythicMechanicLoadEvent
+import io.lumine.mythic.core.utils.annotations.MythicMechanic
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.lantern.LanternPlugin
@@ -30,6 +31,11 @@ import org.lantern.network.NetworkHandler
  * 注意：CustomComponentRegistry 通过 (MythicMechanicLoadEvent) 构造器实例化本类（同
  * LanternAnimMechanic）；目标选择完全交给 MM targeter，本机制对每个被选中实体逐一生效。
  */
+@MythicMechanic(
+    name = "lanterncam",
+    author = "Lantern",
+    description = "Camera direction packet for the targeted player"
+)
 class LanternCamMechanic(
     loader: MythicMechanicLoadEvent
 ) : SkillMechanic(

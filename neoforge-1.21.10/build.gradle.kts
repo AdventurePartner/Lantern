@@ -99,6 +99,10 @@ tasks {
         from(commonCoreOutput)
     }
 
+    // clean 会删掉 build/moddev 下 IDEA devlaunch 配置引用的 args 文件，
+    // build 收尾时立即重建，保证 clean build 之后 IDEA 的 Client 运行配置仍可用。
+    named("build") { finalizedBy("prepareClientRun") }
+
     processResources {
         inputs.property("version", project.version)
         inputs.property("minecraft_version", minecraftVersion)

@@ -19,7 +19,22 @@ class PlayerListener : Listener {
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
         joinedPlayers.add(event.player.uniqueId)
+        assignDefaultPlayerCostume(event.player)
         sendInitialPacketsIfReady(event.player)
+    }
+
+    /**
+     * P1 玩家宿主化：进服自动套整替外观（costumes.yml 顶层 player-default.costume）。
+     * 玩家已有 full_body 分配时不覆盖——手动/衣橱分配优先；分配后随初始包一起下发
+     */
+    private fun assignDefaultPlayerCostume(player: Player) {
+        val costumeId = org.lantern.handler.CacheHandler.defaultPlayerCostume ?: return
+        if (org.lantern.handler.CacheHandler.costumes[costumeId]?.hostDriven != true) return
+        val uuid = player.uniqueId
+        val current = org.lantern.handler.CostumeAssignmentHandler.get(uuid)
+        if (current != null && current["full_body"] != null) return
+        org.lantern.handler.CostumeAssignmentHandler.assign(uuid, "full_body", costumeId)
+        NetworkHandler.broadcastCostumeAssignment()
     }
 
     @EventHandler
@@ -37,6 +52,13 @@ class PlayerListener : Listener {
         LanternPlugin.instance.channelListener.removePlayer(uuid)
         org.lantern.camera.ShoulderCameraService.removePlayer(uuid)
         org.lantern.camera.CameraPathService.removePlayer(uuid)
+        org.lantern.animation.AnimationGroupService.forget(uuid)
+        org.lantern.animation.AnimationOrchestrator.clearSuppression(uuid)
+        org.lantern.animation.AnimationOrchestrator.forget(uuid)
+        // 绑定的已同步集合摘掉该观察者：重新进服时会重新收到现存绑定
+        org.lantern.bind.BindRegistry.forgetViewer(uuid)
+        // 输入锁是会话内状态，不跨登录保留
+        org.lantern.input.InputLockManager.forget(uuid)
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

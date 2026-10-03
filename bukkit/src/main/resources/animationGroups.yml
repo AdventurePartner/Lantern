@@ -1,0 +1,36 @@
+# 动画组按条件自动切换。
+#
+# 一个「动画组」就是一套外观（costumes.yml 的条目）——外观已经绑定了模型、
+# 动画库、状态表与连招，所以切组即切外观，不需要另造一层概念。
+# 持大剑换一套待机/行走/攻击，换回空手再换回去，全靠这张表。
+#
+# 判定在服务端每秒跑一轮，只有结果变化时才下发，不构成广播压力。
+# 多条规则按 priority 降序匹配，第一个命中的生效；都不命中回落 costumes.yml
+# 的 player-default.costume。
+#
+# 条件（同一条规则内全部满足才算命中，留空即不检查该项）：
+#   item-name-contains  主手物品显示名包含该文本（去色号后比较）
+#   item-lore-contains  主手物品 lore 任意一行包含该文本
+#   item-type           主手物品类型，如 DIAMOND_SWORD、NETHERITE_AXE
+#   permission          玩家拥有该权限节点
+#
+# 本文件默认不启用任何规则（下面全是注释）——需要时取消注释并把 costume
+# 改成 costumes.yml 里真实存在的条目名。
+
+# 重型武器:
+#   costume: player_heavy
+#   priority: 20
+#   condition:
+#     item-lore-contains: "重型"
+
+# 法杖:
+#   costume: player_mage
+#   priority: 10
+#   condition:
+#     item-name-contains: "法杖"
+
+# VIP专属动作:
+#   costume: player_vip
+#   priority: 5
+#   condition:
+#     permission: "lantern.costume.vip"

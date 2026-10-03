@@ -26,6 +26,10 @@ class LanternPlugin : AyPlugin() {
         instance = this
         Configurations.load()
         org.lantern.animation.AnimationOrchestrator.load(this)
+        org.lantern.animation.AnimationGroupService.load(this)
+        org.lantern.animation.AnimationGroupService.start(this)
+        // 载体绑定：每秒一轮回收到期/失效条目，并对进入宿主视野的玩家补发
+        org.lantern.bind.BindRegistry.start(this)
         CustomBlockTracker.load()
         CustomBlockTracker.startAutoSave(this)
         CostumeAssignmentHandler.load()
@@ -36,6 +40,8 @@ class LanternPlugin : AyPlugin() {
         Bukkit.getPluginManager().registerEvents(WardrobeListener(), this)
         Bukkit.getPluginManager().registerEvents(org.lantern.animation.DeathAnimationInterceptor(), this)
         Bukkit.getPluginManager().registerEvents(org.lantern.animation.StateEventListener(), this)
+        // 伤害数值弹出（世界图片系统的首个应用）
+        Bukkit.getPluginManager().registerEvents(org.lantern.listen.DamageNumberListener(), this)
         // 注册消息通道
         Bukkit.getMessenger().registerOutgoingPluginChannel(this, "lantern:main")
         channelListener = LanternChannelMessageListener()
@@ -57,7 +63,10 @@ class LanternPlugin : AyPlugin() {
 
     override fun onDisable() {
         PlaceholderService.stopAll()
-        org.lantern.animation.AnimationOrchestrator.reset()
+        org.lantern.animation.AnimationOrchestrator.shutdown()
+        org.lantern.animation.AnimationGroupService.stop()
+        org.lantern.bind.BindRegistry.reset()
+        org.lantern.input.InputLockManager.reset()
         CustomBlockTracker.stopAutoSave()
         CustomBlockTracker.save()
         CostumeAssignmentHandler.stopAutoSave()

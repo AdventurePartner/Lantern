@@ -1,4 +1,4 @@
-package org.lantern.camera
+package org.lantern.core.camera
 
 /**
  * 越肩相机客户端状态。
@@ -8,10 +8,9 @@ package org.lantern.camera
  *   一人称 → 越肩 → 原版第三人称背后 → 正面 → 一人称；
  *   越肩激活时底层 CameraType 保持 THIRD_PERSON_BACK，渲染/射线/准星按越肩走。
  *
- * 纯 Kotlin 数据对象，不依赖 MC 类：共享 src 可编译到所有客户端平台，
- * 由 [org.lantern.internal.network.NetworkParser] 写入、各平台 Mixin 读写。
- * offsetX > 0 = 相机在玩家右肩（玩家偏屏幕左侧），offsetY > 0 = 抬升，
- * distance = 眼睛到相机的后向距离（格）。
+ * 纯 Kotlin 数据对象，不依赖 MC 类：由 [org.lantern.internal.network.NetworkParser]
+ * 写入、各平台 Mixin 读写。offsetX > 0 = 相机在玩家右肩（玩家偏屏幕左侧），
+ * offsetY > 0 = 抬升，distance = 眼睛到相机的后向距离（格）。
  */
 object ShoulderCameraState {
 
@@ -44,5 +43,15 @@ object ShoulderCameraState {
         this.offsetX = offsetX.toFloat()
         this.offsetY = offsetY.toFloat()
         this.distance = distance.toFloat()
+    }
+
+    /** 退服清空：越肩开关与偏移是会话态，不跨服残留 */
+    @JvmStatic
+    fun clear() {
+        enabled = false
+        active = false
+        offsetX = 0f
+        offsetY = 0f
+        distance = 4f
     }
 }

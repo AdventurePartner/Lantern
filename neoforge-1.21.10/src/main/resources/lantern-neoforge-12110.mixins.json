@@ -6,6 +6,7 @@
   "client": [
     "accessor.ChatComponentAccessor",
     "accessor.AbstractContainerScreenAccessor",
+    "accessor.ClientInputAccessor",
     "accessor.GuiContextualBarAccessor",
     "accessor.SlotAccessor",
     "block.BarrelBlockMixin",
@@ -18,11 +19,18 @@
     "font.FontPreparedTextBuilderMixin",
     "font.GuiRendererMixin",
     "hud.PlayerTabOverlayMixin",
+    "input.MouseHandlerMixin",
     "uix.ContainerBackgroundRenderMixin",
     "network.GeckoLibNetworkingNeoForgeMixin",
+    "AvatarAttachLayerMixin",
     "EntityMixin",
     "EntityRenderDispatcherMixin",
-    "renderer.NameTagStorageMixin"
+    "HumanoidArmorLayerMixin",
+    "LivingEntityRendererMixin",
+    "PlayerItemInHandLayerMixin",
+    "PlayerModelHostPoseMixin",
+    "renderer.NameTagStorageMixin",
+    "WingsLayerMixin"
   ],
   "mixins": [],
   "injectors": {

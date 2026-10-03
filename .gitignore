@@ -51,3 +51,6 @@ run/
 /docs/animation-control-plan.md
 bukkit/src/main/resources/animations.yml
 /docs/camera-control-plan.md
+/docs/player-action-plan.md
+/docs/_local-*.md
+/.mc-src/
