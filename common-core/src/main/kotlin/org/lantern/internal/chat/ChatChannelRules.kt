@@ -18,7 +18,14 @@ object ChatChannelRules {
             if (id.isEmpty() || !seenIds.add(id)) return@forEach
 
             val displayName = channel.displayName.trim().ifEmpty { id }
-            channels.add(ChatChannel(id, displayName, normalizePrefixes(channel.prefixes), normalizeFilter(channel.filter)))
+            channels.add(
+                channel.copy(
+                    id = id,
+                    displayName = displayName,
+                    prefixes = normalizePrefixes(channel.prefixes),
+                    filter = normalizeFilter(channel.filter)
+                )
+            )
         }
 
         return channels

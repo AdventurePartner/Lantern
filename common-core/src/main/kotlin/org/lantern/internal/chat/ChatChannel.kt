@@ -4,5 +4,6 @@ data class ChatChannel(
     val id: String,
     val displayName: String,
     val prefixes: List<String>,
-    val filter: List<String> = emptyList()
+    val filter: List<String> = emptyList(),
+    val style: ChatTabOverride? = null
 )

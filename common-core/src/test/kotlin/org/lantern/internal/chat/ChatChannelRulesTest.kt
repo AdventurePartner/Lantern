@@ -26,6 +26,16 @@ class ChatChannelRulesTest {
     }
 
     @Test
+    fun `normalizing keeps the per-channel style`() {
+        val style = ChatTabOverride(selectedBackground = "#C0D9904A")
+        val normalized = ChatChannelRules.normalizeChannels(
+            listOf(ChatChannel(" announcement ", "公告", listOf("[公告]"), style = style))
+        )
+
+        assertEquals(style, normalized.single().style)
+    }
+
+    @Test
     fun `matches prefixes and referenced filters`() {
         val all = ChatChannel("all", "全部", emptyList(), listOf("system"))
         val system = ChatChannel("system", "系统", listOf("[系统]"))
