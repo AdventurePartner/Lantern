@@ -22,6 +22,7 @@ object TextureHandler {
     private val def = MissingTextureAtlasSprite.getLocation()
     private val textures = ConcurrentHashMap<String, ResourceLocation>()
     private val animatedTextures = ConcurrentHashMap.newKeySet<AnimatedGifTexture>()
+    private val ownedLocations = ConcurrentHashMap.newKeySet<ResourceLocation>()
     private val idCounter = AtomicInteger(0)
 
     fun isHttpUrl(path: String): Boolean = path.startsWith("http://") || path.startsWith("https://")
@@ -54,27 +55,30 @@ object TextureHandler {
                 conn.readTimeout = 10000
                 val bytes = conn.getInputStream().use { it.readAllBytes() }
 
+                // TextureManager 非线程安全，DynamicTexture 在渲染线程外构造会排队上传：
+                // 构造与注册必须都在主线程，否则同名覆盖会在上传前关掉纹理（pixels 为 null 崩溃）
                 if (isGif(bytes)) {
-                    val result = decodeGif(bytes) ?: return@runAsync
-                    val (frames, delays) = result
-                    val texture = AnimatedGifTexture(frames, delays)
+                    val (frames, delays) = decodeGif(bytes) ?: return@runAsync
                     Minecraft.getInstance().execute {
-                        val loc = IdentifierBridge.of(
-                            Lantern.MOD_ID, "dynamic/gif_${idCounter.getAndIncrement()}"
-                        )
+                        val texture = AnimatedGifTexture(frames, delays)
+                        val loc = nextLocation("gif")
                         Minecraft.getInstance().textureManager.register(loc, texture)
                         animatedTextures.add(texture)
+                        ownedLocations.add(loc)
                         textures[path] = loc
                     }
                 } else {
                     val image = NativeImage.read(ByteArrayInputStream(bytes))
-                    val texture = DynamicTexture(image)
-                    val loc = Minecraft.getInstance().textureManager
-                        .register("lantern_dynamic_res", texture)
-                    Minecraft.getInstance().execute { textures[path] = loc }
+                    Minecraft.getInstance().execute {
+                        val texture = DynamicTexture(image)
+                        val loc = nextLocation("image")
+                        Minecraft.getInstance().textureManager.register(loc, texture)
+                        ownedLocations.add(loc)
+                        textures[path] = loc
+                    }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Lantern.logger.error("[Lantern] Failed to download texture: {}", path, e)
             }
         }
     }
@@ -84,9 +88,15 @@ object TextureHandler {
     }
 
     fun reload() {
+        val textureManager = Minecraft.getInstance().textureManager
+        ownedLocations.forEach(textureManager::release)
+        ownedLocations.clear()
         textures.clear()
         animatedTextures.clear()
     }
+
+    private fun nextLocation(type: String): ResourceLocation =
+        IdentifierBridge.of(Lantern.MOD_ID, "dynamic/${type}_${idCounter.getAndIncrement()}")
 
     private fun isGif(bytes: ByteArray): Boolean {
         return bytes.size >= 6
