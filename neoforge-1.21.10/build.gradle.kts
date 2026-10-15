@@ -56,7 +56,6 @@ sourceSets {
             "org/lantern/internal/listen/**",
             "org/lantern/internal/network/PacketNetwork.kt",
             "org/lantern/internal/network/packet/**",
-            "org/lantern/internal/chat/ChatChannelTabsRenderer.kt",
             "org/lantern/internal/handler/AnimatedGifTexture.kt",
             "org/lantern/internal/handler/TextureHandler.kt",
             "org/lantern/internal/handler/ResourceHandler.kt",

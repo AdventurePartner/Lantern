@@ -160,6 +160,13 @@ bukkit/src/main/
 6. **自绘状态控件**: `icon-bar`（心/鸡腿式图标行）、`progress-bar`（按比例裁切的进度条）读 `HudStat`；`text` 里的 `{health}` 等由 `HudStatTokens` 在客户端每帧替换。贴图裁切走 `ImageRenderer.drawTextureCropped`（共享版与 NeoForge 副本各一份）
 7. **HUD 分层**: `index < 0` 画进原版 HUD 图层栈（替代原版元素用），`index >= 0` 画在最上层；slot 节点在容器 overlay 里是槽位位置声明（SlotLayoutManager），在 HUD 里是背包物品镜像
 
+### 聊天频道与聊天样式
+
+1. **协议**: `config.yml` 的 `chat-channels` 与 `chat-style` 都经 opcode 14 下发（顶层 `style` + 频道条目 `style`），解析与校验在 common-core `ChatStyleCodec`，客户端状态在 `ChatStyleHandler`
+2. **聊天窗口**: 共享 `chat/ChatComponentStyleMixin` 同时服务 Fabric 1.21.1、Forge 1.21.1、Forge 1.20.1（render 只按方法名匹配，两种签名的 translate / fill / drawString 序号一致）；NeoForge 1.21.10 有自己的版本，逐行背景与文字在 `lambda$render$0` / `lambda$render$1` 里，升级 NeoForge 时要用 javap 复核 lambda 名与序号
+3. **位置偏移**: 改 render 里第一个 translate 的参数（所有绘制都在其后），鼠标命中在 `screenToChatX/Y` 与 `handleChatQueueClicked` 入口反向平移，两边必须同时改
+4. **频道按钮 / 提示**: `ChatChannelTabsRenderer`、`ChatChannelNotificationRenderer` 只用 `fill` / `drawString` / `BackgroundPainter`，四个客户端共用一份；不要在里面用 `renderOutline` 或位姿 API，否则 NeoForge 又得维护副本。Forge 1.20.1 的提示挂在 `chat_notification` overlay 上
+
 ### Mixin 使用
 
 Mixin 类使用 Java 编写，位于共享 `src/main/java/org/lantern/internal/mixin/` 或对应平台模块的同名路径：

@@ -17,6 +17,8 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.costume.renderer.CostumeRenderLayer
 import org.lantern.internal.chat.ChatChannelHandler
+import org.lantern.internal.chat.ChatChannelNotificationRenderer
+import org.lantern.internal.chat.ChatStyleHandler
 import org.lantern.internal.handler.CycleHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.handler.TextureHandler
@@ -95,6 +97,12 @@ class LanternForge {
             HudRenderer.renderTop(graphics)
             graphics.pose().popPose()
         }
+        event.registerAboveAll("chat_notification") { _, graphics, _, _, _ ->
+            graphics.pose().pushPose()
+            graphics.pose().translate(0f, 0f, TOP_LAYER_Z)
+            ChatChannelNotificationRenderer.render(graphics)
+            graphics.pose().popPose()
+        }
     }
 
     companion object {
@@ -118,6 +126,7 @@ class LanternForge {
         fun clearClientCaches() {
             ForgePacketNetwork.clear()
             ChatChannelHandler.clear()
+            ChatStyleHandler.clear()
             CostumeHandler.reload()
             BlockRendererHandler.clear()
             BlockRendererHandler.clearPositions()

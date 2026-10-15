@@ -2,21 +2,14 @@ package org.lantern.internal.chat
 
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
-import kotlin.math.max
+import org.lantern.uix.renderer.BackgroundPainter
+import org.lantern.uix.style.Background
 
 object ChatChannelTabsRenderer {
-    private const val BUTTON_HEIGHT = 12
-    private const val GAP = 2
-    private const val START_X = 2
-    private const val INPUT_TOP_OFFSET = 28
-    private const val MIN_BUTTON_WIDTH = 24
-    private const val HORIZONTAL_PADDING = 12
-    private const val SELECTED_BACKGROUND = 0xC04A90D9.toInt()
-    private const val HOVER_OUTLINE = 0xFFFFFFFF.toInt()
-    private const val TEXT_COLOR = 0xFFFFFFFF.toInt()
-    private const val UNREAD_DOT_COLOR = 0xFFFF3333.toInt()
+    private const val GLYPH_HEIGHT = 8
+    private const val UNREAD_INSET = 1
 
-    private var hitboxes: List<Hitbox> = emptyList()
+    private var hitboxes: List<Pair<String, ChatTabRect>> = emptyList()
 
     fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
         val channels = ChatChannelHandler.channels()
@@ -27,54 +20,76 @@ object ChatChannelTabsRenderer {
 
         ChatChannelHandler.markActiveChannelRead()
         val client = Minecraft.getInstance()
-        val maxButtonWidth = (graphics.guiWidth() - START_X * 2).coerceAtLeast(MIN_BUTTON_WIDTH)
-        val background = client.options.getBackgroundColor(0x80000000.toInt())
+        val font = client.font
+        val style = ChatStyleHandler.style.tabs
+        val playerBackground = Background.Color(client.options.getBackgroundColor(0x80000000.toInt()))
         val activeChannelId = ChatChannelHandler.activeChannelId()
-        val newHitboxes = ArrayList<Hitbox>(channels.size)
+        val widths = channels.map { ChatTabsLayout.desiredWidth(font.width(it.displayName), style, it.style) }
+        val rects = ChatTabsLayout.compute(widths, graphics.guiWidth(), graphics.guiHeight(), style)
 
-        var x = START_X
-        var y = graphics.guiHeight() - INPUT_TOP_OFFSET
-        channels.forEach { channel ->
-            val width = max(client.font.width(channel.displayName) + HORIZONTAL_PADDING, MIN_BUTTON_WIDTH)
-                .coerceAtMost(maxButtonWidth)
-            if (x != START_X && x + width > graphics.guiWidth() - START_X) {
-                x = START_X
-                y -= BUTTON_HEIGHT + GAP
-            }
-
-            val hitbox = Hitbox(channel.id, x, y, width, BUTTON_HEIGHT)
-            newHitboxes.add(hitbox)
+        channels.forEachIndexed { index, channel ->
+            val rect = rects[index]
+            val override = channel.style
             val selected = channel.id == activeChannelId
-            val hovered = hitbox.contains(mouseX, mouseY)
-            graphics.fill(x, y, x + width, y + BUTTON_HEIGHT, if (selected) SELECTED_BACKGROUND else background)
+            val hovered = rect.contains(mouseX, mouseY)
+
+            val background = backgroundFor(style, override, selected, hovered) ?: playerBackground
+            BackgroundPainter.paint(graphics, background, rect.x, rect.y, rect.width, rect.height)
             if (hovered) {
-                graphics.renderOutline(x, y, width, BUTTON_HEIGHT, HOVER_OUTLINE)
+                style.hoverOutline?.let { drawOutline(graphics, rect, it) }
             }
-            graphics.drawString(client.font, channel.displayName, x + 6, y + 2, TEXT_COLOR, false)
-            if (ChatChannelHandler.hasUnreadChannel(channel.id)) {
-                val dotRight = x + width - 2
-                graphics.fill(dotRight - 4, y + 1, dotRight, y + 5, UNREAD_DOT_COLOR)
+
+            val textWidth = font.width(channel.displayName)
+            val textX = when (style.textAlign) {
+                ChatTextAlign.LEFT -> rect.x + style.paddingX
+                ChatTextAlign.CENTER -> rect.x + (rect.width - textWidth) / 2
             }
-            x += width + GAP
+            val textY = rect.y + (rect.height - GLYPH_HEIGHT) / 2
+            graphics.drawString(font, channel.displayName, textX, textY, textColorFor(style, override, selected), style.textShadow)
+
+            if (style.unreadSize > 0 && ChatChannelHandler.hasUnreadChannel(channel.id)) {
+                val right = rect.x + rect.width - 2
+                val top = rect.y + UNREAD_INSET
+                graphics.fill(right - style.unreadSize, top, right, top + style.unreadSize, style.unreadColor)
+            }
         }
 
-        hitboxes = newHitboxes
+        hitboxes = channels.mapIndexed { index, channel -> channel.id to rects[index] }
     }
 
     fun handleClick(mouseX: Int, mouseY: Int): Boolean {
-        val hitbox = hitboxes.firstOrNull { it.contains(mouseX, mouseY) } ?: return false
-        return ChatChannelHandler.selectChannel(hitbox.channelId)
+        val (channelId, _) = hitboxes.firstOrNull { it.second.contains(mouseX, mouseY) } ?: return false
+        return ChatChannelHandler.selectChannel(channelId)
     }
 
-    private data class Hitbox(
-        val channelId: String,
-        val x: Int,
-        val y: Int,
-        val width: Int,
-        val height: Int
-    ) {
-        fun contains(px: Int, py: Int): Boolean {
-            return px >= x && py >= y && px < x + width && py < y + height
+    /** 悬停 > 选中 > 普通，逐级回退；单频道覆盖优先于全局。全部未配置时返回 null。 */
+    private fun backgroundFor(
+        style: ChatTabsStyle,
+        override: ChatTabOverride?,
+        selected: Boolean,
+        hovered: Boolean
+    ): Background? {
+        if (hovered) {
+            Background.of(override?.hoverBackground ?: style.hoverBackground)?.let { return it }
         }
+        if (selected) {
+            Background.of(override?.selectedBackground ?: style.selectedBackground)?.let { return it }
+        }
+        return Background.of(override?.background ?: style.background)
+    }
+
+    private fun textColorFor(style: ChatTabsStyle, override: ChatTabOverride?, selected: Boolean): Int {
+        val normal = override?.textColor ?: style.textColor
+        if (!selected) return normal
+        return override?.selectedTextColor ?: style.selectedTextColor ?: normal
+    }
+
+    private fun drawOutline(graphics: GuiGraphics, rect: ChatTabRect, color: Int) {
+        val right = rect.x + rect.width
+        val bottom = rect.y + rect.height
+        graphics.fill(rect.x, rect.y, right, rect.y + 1, color)
+        graphics.fill(rect.x, bottom - 1, right, bottom, color)
+        graphics.fill(rect.x, rect.y + 1, rect.x + 1, bottom - 1, color)
+        graphics.fill(right - 1, rect.y + 1, right, bottom - 1, color)
     }
 }

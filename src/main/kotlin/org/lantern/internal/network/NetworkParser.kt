@@ -5,6 +5,8 @@ import net.minecraft.client.Minecraft
 import org.lantern.Lantern
 import org.lantern.internal.chat.ChatChannel
 import org.lantern.internal.chat.ChatChannelHandler
+import org.lantern.internal.chat.ChatStyleCodec
+import org.lantern.internal.chat.ChatStyleHandler
 import org.lantern.internal.handler.EncryptedPackLoader
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.parser.UiParser
@@ -178,6 +180,8 @@ object NetworkParser {
     }
 
     private fun parseChatChannels(obj: JsonObject) {
+        // 先换样式再换频道：setChannels 会按当前宽度重建显示行
+        ChatStyleHandler.update(ChatStyleCodec.parse(obj.get("style")?.takeIf { it.isJsonObject }?.asJsonObject))
         val channelArray = obj.getAsJsonArray("channels") ?: return
         val channels = channelArray.mapNotNull { element ->
             if (!element.isJsonObject) {
@@ -193,9 +197,12 @@ object NetworkParser {
             val filter = channelObj.getAsJsonArray("filter")
                 ?.mapNotNull { filteredId -> filteredId.takeIf { it.isJsonPrimitive }?.asString }
                 ?: emptyList()
+            val style = ChatStyleCodec.parseTabOverride(
+                channelObj.get("style")?.takeIf { it.isJsonObject }?.asJsonObject,
+                id
+            )
 
-
-            ChatChannel(id, displayName, prefixes, filter)
+            ChatChannel(id, displayName, prefixes, filter, style)
         }
         ChatChannelHandler.setChannels(channels)
     }

@@ -3,26 +3,27 @@ package org.lantern.internal.chat
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.ChatScreen
+import org.lantern.uix.renderer.BackgroundPainter
+import org.lantern.uix.style.Background
 
 object ChatChannelNotificationRenderer {
-    private const val MESSAGE = "收到新消息"
-    private const val PADDING_X = 4
-    private const val PADDING_Y = 2
-    private const val X = 0
-    private const val TEXT_COLOR = 0xFFFFFFFF.toInt()
 
     fun render(graphics: GuiGraphics) {
         val client = Minecraft.getInstance()
-        if (!shouldRender(client)) {
+        val style = ChatStyleHandler.style.notification
+        if (!style.enabled || !shouldRender(client)) {
             return
         }
 
-        val width = client.font.width(MESSAGE) + PADDING_X * 2
-        val height = client.font.lineHeight + PADDING_Y * 2
-        val y = graphics.guiHeight() - height
-        val background = client.options.getBackgroundColor(0x80000000.toInt())
-        graphics.fill(X, y, X + width, y + height, background)
-        graphics.drawString(client.font, MESSAGE, X + PADDING_X, y + PADDING_Y, TEXT_COLOR, false)
+        val font = client.font
+        val width = font.width(style.text) + style.paddingX * 2
+        val height = font.lineHeight + style.paddingY * 2
+        val x = style.offsetX
+        val y = graphics.guiHeight() - height + style.offsetY
+        val background = Background.of(style.background)
+            ?: Background.Color(client.options.getBackgroundColor(0x80000000.toInt()))
+        BackgroundPainter.paint(graphics, background, x, y, width, height)
+        graphics.drawString(font, style.text, x + style.paddingX, y + style.paddingY, style.textColor, style.textShadow)
     }
 
     private fun shouldRender(client: Minecraft): Boolean {

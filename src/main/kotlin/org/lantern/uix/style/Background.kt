@@ -34,6 +34,12 @@ sealed interface Background {
             return parsed ?: default
         }
 
+        /** 不经 StyleRule、直接解析一个写法；null、空串或无效值返回 null。 */
+        fun of(raw: String?): Background? {
+            if (raw == null) return null
+            return cache.getOrPut(raw) { Parsed(parse(raw)) }.value
+        }
+
         private fun parse(raw: String): Background? {
             val value = raw.trim()
             if (value.isEmpty()) return null

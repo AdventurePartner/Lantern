@@ -18,6 +18,7 @@
     "hud.GuiHudRenderMixin",
     "hud.GuiVanillaHudMixin",
     "chat.ChatComponentMixin",
+    "chat.ChatComponentStyleMixin",
     "chat.ChatScreenMixin",
     "hud.PlayerTabOverlayMixin",
     "uix.ScreenRenderMixin",

@@ -22,6 +22,7 @@ import org.lantern.animation.AnimationHost
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatChannelTabsRenderer
+import org.lantern.internal.chat.ChatStyleHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.mixin.accessor.ClientInputAccessor
@@ -293,6 +294,7 @@ object NeoForgeClientEvents {
     private fun onLoggingOut(event: ClientPlayerNetworkEvent.LoggingOut) {
         NeoForgePacketNetwork.clear()
         ChatChannelHandler.clear()
+        ChatStyleHandler.clear()
         ResourceHandler.clearSession()
         TextureHandler.reload()
         UiScreenStorage.clear()

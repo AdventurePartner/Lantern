@@ -28,6 +28,7 @@ import net.minecraft.server.packs.PackType
 import net.minecraft.server.packs.resources.ResourceManager
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.chat.ChatChannelHandler
+import org.lantern.internal.chat.ChatStyleHandler
 import org.lantern.internal.handler.CycleHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.handler.TextureHandler
@@ -77,6 +78,7 @@ class LanternFabric : ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             PacketNetwork.clearPendingMainChunks()
             ChatChannelHandler.clear()
+            ChatStyleHandler.clear()
             CostumeHandler.reload()
             BlockRendererHandler.clear()
             BlockRendererHandler.clearPositions()

@@ -18,7 +18,12 @@ object BackgroundPainter {
         default: Background = Background.None
     ) {
         if (width <= 0 || height <= 0) return
-        when (val background = Background.resolve(style, default)) {
+        paint(graphics, Background.resolve(style, default), x, y, width, height)
+    }
+
+    fun paint(graphics: GuiGraphics, background: Background, x: Int, y: Int, width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        when (background) {
             Background.None -> Unit
             is Background.Color -> graphics.fill(x, y, x + width, y + height, background.argb)
             is Background.Image -> ImageRenderer.drawTexture(graphics, background.texture, x, y, width, height)
