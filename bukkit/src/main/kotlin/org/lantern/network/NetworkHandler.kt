@@ -13,6 +13,7 @@ import org.lantern.cache.BlockModelCache
 import org.lantern.cache.CostumeCache
 import org.lantern.cache.ItemIconCache
 import org.lantern.cache.KeyCache
+import org.lantern.config.ChatStyleJson
 import org.lantern.config.Configurations
 import org.lantern.config.UiConfigurations
 import org.lantern.handler.CacheHandler
@@ -121,7 +122,7 @@ object NetworkHandler {
         sendEntityModelsPacket(player, Configurations.models)
         sendKeyboards(player, CacheHandler.keys)
         org.lantern.camera.ShoulderCameraService.pushState(player)
-        sendChatChannels(player, readChatChannels(LanternPlugin.instance.config))
+        sendChatChannels(player, LanternPlugin.instance.config)
         sendItemIcons(player, CacheHandler.itemIcons)
         sendUiScreens(player, UiConfigurations.getScreens())
         sendCostumesPacket(player, CacheHandler.costumes)
@@ -545,7 +546,8 @@ object NetworkHandler {
         val id: String,
         val displayName: String,
         val prefixes: List<String>,
-        val filter: List<String>
+        val filter: List<String>,
+        val style: JsonObject?
     )
 
     private fun readChatChannels(config: FileConfiguration): List<ChatChannelConfig> {
@@ -558,7 +560,7 @@ object NetworkHandler {
                 return@forEach
             }
 
-            val displayName = section["display-name"]?.toString()?.trim().takeUnless { it.isNullOrEmpty() } ?: id
+            val displayName = section["display-name"]?.toString()?.trim().takeUnless { it.isNullOrEmpty() }?.colorify() ?: id
             val prefixes = (section["prefixes"] as? Iterable<*>)
                 ?.asSequence()
                 ?.mapNotNull { it?.toString()?.trim() }
@@ -574,17 +576,16 @@ object NetworkHandler {
                 ?.toList()
                 ?: emptyList()
 
-
-            channels.add(ChatChannelConfig(id, displayName, prefixes, filter))
+            channels.add(ChatChannelConfig(id, displayName, prefixes, filter, ChatStyleJson.channelStyle(section["style"])))
         }
 
         return channels
     }
 
-    private fun sendChatChannels(player: Player, channels: List<ChatChannelConfig>) {
+    private fun sendChatChannels(player: Player, config: FileConfiguration) {
         val bytes = cachedChatChannelsBytes ?: run {
             val array = JsonArray()
-            channels.forEach { channel ->
+            readChatChannels(config).forEach { channel ->
                 val obj = JsonObject()
                 obj.addProperty("id", channel.id)
                 obj.addProperty("display-name", channel.displayName)
@@ -594,11 +595,13 @@ object NetworkHandler {
                 val filter = JsonArray()
                 channel.filter.forEach { filter.add(it) }
                 obj.add("filter", filter)
+                channel.style?.let { obj.add("style", it) }
                 array.add(obj)
             }
 
             val packet = JsonObject()
             packet.add("channels", array)
+            ChatStyleJson.read(config)?.let { packet.add("style", it) }
             serializePacket(14, packet).also { cachedChatChannelsBytes = it }
         }
         sendSerializedPacket(player, bytes)

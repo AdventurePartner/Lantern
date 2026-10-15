@@ -1,6 +1,27 @@
 resource-pack-key: ""
 chat-channels: []
 
+# 聊天样式（可选）。不写就是原版外观；颜色必须加引号，写 #RRGGBB 或 #AARRGGBB。
+# 完整说明见 docs/README.md 的“聊天频道与聊天样式”。
+#chat-style:
+#  window:
+#    width: 320
+#    height: 180
+#    height-unfocused: 90
+#    scale: 1.0
+#    offset-x: 0
+#    offset-y: -20
+#    background: "#202040"
+#    text-color: "#E0E0E0"
+#    input-background: "#80000000"
+#  tabs:
+#    height: 12
+#    selected-background: "#C04A90D9"
+#    text-color: "#FFFFFF"
+#    unread-color: "#FFFF3333"
+#  notification:
+#    text: "&e收到新消息"
+
 # 动画播控的广播半径（格）。只有半径内、同世界的玩家会收到播控指令——
 # 视距外的客户端收到也没有实体可播，纯属浪费带宽。
 # 被播放动画的玩家本人无论距离都会收到。
