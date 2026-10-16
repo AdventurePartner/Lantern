@@ -13,6 +13,7 @@ import net.minecraftforge.event.entity.EntityLeaveLevelEvent
 import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import org.lantern.LanternForge
+import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.storage.HudLayer
 import org.lantern.internal.storage.UiScreenStorage
@@ -54,6 +55,7 @@ object ForgeClientListener {
     fun onEntityLeaveLevel(event: EntityLeaveLevelEvent) {
         if (event.level.isClientSide) {
             EntityStateUtil.cleanupEntityPosition(event.entity.id)
+            CostumeHandler.evictRenderers(event.entity.uuid)
         }
     }
 
@@ -161,6 +163,11 @@ object ForgeClientListener {
         val my = (client.mouseHandler.ypos() / scale).toInt()
 
         val leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
+        // 顶层 HUD 在任何界面打开时都不绘制（HudRenderer.renderTop），点击与悬停也不能穿透过去
+        if (client.screen != null) {
+            wasMouseDown = leftDown
+            return
+        }
         if (leftDown && !wasMouseDown) {
             FocusManager.blur()
             UiScreenStorage.hudRoots(HudLayer.TOP).forEach { root ->

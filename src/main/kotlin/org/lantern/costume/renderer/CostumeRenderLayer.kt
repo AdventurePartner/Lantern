@@ -26,7 +26,7 @@ class CostumeRenderLayer(
         netHeadYaw: Float,
         headPitch: Float
     ) {
-        if (!CostumeHandler.hasAny(player.uuid)) {
+        if (player.isInvisible || !CostumeHandler.hasAny(player.uuid)) {
             return
         }
 

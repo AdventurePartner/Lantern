@@ -52,7 +52,7 @@ class CostumeRenderer(
         bufferSource: MultiBufferSource?,
         partialTick: Float
     ): RenderType {
-        return RenderType.entityTranslucent(texture)
+        return RenderType.entityCutoutNoCull(texture)
     }
 
     override fun preRender(

@@ -128,7 +128,8 @@ object TextureHandler {
                 val frame = reader.read(index)
                 graphics.drawImage(frame, x, y, null)
                 frames.add(toNativeImage(canvas, width, height))
-                delays.add(delay.coerceAtLeast(100))
+                // 与共享版一致：只把 0 延迟（浏览器同样按 100ms 播）补成 100，20~90ms 的快帧保留
+                delays.add(if (delay <= 0) 100 else delay)
 
                 when (disposal) {
                     "restoreToBackgroundColor" -> {
@@ -148,6 +149,7 @@ object TextureHandler {
             reader.dispose()
             stream.close()
         }
+        if (frames.isEmpty()) return null
         return frames.toTypedArray() to delays.toIntArray()
     }
 

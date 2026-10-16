@@ -14,20 +14,16 @@ import net.minecraftforge.common.MinecraftForge
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
-import org.lantern.costume.handler.CostumeHandler
 import org.lantern.costume.renderer.CostumeRenderLayer
-import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatChannelNotificationRenderer
-import org.lantern.internal.chat.ChatStyleHandler
 import org.lantern.internal.handler.CycleHandler
+import org.lantern.internal.handler.LocalPackLoader
 import org.lantern.internal.handler.ResourceHandler
+import org.lantern.internal.handler.SessionCleanup
 import org.lantern.internal.handler.TextureHandler
-import org.lantern.internal.parser.UiParser
 import org.lantern.model.block.LanternBlockEntity
 import org.lantern.model.block.LanternBlockRenderer
 import org.lantern.model.block.TrackedBarrelRenderer
-import org.lantern.model.handler.BlockRendererHandler
-import org.lantern.model.handler.RendererHandler
 import org.lantern.platform.ForgeClientListener
 import org.lantern.platform.ForgePacketNetwork
 import org.lantern.uix.renderer.HudRenderer
@@ -43,6 +39,8 @@ class LanternForge {
         Lantern.logger.info("Lantern Forge 1.20.1 initializing...")
 
         GeckoLib.shadowInit()
+        // 首轮资源重载前预载本地包，启动时 GeckoLib 扫描烘焙即可命中模型文件
+        LocalPackLoader.reload()
 
         val modBus = FMLJavaModLoadingContext.get().modEventBus
         LanternBlockEntity.register(modBus)
@@ -125,15 +123,7 @@ class LanternForge {
 
         fun clearClientCaches() {
             ForgePacketNetwork.clear()
-            ChatChannelHandler.clear()
-            ChatStyleHandler.clear()
-            CostumeHandler.reload()
-            BlockRendererHandler.clear()
-            BlockRendererHandler.clearPositions()
-            BlockRendererHandler.resetDiagnosticFlags()
-            RendererHandler.reload()
-            UiParser.resetAll()
-            org.lantern.worldimage.WorldImageManager.clear()
+            SessionCleanup.onDisconnect()
         }
     }
 }

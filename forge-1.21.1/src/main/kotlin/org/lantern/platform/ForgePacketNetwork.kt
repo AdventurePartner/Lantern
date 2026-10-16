@@ -1,11 +1,11 @@
 package org.lantern.platform
 
 import io.netty.buffer.Unpooled
+import net.minecraft.client.Minecraft
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraftforge.event.network.CustomPayloadEvent
 import net.minecraftforge.network.ChannelBuilder
 import net.minecraftforge.network.EventNetworkChannel
-import net.minecraftforge.network.PacketDistributor
 import org.lantern.core.protocol.LanternProtocol
 import org.lantern.core.protocol.MainPayloadDecoder
 import org.lantern.internal.network.NetworkParser
@@ -48,7 +48,13 @@ object ForgePacketNetwork {
     }
 
     fun sendKeyboardPacket(key: String, press: Boolean, inGui: Boolean) {
-        val data = LanternProtocol.encodeKeyboardC2S(key, press, inGui)
-        CHANNEL.send(FriendlyByteBuf(Unpooled.wrappedBuffer(data)), PacketDistributor.SERVER.noArg())
+        sendMain(LanternProtocol.encodeKeyboardC2S(key, press, inGui))
+    }
+
+    /** 没有连接（标题画面）或远端没注册 lantern:main 时静默丢弃；PacketDistributor.SERVER 不判空会 NPE */
+    private fun sendMain(data: ByteArray) {
+        val connection = Minecraft.getInstance().connection?.connection ?: return
+        if (!CHANNEL.isRemotePresent(connection)) return
+        CHANNEL.send(FriendlyByteBuf(Unpooled.wrappedBuffer(data)), connection)
     }
 }

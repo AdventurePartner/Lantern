@@ -30,6 +30,12 @@ object FabricClientListener {
         }
     }
 
+    fun clearInputState() {
+        pressedKeys.clear()
+        parsedKeys.clear()
+        wasMouseDown = false
+    }
+
     private fun handleMouseInput(client: Minecraft) {
         val window = client.window.window
         val scale = client.window.guiScale
@@ -37,6 +43,11 @@ object FabricClientListener {
         val my = (client.mouseHandler.ypos() / scale).toInt()
 
         val leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
+        // 顶层 HUD 在任何界面打开时都不绘制（HudRenderer.renderTop），点击与悬停也不能穿透过去
+        if (client.screen != null) {
+            wasMouseDown = leftDown
+            return
+        }
         if (leftDown && !wasMouseDown) {
             FocusManager.blur()
             UiScreenStorage.hudRoots(HudLayer.TOP).forEach { root ->

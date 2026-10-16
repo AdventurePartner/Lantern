@@ -30,8 +30,8 @@ public abstract class EntityRenderer1201Mixin {
         if (wrapper == null) {
             return offset;
         }
-        float configuredOffset = wrapper.getNameTagOffsetY();
-        return configuredOffset == 0.0F ? offset : configuredOffset;
+        // 与其他三端一致：offset-y 叠加在原版名牌高度上，而不是替换它
+        return offset + wrapper.getNameTagOffsetY();
     }
 
     @Redirect(

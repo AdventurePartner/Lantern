@@ -58,6 +58,9 @@ object CostumeHandler {
     fun replaceDefinitions(definitions: Map<String, CostumeModelWrapper>) {
         costumeDefinitions.clear()
         costumeDefinitions.putAll(definitions)
+        playerCostumes.values.forEach { slots ->
+            slots.entries.removeIf { (_, costumeId) -> !costumeDefinitions.containsKey(costumeId) }
+        }
         refreshRenderers()
     }
 
@@ -174,9 +177,11 @@ object CostumeHandler {
         }
     }
 
-    /** Remove all cached data for a specific player. Called when entity unloads. */
-    fun removePlayer(playerUUID: UUID) {
-        playerCostumes.remove(playerUUID)
+    /**
+     * 实体离场时淘汰该玩家的渲染器缓存，外观分配保留：服务端只在分配变化时广播，
+     * 玩家走出视距再回来不会重发，删了分配外观就丢了
+     */
+    fun evictRenderers(playerUUID: UUID) {
         playerRenderers.remove(playerUUID)
         playerAnimatables.remove(playerUUID)
     }

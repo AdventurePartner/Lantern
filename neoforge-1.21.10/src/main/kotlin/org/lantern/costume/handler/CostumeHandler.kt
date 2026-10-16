@@ -1,6 +1,7 @@
 package org.lantern.costume.handler
 
 import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.SubmitNodeCollector
 import net.minecraft.client.renderer.state.CameraRenderState
 import net.minecraft.resources.ResourceLocation
@@ -10,6 +11,7 @@ import org.lantern.costume.renderer.CostumeRenderer
 import org.lantern.costume.renderstate.CostumeRenderContext
 import org.lantern.costume.slot.CostumeSlot
 import org.lantern.costume.wrapper.CostumeModelWrapper
+import org.lantern.internal.mixin.accessor.PoseStackAccessor
 import org.lantern.model.GeckoResourceIds
 import software.bernie.geckolib.cache.GeckoLibResources
 import java.util.UUID
@@ -20,12 +22,16 @@ object CostumeHandler {
     private val playerCostumes = ConcurrentHashMap<UUID, ConcurrentHashMap<CostumeSlot, String>>()
     private val renderers = ConcurrentHashMap<String, RendererEntry>()
     private val warnedModels = ConcurrentHashMap.newKeySet<ResourceLocation>()
+    private val validatedCostumes = ConcurrentHashMap.newKeySet<String>()
+    private val brokenCostumes = ConcurrentHashMap.newKeySet<String>()
 
     fun reload() {
         definitions.clear()
         playerCostumes.clear()
         renderers.clear()
         warnedModels.clear()
+        validatedCostumes.clear()
+        brokenCostumes.clear()
     }
 
     fun replaceDefinitions(newDefinitions: Map<String, CostumeModelWrapper>) {
@@ -33,6 +39,8 @@ object CostumeHandler {
         definitions.putAll(newDefinitions)
         renderers.clear()
         warnedModels.clear()
+        validatedCostumes.clear()
+        brokenCostumes.clear()
         playerCostumes.values.forEach { slots ->
             slots.entries.removeIf { (_, costumeId) -> !definitions.containsKey(costumeId) }
         }
@@ -43,6 +51,8 @@ object CostumeHandler {
     fun refreshRenderers() {
         renderers.clear()
         warnedModels.clear()
+        validatedCostumes.clear()
+        brokenCostumes.clear()
     }
 
     fun hasAny(playerUUID: UUID): Boolean = playerCostumes[playerUUID]?.isNotEmpty() == true
@@ -113,8 +123,11 @@ object CostumeHandler {
         }
     }
 
-    fun removePlayer(playerUUID: UUID) {
-        playerCostumes.remove(playerUUID)
+    /**
+     * 实体离场时淘汰该玩家的渲染器缓存，外观分配保留：服务端只在分配变化时广播，
+     * 玩家走出视距再回来不会重发，删了分配外观就丢了
+     */
+    fun evictRenderers(playerUUID: UUID) {
         // hostDriven 渲染器键为 "uuid:costumeId"（含骨骼树深拷贝），随实体离场
         // 一并淘汰防止会话内无上限增长；共享渲染器（key=costumeId）不受影响，
         // 换维度/重回视距时按 submitForPlayer 的 computeIfAbsent 懒重建恢复
@@ -134,14 +147,9 @@ object CostumeHandler {
     ) {
         val assigned = playerCostumes[context.playerId] ?: return
         assigned.values.forEach { costumeId ->
+            if (costumeId in brokenCostumes) return@forEach
             val wrapper = definitions[costumeId] ?: return@forEach
-            val modelId = GeckoResourceIds.model(wrapper.modelLocation)
-            if (!GeckoLibResources.getBakedModels().containsKey(modelId)) {
-                if (warnedModels.add(modelId)) {
-                    Lantern.logger.warn("[Lantern] Costume model not yet cached, deferring render: {}", modelId)
-                }
-                return@forEach
-            }
+            if (!isCostumeReady(costumeId, wrapper)) return@forEach
             // hostDriven 外观按玩家分配渲染器（骨骼树深拷贝隔离，多玩家同款不串台）；
             // 普通装饰外观维持按 costumeId 共享（快照路径的历史行为）
             val rendererKey = if (wrapper.hostDriven) "${context.playerId}:$costumeId" else costumeId
@@ -151,17 +159,55 @@ object CostumeHandler {
                 if (wrapper.hostDriven) renderer.bindPlayer(context.playerId)
                 RendererEntry(animatable, renderer)
             }
-            entry.renderer.submit(
-                poseStack,
-                entry.animatable,
-                context,
-                submitNodes,
-                cameraState,
-                packedLight,
-                partialTick,
-                null
-            )
+            val depth = (poseStack as PoseStackAccessor).`lantern$getLastIndex`()
+            try {
+                entry.renderer.submit(
+                    poseStack,
+                    entry.animatable,
+                    context,
+                    submitNodes,
+                    cameraState,
+                    packedLight,
+                    partialTick,
+                    null
+                )
+            } catch (ex: RuntimeException) {
+                // 一套坏外观不能把整个玩家渲染（连带后面的图层）一起带崩：弹回位姿、停用该外观
+                while ((poseStack as PoseStackAccessor).`lantern$getLastIndex`() > depth) {
+                    poseStack.popPose()
+                }
+                brokenCostumes.add(costumeId)
+                renderers.remove(rendererKey)
+                Lantern.logger.error("[Lantern] Disabled broken costume renderer: {}", costumeId, ex)
+            }
         }
+    }
+
+    /**
+     * 贴图资源缺失时标记为坏外观并只警告一次；模型还没进 GeckoLib 缓存时推迟。
+     * 模型不查资源文件：GeckoLib 5 允许放在 geckolib/models/ 下而 yml 写 geo/，按 yml 路径查会误判
+     */
+    private fun isCostumeReady(costumeId: String, wrapper: CostumeModelWrapper): Boolean {
+        if (costumeId !in validatedCostumes) {
+            val manager = Minecraft.getInstance().resourceManager
+            // hostDriven 外观画的是玩家皮肤，配置里的 texture 不参与渲染
+            if (!wrapper.hostDriven && wrapper.textureUrl == null &&
+                manager.getResource(wrapper.textureLocation).isEmpty
+            ) {
+                brokenCostumes.add(costumeId)
+                Lantern.logger.warn("[Lantern] Costume texture resource missing: {} ({})", wrapper.textureLocation, costumeId)
+                return false
+            }
+            validatedCostumes.add(costumeId)
+        }
+        val modelId = GeckoResourceIds.model(wrapper.modelLocation)
+        if (!GeckoLibResources.getBakedModels().containsKey(modelId)) {
+            if (warnedModels.add(modelId)) {
+                Lantern.logger.warn("[Lantern] Costume model not yet cached, deferring render: {}", modelId)
+            }
+            return false
+        }
+        return true
     }
 
     private data class RendererEntry(

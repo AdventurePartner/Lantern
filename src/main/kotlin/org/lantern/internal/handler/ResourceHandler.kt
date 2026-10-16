@@ -230,6 +230,33 @@ object ResourceHandler {
         clientStorage.keyboards[key] = wrapper
     }
 
+    /** packet 3 是整表下发：服务端删掉的键必须同时从轮询集里消失 */
+    fun clearKeyboards() {
+        keyboards.clear()
+        clientStorage.keyboards.clear()
+    }
+
+    /**
+     * 退出服务器时清掉该会话下发的全部定义，否则旧服的按键、字符图标、物品图标、
+     * 方块与实体模型会带进下一个服务器（F3+T 的 rebuild 还会把它们重新注册回来）。
+     * 本地包/加密包是客户端本地资源，保留：清掉会让重连后 pkt 99 的重载给 GeckoLib 空包
+     */
+    fun clearSession() {
+        EncryptedPackLoader.clearPassword()
+        clearItemIcons()
+        dynamicResourceLinked.values.removeIf { it is ItemIconResourceWrapperImpl }
+        clearBlockModels()
+        characterWrappers.clear()
+        clientStorage.characters.clear()
+        clearKeyboards()
+        clearEntityModels()
+        RendererHandler.reload()
+        BlockRendererHandler.clear()
+        BlockRendererHandler.clearPositions()
+        BlockRendererHandler.resetDiagnosticFlags()
+        CostumeHandler.reload()
+    }
+
     /**
      * 当资源管理器重载资源时执行，用来释放 Lantern 加载的内部资源
      */

@@ -247,9 +247,13 @@ private data class CostumeRendererEntry(
 )
 
 private fun customModelData(stack: ItemStack): Int? {
-    val value = stack.get(DataComponents.CUSTOM_MODEL_DATA)?.getFloat(0) ?: return null
-    val customModelData = value.toInt()
-    return customModelData.takeIf { it.toFloat() == value }
+    val modern = stack.get(DataComponents.CUSTOM_MODEL_DATA)?.getFloat(0)
+    if (modern != null) {
+        val customModelData = modern.toInt()
+        return customModelData.takeIf { it.toFloat() == modern }
+    }
+    // 旧插件把整数写进 custom_data 的 CustomModelData 键，与共享 ItemRendererMixin 同样回退
+    return stack.get(DataComponents.CUSTOM_DATA)?.copyTag()?.getInt("CustomModelData")?.orElse(null)
 }
 
 private fun getBlockWrapper(stack: ItemStack): BlockModelWrapper? {

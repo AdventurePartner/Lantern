@@ -27,17 +27,15 @@ import org.lantern.platform.IdentifierBridge
 import net.minecraft.server.packs.PackType
 import net.minecraft.server.packs.resources.ResourceManager
 import org.lantern.costume.handler.CostumeHandler
-import org.lantern.internal.chat.ChatChannelHandler
-import org.lantern.internal.chat.ChatStyleHandler
 import org.lantern.internal.handler.CycleHandler
+import org.lantern.internal.handler.LocalPackLoader
 import org.lantern.internal.handler.ResourceHandler
+import org.lantern.internal.handler.SessionCleanup
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.listen.FabricClientListener
-import org.lantern.internal.parser.UiParser
 import org.lantern.model.block.LanternBlockEntity
 import org.lantern.model.block.LanternBlockRenderer
 import org.lantern.model.handler.BlockRendererHandler
-import org.lantern.model.handler.RendererHandler
 import org.lantern.internal.network.PacketNetwork
 import org.lantern.model.util.EntityStateUtil
 import org.lantern.uix.renderer.CanvasRenderer
@@ -54,6 +52,8 @@ class LanternFabric : ClientModInitializer {
 
         // GeckoLib 4.7+ 不再需要手动初始化
         Lantern.logger.info("Initialized GeckoLib successfully")
+        // 首轮资源重载前预载本地包，启动时 GeckoLib 扫描烘焙即可命中模型文件
+        LocalPackLoader.reload()
 
         // 注册自定义方块 BlockEntityType + 渲染器
         LanternBlockEntity.register()
@@ -69,23 +69,16 @@ class LanternFabric : ClientModInitializer {
         registerCostumeRenderLayer()
         FabricClientListener.register()
 
-        // 实体卸载时清理位置缓存，防止 EntityStateUtil.lastPositions 内存泄漏
+        // 实体卸载时清理位置缓存与外观渲染器，防止长期游玩内存无上限增长
         ClientEntityEvents.ENTITY_UNLOAD.register { entity, _ ->
             EntityStateUtil.cleanupEntityPosition(entity.id)
+            CostumeHandler.evictRenderers(entity.uuid)
         }
 
-        // 断开连接时清理所有缓存，防止 CostumeHandler/ResourceHandler 内存泄漏
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             PacketNetwork.clearPendingMainChunks()
-            ChatChannelHandler.clear()
-            ChatStyleHandler.clear()
-            CostumeHandler.reload()
-            BlockRendererHandler.clear()
-            BlockRendererHandler.clearPositions()
-            BlockRendererHandler.resetDiagnosticFlags()
-            RendererHandler.reload()
-            UiParser.resetAll()
-            org.lantern.worldimage.WorldImageManager.clear()
+            SessionCleanup.onDisconnect()
+            FabricClientListener.clearInputState()
         }
 
         // 注册 Overlay Screen 鼠标事件

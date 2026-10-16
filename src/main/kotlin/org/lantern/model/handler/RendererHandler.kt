@@ -74,11 +74,12 @@ object RendererHandler {
             geo,
             texture,
             animationLocation,
-            obj.get("scale").asFloat,
-            obj.get("height").asDouble,
-            obj.get("width").asDouble,
-            obj.get("hidden").asBoolean,
-            obj.get("offset-y").asFloat,
+            // 缺字段给默认值：直接 .asFloat 会抛 NPE，一条模型写漏就让整包 packet 2 解析中断
+            obj.get("scale")?.asFloat ?: 1.0f,
+            obj.get("height")?.asDouble ?: 1.0,
+            obj.get("width")?.asDouble ?: 1.0,
+            obj.get("hidden")?.asBoolean ?: false,
+            obj.get("offset-y")?.asFloat ?: 0.0f,
             animationStates,
             textureUrl
         )

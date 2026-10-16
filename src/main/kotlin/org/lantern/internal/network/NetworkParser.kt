@@ -243,6 +243,7 @@ object NetworkParser {
     }
 
     private fun parseKeyboard(obj: JsonObject) {
+        ResourceHandler.clearKeyboards()
         obj.getAsJsonArray("keys").map { it as JsonObject }.forEach {
             val key = it.get("key").asString
             val press = it.get("press")?.asBoolean ?: false

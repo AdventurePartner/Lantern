@@ -167,6 +167,12 @@ object ResourceHandler {
         clientStorage.keyboards[key] = wrapper
     }
 
+    /** packet 3 是整表下发：服务端删掉的键必须同时从轮询集里消失 */
+    fun clearKeyboards() {
+        keyboards.clear()
+        clientStorage.keyboards.clear()
+    }
+
     fun reload() {
         Lantern.logger.info("[Lantern] Reloading dynamic resources")
         rebuild()
@@ -223,9 +229,8 @@ object ResourceHandler {
         itemIcons.clear()
         blockModels.clear()
         characters.clear()
-        keyboards.clear()
+        clearKeyboards()
         clientStorage.characters.clear()
-        clientStorage.keyboards.clear()
         clientStorage.itemIcons.clear()
         clientStorage.blockModels.clear()
         clientStorage.entityModels.clear()

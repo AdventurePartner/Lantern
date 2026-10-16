@@ -3,6 +3,7 @@ package org.lantern.model.util
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.Mob
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import org.lantern.model.enums.EntityAnimationState
 
@@ -12,8 +13,11 @@ import org.lantern.model.enums.EntityAnimationState
  */
 object EntityStateUtil {
 
-    // 用于存储上一 tick 的实体位置
-    private val lastPositions = mutableMapOf<Int, Vec3>()
+    private data class MotionSample(val tick: Int, val pos: Vec3, val moving: Boolean)
+
+    // 按实体 tick 采样：渲染每帧都会调用，按帧比较位置会让同一 tick 内的后几帧读成“没动”，
+    // 帧率高于 20 时 walk/idle 来回闪
+    private val lastPositions = mutableMapOf<Int, MotionSample>()
 
     /**
      * 检测实体当前的动画状态
@@ -30,8 +34,11 @@ object EntityStateUtil {
             return EntityAnimationState.HURT
         }
 
-        // 检查攻击状态（仅对 Mob 类型有效）
+        // 攻击：Mob 看仇恨状态，玩家看挥手（玩家不是 Mob，外观的攻击动画原先永远不触发）
         if (entity is Mob && entity.isAggressive) {
+            return EntityAnimationState.ATTACK
+        }
+        if (entity is Player && entity.swinging) {
             return EntityAnimationState.ATTACK
         }
 
@@ -48,22 +55,19 @@ object EntityStateUtil {
      * 检测实体是否在移动
      */
     fun isEntityMoving(entity: Entity): Boolean {
-        val currentPos = entity.position()
-        val lastPos = lastPositions[entity.id]
-
-        // 更新位置记录
-        lastPositions[entity.id] = currentPos
-
-        // 如果没有上一帧的位置数据，检查实体的移动向量
-        if (lastPos == null) {
-            return entity.deltaMovement.lengthSqr() > 0.001
+        val last = lastPositions[entity.id]
+        if (last != null && last.tick == entity.tickCount) {
+            return last.moving
         }
-
-        // 计算位移距离
-        val distance = currentPos.distanceToSqr(lastPos)
-
-        // 如果位移距离超过阈值，则认为在移动
-        return distance > 0.0001
+        val currentPos = entity.position()
+        val moving = if (last == null) {
+            // 没有上一 tick 的位置时看移动向量
+            entity.deltaMovement.lengthSqr() > 0.001
+        } else {
+            currentPos.distanceToSqr(last.pos) > 0.0001
+        }
+        lastPositions[entity.id] = MotionSample(entity.tickCount, currentPos, moving)
+        return moving
     }
 
     /**

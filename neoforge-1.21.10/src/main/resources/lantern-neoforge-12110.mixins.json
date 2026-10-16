@@ -8,6 +8,7 @@
     "accessor.AbstractContainerScreenAccessor",
     "accessor.ClientInputAccessor",
     "accessor.GuiContextualBarAccessor",
+    "accessor.PoseStackAccessor",
     "accessor.SlotAccessor",
     "block.BarrelBlockMixin",
     "camera.CameraMixin",

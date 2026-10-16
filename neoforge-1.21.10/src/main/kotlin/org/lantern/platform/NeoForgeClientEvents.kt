@@ -275,32 +275,25 @@ object NeoForgeClientEvents {
     private fun onClientTick(event: ClientTickEvent.Post) {
         val client = Minecraft.getInstance()
         TextureHandler.tick()
-        if (client.screen is GuiCanvas) {
-            wasMouseDown = false
-            return
-        }
         // 播控重试：实体或自定义名还没同步的指令按 tick 重试几次再放弃
         org.lantern.model.handler.AnimationControlHandler.tick()
         // 第一人称不渲染自己，播放器就不会被渲染回调驱动——时间轴、到期、槽位释放全部冻结。
         // 这里按 tick 补一次驱动，让本地玩家的状态机在看不见自己时照常走
         AnimationHost.tickLocalPlayer()
+        // 翻滚等动作的位移逐 tick 驱动，与动画同步收尾；服务端开 GUI 时也不能停在半路
+        org.lantern.action.PlayerActionStore.tickDash()
+        if (client.screen is GuiCanvas) {
+            wasMouseDown = false
+            return
+        }
         handleKeyboardInput(client)
         handlePlayerActions(client)
-        // 翻滚等动作的位移逐 tick 驱动，与动画同步收尾
-        org.lantern.action.PlayerActionStore.tickDash()
         handleMouseInput(client)
     }
 
     private fun onLoggingOut(event: ClientPlayerNetworkEvent.LoggingOut) {
         NeoForgePacketNetwork.clear()
-        ChatChannelHandler.clear()
-        ChatStyleHandler.clear()
-        ResourceHandler.clearSession()
-        TextureHandler.reload()
-        UiScreenStorage.clear()
-        PlaceholderStore.clear()
-        LayoutCache.clear()
-        FocusManager.blur()
+        org.lantern.internal.handler.SessionCleanup.onDisconnect()
         pressedKeys.clear()
         actionPressedKeys.clear()
         org.lantern.action.PlayerActionStore.clearDash()
@@ -313,8 +306,6 @@ object NeoForgeClientEvents {
         org.lantern.core.bind.BindStore.clear()
         // 输入锁同理，不跨服残留
         org.lantern.core.input.InputLockStore.clear()
-        // 世界图片的实例与模板随会话作废，不跨服残留
-        org.lantern.worldimage.WorldImageManager.clear()
         parsedKeys.clear()
         wasMouseDown = false
         // 相机演出状态（lock/shake/fov/offset）不跨服残留
@@ -329,7 +320,7 @@ object NeoForgeClientEvents {
             if (event.entity === Minecraft.getInstance().player) {
                 org.lantern.action.PlayerActionStore.clearDash()
             }
-            CostumeHandler.removePlayer(event.entity.uuid)
+            CostumeHandler.evictRenderers(event.entity.uuid)
             // 淘汰 Lantern 实体模型的 per-UUID 状态，防止长期游玩内存无上限增长；
             // 渲染器懒重建，实体换维度重新进入视距时会自动恢复
             RendererHandler.evict(event.entity.uuid)
@@ -372,6 +363,11 @@ object NeoForgeClientEvents {
         val mouseX = (client.mouseHandler.xpos() / scale).toInt()
         val mouseY = (client.mouseHandler.ypos() / scale).toInt()
         val leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
+        // 顶层 HUD 在任何界面打开时都不绘制（HudRenderer.renderTop），点击与悬停也不能穿透过去
+        if (client.screen != null) {
+            wasMouseDown = leftDown
+            return
+        }
         if (leftDown && !wasMouseDown) {
             FocusManager.blur()
             UiScreenStorage.hudRoots(HudLayer.TOP).forEach { root ->

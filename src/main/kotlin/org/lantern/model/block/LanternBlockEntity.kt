@@ -49,18 +49,20 @@ class LanternBlockEntity(pos: BlockPos, state: BlockState) :
     override fun getAnimatableInstanceCache(): AnimatableInstanceCache = cache
 
     companion object {
+        val ID: ResourceLocation get() = IdentifierBridge.of(Lantern.MOD_ID, "custom_block")
+
+        // 懒构造：BlockEntityType 构造时会向注册表申请 intrusive holder，
+        // Forge 冻结注册表后只有 RegisterEvent 期间才允许，提前构造直接抛异常
         @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
-        val TYPE: BlockEntityType<LanternBlockEntity> = BlockEntityType.Builder.of(
-            ::LanternBlockEntity,
-            Blocks.BARREL
-        ).build(null)
+        val TYPE: BlockEntityType<LanternBlockEntity> by lazy {
+            BlockEntityType.Builder.of(
+                ::LanternBlockEntity,
+                Blocks.BARREL
+            ).build(null)
+        }
 
         fun register() {
-            net.minecraft.core.Registry.register(
-                BuiltInRegistries.BLOCK_ENTITY_TYPE,
-                IdentifierBridge.of(Lantern.MOD_ID, "custom_block"),
-                TYPE
-            )
+            net.minecraft.core.Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, ID, TYPE)
         }
     }
 }

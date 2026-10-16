@@ -72,29 +72,11 @@ class CostumeRenderer(
             renderState.addGeckolibData(CostumeRenderData.HOST_POSE, pose)
             renderState.addGeckolibData(CostumeRenderData.HOST_CONTEXT, relatedObject)
             applyPoseToBones(geoModel.animationProcessor, pose, geoModel.initialPose)
-            if (diagTicks-- > 0 && diagTicks % 20 == 0) {
-                val p = geoModel.animationProcessor
-                fun bs(name: String): String {
-                    val b = p.getBone(name) ?: return "$name=null"
-                    return "%s(rot=%.2f,%.2f,%.2f pos=%.1f,%.1f,%.1f)".format(
-                        name, b.rotX, b.rotY, b.rotZ, b.posX, b.posY, b.posZ
-                    )
-                }
-                org.lantern.Lantern.logger.info(
-                    "[Lantern][P1Diag] states[{}] | {} | BONES {} {} {}",
-                    wrapper.animationStates.table.size,
-                    AnimationHost.describe(relatedObject.playerId),
-                    bs("body"), bs("head"), bs("rightLeg")
-                )
-            }
             return
         }
         renderState.addGeckolibData(CostumeRenderData.PLAYER_POSE, relatedObject.pose)
         renderState.addGeckolibData(CostumeRenderData.ANIMATION_STATE, relatedObject.animationState)
     }
-
-    /** 诊断窗口：每 20 帧打一次（前 3600 帧=约 60 秒，覆盖完整操作序列排查） */
-    private var diagTicks = 3600
 
     override fun adjustRenderPose(
         renderState: GeoRenderState,
