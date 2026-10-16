@@ -37,6 +37,14 @@ loom {
         remove(named("client").get())
         create("forge1201Client") { client() }
     }
+    // common-core 与共享源码同在 org.lantern.internal.chat 包下，dev 运行时必须并进同一个 mod 模块，
+    // 否则 common-core 落在 mod 模块看不到的层里（NoClassDefFoundError）。
+    // 只能并进 Loom 自带的 "main" 组：另建一个组会让同一批目录进两个模块
+    mods {
+        named("main") {
+            sourceSet("main", project(":common-core"))
+        }
+    }
 }
 
 val shade by configurations.creating {
@@ -97,12 +105,16 @@ dependencies {
     mappings(loom.officialMojangMappings())
     forge("net.minecraftforge:forge:$minecraftVersion-$forgeVersion")
 
-    implementation(project(":common-core"))
+    // 运行时用 common-core 的 classes 目录而非 jar：只有目录能被 MOD_CLASSES 并进 lantern 模块
+    compileOnly(project(":common-core"))
+    runtimeOnly(commonCoreOutput)
     implementation(kotlin("stdlib"))
 
     modImplementation(geckolibDependency)
     shade(geckolibDependency)
     shade("com.eliotlash.mclib:mclib:20")
+    // 发布 jar 里 mclib 随 GeckoLib 一起 shade；dev 运行时 GeckoLib 是独立 mod，mclib 得单独上类路径
+    forgeRuntimeLibrary("com.eliotlash.mclib:mclib:20")
     implementation("net.lingala.zip4j:zip4j:2.11.5")
     forgeRuntimeLibrary(kotlin("stdlib"))
     forgeRuntimeLibrary("net.lingala.zip4j:zip4j:2.11.5")
@@ -113,6 +125,14 @@ dependencies {
 tasks {
     withType<org.gradle.api.tasks.bundling.AbstractArchiveTask>().configureEach {
         archiveVersion.set("")
+    }
+
+    // software/bernie/geckolib 下的 typealias 只在编译期展开，Kotlin 却仍为每个文件生成空的 *Kt 门面类，
+    // 落在 GeckoLib 自己的包里；dev 运行时 GeckoLib 是独立模块，会报拆分包。门面类运行期无人引用
+    named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlin") {
+        doLast {
+            destinationDirectory.get().asFile.resolve("software/bernie/geckolib").deleteRecursively()
+        }
     }
 
     named<ShadowJar>("shadowJar") {

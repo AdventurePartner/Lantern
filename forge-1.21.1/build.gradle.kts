@@ -35,6 +35,14 @@ loom {
         remove(named("client").get())
         create("forge1211Client") { client() }
     }
+    // common-core 与共享源码同在 org.lantern.internal.chat 包下，dev 运行时必须并进同一个 mod 模块，
+    // 否则 FML 把 common-core 当独立模块加载，报拆分包 ResolutionException。
+    // 只能并进 Loom 自带的 "main" 组：另建一个组会让同一批目录进两个模块
+    mods {
+        named("main") {
+            sourceSet("main", project(":common-core"))
+        }
+    }
 }
 
 sourceSets {
@@ -65,7 +73,9 @@ dependencies {
     mappings(loom.officialMojangMappings())
     forge("net.minecraftforge:forge:$minecraftVersion-$forgeVersion")
 
-    implementation(project(":common-core"))
+    // 运行时用 common-core 的 classes 目录而非 jar：只有目录能被 MOD_CLASSES 并进 lantern 模块
+    compileOnly(project(":common-core"))
+    runtimeOnly(commonCoreOutput)
     implementation(kotlin("stdlib"))
 
     modImplementation("software.bernie.geckolib:geckolib-forge-$minecraftVersion:${rootProject.property("geckolib_version")}")
