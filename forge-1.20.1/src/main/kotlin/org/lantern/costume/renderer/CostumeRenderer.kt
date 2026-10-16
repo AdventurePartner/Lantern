@@ -6,7 +6,9 @@ import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.LivingEntity
 import org.joml.Matrix4f
+import org.lantern.animation.AnimationHost
 import org.lantern.costume.bone.PlayerBoneSnapshot
 import org.lantern.costume.entity.CostumeAnimatable
 import org.lantern.costume.geo.CostumeGeoModel
@@ -15,17 +17,22 @@ import software.bernie.geckolib.cache.`object`.BakedGeoModel
 import software.bernie.geckolib.cache.`object`.GeoBone
 import software.bernie.geckolib.renderer.GeoObjectRenderer
 
+/** 共享 CostumeRenderer 的 1.20.1 版：GeckoLib 4.x 旧签名（颜色拆成 r/g/b/a、render 无 partialTick） */
 class CostumeRenderer(
     private val wrapper: CostumeModelWrapper,
     val animatable: CostumeAnimatable
 ) : GeoObjectRenderer<CostumeAnimatable>(CostumeGeoModel(wrapper)) {
 
+    val costumeModel: CostumeGeoModel = geoModel as CostumeGeoModel
+
     var currentBoneSnapshot: PlayerBoneSnapshot? = null
+
+    private val itemLayer by lazy { CostumeItemLayer(this) }
 
     private val boneSyncMap: Map<String, (GeoBone, PlayerBoneSnapshot) -> Unit> = buildBoneSyncMap()
 
     private fun buildBoneSyncMap(): Map<String, (GeoBone, PlayerBoneSnapshot) -> Unit> {
-        if (!wrapper.boneSyncEnabled) return emptyMap()
+        if (!wrapper.boneSyncEnabled || wrapper.hostDriven) return emptyMap()
         val mapping = wrapper.boneMapping
         return buildMap {
             put(mapping.head) { bone, snap -> bone.rotX = snap.head.rotX; bone.rotY = snap.head.rotY; bone.rotZ = snap.head.rotZ }
@@ -103,6 +110,40 @@ class CostumeRenderer(
         )
     }
 
+    override fun postRender(
+        poseStack: PoseStack,
+        animatable: CostumeAnimatable,
+        model: BakedGeoModel,
+        bufferSource: MultiBufferSource,
+        buffer: VertexConsumer?,
+        isReRender: Boolean,
+        partialTick: Float,
+        packedLight: Int,
+        packedOverlay: Int,
+        red: Float,
+        green: Float,
+        blue: Float,
+        alpha: Float
+    ) {
+        if (wrapper.hostDriven && !isReRender) {
+            (animatable.currentEntity as? LivingEntity)?.let { itemLayer.renderItems(poseStack, it, bufferSource, packedLight) }
+        }
+        super.postRender(
+            poseStack, animatable, model, bufferSource, buffer, isReRender,
+            partialTick, packedLight, packedOverlay, red, green, blue, alpha
+        )
+    }
+
+    fun prepareHostPose(entity: Entity) {
+        animatable.currentEntity = entity
+        costumeModel.getBakedModel(wrapper.modelLocation)
+        AnimationHost.applyPose(
+            costumeModel.animationProcessor,
+            AnimationHost.drivePose(entity, wrapper.animationLocation, wrapper.animationStates),
+            costumeModel.initialPose
+        )
+    }
+
     fun render(
         entity: Entity,
         poseStack: PoseStack,
@@ -112,6 +153,7 @@ class CostumeRenderer(
     ) {
         animatable.currentEntity = entity
         animatable.currentAnimationStates = wrapper.animationStates
+        if (wrapper.hostDriven) prepareHostPose(entity)
         render(poseStack, animatable, bufferSource, null, null, packedLight)
     }
 }

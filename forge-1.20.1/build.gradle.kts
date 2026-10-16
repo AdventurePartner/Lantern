@@ -92,6 +92,8 @@ sourceSets {
             "org/lantern/model/entity/GenericReplacedEntity.kt",
             // GeckoLib 4.x 旧接口（逐轴 setter、mclib molang）的副本顶替
             "org/lantern/model/geo/GenericGeoModel.kt",
+            "org/lantern/model/geo/IsolatedBones.kt",
+            "org/lantern/costume/geo/CostumeGeoModel.kt",
             "org/lantern/animation/GeckoLibMolang.kt",
             "org/lantern/model/renderer/GenericGeoRenderer.kt",
             "org/lantern/model/block/LanternBlockRenderer.kt",

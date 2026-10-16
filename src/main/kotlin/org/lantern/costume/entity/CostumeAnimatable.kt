@@ -14,7 +14,10 @@ import java.util.concurrent.ConcurrentHashMap
 import software.bernie.geckolib.util.GeckoLibUtil
 import software.bernie.geckolib.util.RenderUtil
 
-class CostumeAnimatable : GeoAnimatable {
+/**
+ * @param hostDriven 玩家整替外观：骨骼由 Lantern 动画内核写入，不注册 GeckoLib 控制器
+ */
+class CostumeAnimatable(private val hostDriven: Boolean = false) : GeoAnimatable {
     private val cache = GeckoLibUtil.createInstanceCache(this)
 
     private val loopCache = ConcurrentHashMap<String, RawAnimation>()
@@ -30,6 +33,7 @@ class CostumeAnimatable : GeoAnimatable {
     var currentAnimationStates: AnimationStateMapping? = null
 
     override fun registerControllers(controllers: AnimatableManager.ControllerRegistrar) {
+        if (hostDriven) return
         controllers.add(AnimationController(this, "costume_movement", 5) { state ->
             val animStates = currentAnimationStates ?: return@AnimationController PlayState.CONTINUE
             val entity = currentEntity ?: return@AnimationController PlayState.CONTINUE

@@ -6,7 +6,9 @@ import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.LivingEntity
 import org.joml.Matrix4f
+import org.lantern.animation.AnimationHost
 import org.lantern.costume.bone.PlayerBoneSnapshot
 import org.lantern.costume.entity.CostumeAnimatable
 import org.lantern.costume.geo.CostumeGeoModel
@@ -20,12 +22,17 @@ class CostumeRenderer(
     val animatable: CostumeAnimatable
 ) : GeoObjectRenderer<CostumeAnimatable>(CostumeGeoModel(wrapper)) {
 
+    val costumeModel: CostumeGeoModel = geoModel as CostumeGeoModel
+
     var currentBoneSnapshot: PlayerBoneSnapshot? = null
+
+    /** hostDriven 外观的手持物挂到模型的 rightItem / leftItem 骨上 */
+    private val itemLayer by lazy { CostumeItemLayer(this) }
 
     private val boneSyncMap: Map<String, (GeoBone, PlayerBoneSnapshot) -> Unit> = buildBoneSyncMap()
 
     private fun buildBoneSyncMap(): Map<String, (GeoBone, PlayerBoneSnapshot) -> Unit> {
-        if (!wrapper.boneSyncEnabled) return emptyMap()
+        if (!wrapper.boneSyncEnabled || wrapper.hostDriven) return emptyMap()
         val mapping = wrapper.boneMapping
         return buildMap {
             put(mapping.head) { bone, snap -> bone.rotX = snap.head.rotX; bone.rotY = snap.head.rotY; bone.rotZ = snap.head.rotZ }
@@ -95,6 +102,40 @@ class CostumeRenderer(
         super.renderRecursively(poseStack, animatable, bone, renderType, bufferSource, buffer, isReRender, partialTick, packedLight, packedOverlay, colour)
     }
 
+    /** postRender 时 poseStack 处于模型根空间（preRender 的缩放与偏移之后），手持物从这里沿骨链挂上去 */
+    override fun postRender(
+        poseStack: PoseStack,
+        animatable: CostumeAnimatable,
+        model: BakedGeoModel,
+        bufferSource: MultiBufferSource,
+        buffer: VertexConsumer?,
+        isReRender: Boolean,
+        partialTick: Float,
+        packedLight: Int,
+        packedOverlay: Int,
+        colour: Int
+    ) {
+        if (wrapper.hostDriven && !isReRender) {
+            (animatable.currentEntity as? LivingEntity)?.let { itemLayer.renderItems(poseStack, it, bufferSource, packedLight) }
+        }
+        super.postRender(poseStack, animatable, model, bufferSource, buffer, isReRender, partialTick, packedLight, packedOverlay, colour)
+    }
+
+    /**
+     * hostDriven：算出本帧姿势写进本渲染器的克隆骨骼。在玩家渲染一开始就调用
+     * （原版 PlayerModel 部件与披风等附件要读到本帧骨骼），渲染时再调一次是幂等的——
+     * AnimationHost 按帧判重，写骨骼只是覆盖同一组值
+     */
+    fun prepareHostPose(entity: Entity) {
+        animatable.currentEntity = entity
+        costumeModel.getBakedModel(wrapper.modelLocation)
+        AnimationHost.applyPose(
+            costumeModel.animationProcessor,
+            AnimationHost.drivePose(entity, wrapper.animationLocation, wrapper.animationStates),
+            costumeModel.initialPose
+        )
+    }
+
     fun render(
         entity: Entity,
         poseStack: PoseStack,
@@ -104,6 +145,7 @@ class CostumeRenderer(
     ) {
         animatable.currentEntity = entity
         animatable.currentAnimationStates = wrapper.animationStates
+        if (wrapper.hostDriven) prepareHostPose(entity)
         render(poseStack, animatable, bufferSource, null, null, packedLight, partialTick)
     }
 }

@@ -71,6 +71,7 @@ sourceSets {
             "org/lantern/model/handler/**",
             "org/lantern/model/renderer/**",
             "org/lantern/model/util/**",
+            "org/lantern/costume/attach/**",
             "org/lantern/costume/bone/PlayerBoneSnapshot.kt",
             "org/lantern/costume/entity/**",
             "org/lantern/costume/geo/**",

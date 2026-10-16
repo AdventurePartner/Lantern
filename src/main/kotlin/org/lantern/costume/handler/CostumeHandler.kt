@@ -12,7 +12,9 @@ import org.lantern.costume.renderer.CostumeItemRenderer
 import org.lantern.costume.renderer.CostumeRenderer
 import org.lantern.costume.slot.CostumeSlot
 import org.lantern.costume.wrapper.CostumeModelWrapper
+import org.lantern.core.anim.control.AnimationControlStore
 import org.lantern.internal.mixin.accessor.PoseStackAccessor
+import software.bernie.geckolib.animation.AnimationProcessor
 import software.bernie.geckolib.cache.GeckoLibCache
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -95,12 +97,51 @@ object CostumeHandler {
         return if (costumeDefinitions[costumeId]?.hostDriven == true) costumeId else null
     }
 
+    /** hostDriven 整替外观的骨骼处理器（本帧姿势已由 prepareHost 写入）；渲染器还没建出来时为 null */
+    @JvmStatic
+    fun hostBones(playerUUID: UUID): AnimationProcessor<*>? {
+        if (hostFullBodyId(playerUUID) == null) return null
+        return playerRenderers[playerUUID]?.get(CostumeSlot.FULL_BODY)?.costumeModel?.animationProcessor
+    }
+
+    /**
+     * 玩家渲染入口调用：hostDriven 整替外观可用时算好本帧姿势并返回骨骼处理器。
+     * 原版 PlayerModel 部件与披风等附属层都在 CostumeRenderLayer 之前渲染，姿势必须先于它们就绪。
+     * 外观缺资源或还没进 GeckoLib 缓存时返回 null，调用方照原版画身体，玩家不会凭空消失
+     */
+    @JvmStatic
+    fun prepareHost(entity: Entity): AnimationProcessor<*>? {
+        val costumeId = hostFullBodyId(entity.uuid) ?: return null
+        if (brokenCostumes.contains(costumeId)) return null
+        val wrapper = costumeDefinitions[costumeId] ?: return null
+        if (!isCostumeReady(costumeId, wrapper)) return null
+        val renderers = playerRenderers.computeIfAbsent(entity.uuid) { ConcurrentHashMap() }
+        val animatables = playerAnimatables.computeIfAbsent(entity.uuid) { ConcurrentHashMap() }
+        val animatable = animatables.computeIfAbsent(CostumeSlot.FULL_BODY) { CostumeAnimatable(true) }
+        val renderer = renderers.computeIfAbsent(CostumeSlot.FULL_BODY) { CostumeRenderer(wrapper, animatable) }
+        return try {
+            renderer.prepareHostPose(entity)
+            renderer.costumeModel.animationProcessor
+        } catch (ex: RuntimeException) {
+            brokenCostumes.add(costumeId)
+            renderers.remove(CostumeSlot.FULL_BODY)
+            animatables.remove(CostumeSlot.FULL_BODY)
+            Lantern.logger.error("[Lantern] Disabled broken costume renderer: {}", costumeId, ex)
+            null
+        }
+    }
+
     fun assignCostume(playerUUID: UUID, costumeId: String) {
         val wrapper = costumeDefinitions[costumeId] ?: return
         val slot = wrapper.slot
-        playerCostumes.computeIfAbsent(playerUUID) { ConcurrentHashMap() }[slot] = costumeId
+        val previous = playerCostumes.computeIfAbsent(playerUUID) { ConcurrentHashMap() }.put(slot, costumeId)
         playerRenderers[playerUUID]?.remove(slot)
         playerAnimatables[playerUUID]?.remove(slot)
+        // 换整替外观 = 换动画库，旧库下发的强制播放在新库里查不到剪辑，留着只会在换回去时凭空续播。
+        // 同 id 重复下发（登录全量同步）不清
+        if (slot == CostumeSlot.FULL_BODY && previous != null && previous != costumeId) {
+            AnimationControlStore.stop(playerUUID, null)
+        }
     }
 
     fun removeCostume(playerUUID: UUID, slot: CostumeSlot? = null) {
@@ -141,7 +182,7 @@ object CostumeHandler {
                 return@forEach
             }
 
-            val animatable = animatables.computeIfAbsent(slot) { CostumeAnimatable() }
+            val animatable = animatables.computeIfAbsent(slot) { CostumeAnimatable(wrapper.hostDriven) }
             val renderer = renderers.computeIfAbsent(slot) { CostumeRenderer(wrapper, animatable) }
             renderer.currentBoneSnapshot = boneSnapshot
             val depth = PoseStackDepth.capture(poseStack)
@@ -165,7 +206,8 @@ object CostumeHandler {
                 Lantern.logger.warn("[Lantern] Costume model resource missing: {} ({})", wrapper.modelLocation, costumeId)
                 return false
             }
-            if (wrapper.textureUrl == null && manager.getResource(wrapper.textureLocation).isEmpty) {
+            // hostDriven 外观画的是玩家自己的皮肤，配置里的贴图路径不参与渲染
+            if (!wrapper.hostDriven && wrapper.textureUrl == null && manager.getResource(wrapper.textureLocation).isEmpty) {
                 brokenCostumes.add(costumeId)
                 Lantern.logger.warn("[Lantern] Costume texture resource missing: {} ({})", wrapper.textureLocation, costumeId)
                 return false
