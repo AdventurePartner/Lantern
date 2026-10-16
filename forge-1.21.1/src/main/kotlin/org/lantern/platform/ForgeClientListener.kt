@@ -9,8 +9,8 @@ import net.minecraftforge.event.entity.EntityLeaveLevelEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import org.lantern.LanternForge
 import org.lantern.camera.control.CameraRoll
-import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.handler.ResourceHandler
+import org.lantern.internal.handler.SessionCleanup
 import org.lantern.internal.storage.HudLayer
 import org.lantern.internal.storage.UiScreenStorage
 import org.lantern.model.util.EntityStateUtil
@@ -34,6 +34,7 @@ object ForgeClientListener {
         val client = Minecraft.getInstance()
         LanternForge.initializeContext(client)
         org.lantern.internal.handler.TextureHandler.tick()
+        org.lantern.feature.FeatureHooks.onClientTick(client)
 
         if (client.screen is GuiCanvas) {
             wasMouseDown = false
@@ -55,13 +56,14 @@ object ForgeClientListener {
     fun onEntityLeaveLevel(event: EntityLeaveLevelEvent) {
         if (event.level.isClientSide) {
             EntityStateUtil.cleanupEntityPosition(event.entity.id)
-            CostumeHandler.evictRenderers(event.entity.uuid)
+            SessionCleanup.onEntityLeave(event.entity)
         }
     }
 
     @SubscribeEvent
     fun onDisconnect(event: ClientPlayerNetworkEvent.LoggingOut) {
         LanternForge.clearClientCaches()
+        org.lantern.feature.FeatureHooks.onDisconnect()
         clearInputState()
     }
 

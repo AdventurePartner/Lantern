@@ -11,10 +11,16 @@ import org.lantern.internal.handler.CycleHandler
 import org.lantern.model.renderer.GenericGeoRenderer
 import org.lantern.core.anim.statemap.AnimationStateMapping
 import org.lantern.model.wrapper.CustomModelWrapper
+import org.lantern.animation.AnimationHost
+import org.lantern.animation.AnimationRepository
+import org.lantern.core.anim.control.AnimationControlStore
+import java.util.UUID
 
 object RendererHandler {
     private val customModelWrappers = mutableMapOf<String, CustomModelWrapper>()
-    private val renderers = mutableMapOf<EntityType<*>, MutableMap<String, GenericGeoRenderer<*>>>()
+
+    /** 实体类型 -> (实体 UUID -> 渲染器)：每个实体一份克隆骨骼树，同名多实体的姿势互不覆盖 */
+    private val renderers = mutableMapOf<EntityType<*>, MutableMap<UUID, GenericGeoRenderer<*>>>()
     private val formatCodeRegex = Regex("\u00A7.")
     private val unmatchedLogged = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     var version: Int = 0
@@ -23,6 +29,10 @@ object RendererHandler {
     fun reload() {
         customModelWrappers.clear()
         renderers.clear()
+        AnimationControlStore.reset()
+        AnimationControlHandler.resetDiagnostics()
+        AnimationRepository.reset()
+        AnimationHost.reset()
         version++
     }
 
@@ -85,10 +95,9 @@ object RendererHandler {
         )
         val normalizedName = normalizeName(name)
 
-        // 清除对应的渲染器缓存，确保下次 getRenderer() 时创建新的渲染器实例
-        // 需要清除所有标准化名称匹配的缓存，因为缓存键可能是带颜色代码的名称（如 "§aTEST"）
-        renderers.values.forEach { nameMap ->
-            nameMap.entries.removeIf { normalizeName(it.key) == normalizedName }
+        // 清除用旧定义建出来的渲染器，下次 getRenderer() 按新定义重建
+        renderers.values.forEach { byUuid ->
+            byUuid.values.removeIf { normalizeName(it.rendererKey) == normalizedName }
         }
 
         customModelWrappers[name] = wrapper
@@ -99,7 +108,7 @@ object RendererHandler {
         version++
     }
 
-    fun getRenderer(entityType: EntityType<*>, customName: String): GenericGeoRenderer<*>? {
+    fun getRenderer(entityType: EntityType<*>, customName: String, uuid: UUID): GenericGeoRenderer<*>? {
         if (CycleHandler.context == null) return null
         val wrapper = getCustomModelWrapper(customName) ?: run {
             // 名字未匹配时原版渲染器无声接管，是模型不渲染且无日志的主要静默分支，DEBUG 级留痕
@@ -108,8 +117,16 @@ object RendererHandler {
             }
             return null
         }
-        val renderers = renderers.computeIfAbsent(entityType) { mutableMapOf() }
-        return renderers.computeIfAbsent(customName) { GenericGeoRenderer(entityType, customName, wrapper) }
+        val byUuid = renderers.computeIfAbsent(entityType) { mutableMapOf() }
+        val cached = byUuid[uuid]
+        // 实体改名换了模型：旧渲染器的骨骼树属于旧模型，必须重建
+        if (cached != null && cached.wrapper === wrapper) return cached
+        return GenericGeoRenderer(entityType, normalizeName(customName), wrapper).also { byUuid[uuid] = it }
+    }
+
+    /** 实体离开世界时淘汰其渲染器，释放克隆骨骼树；重新进入视距时由 getRenderer 懒重建 */
+    fun evict(uuid: UUID) {
+        renderers.values.forEach { it.remove(uuid) }
     }
 
     fun getCustomModelWrapper(customName: String): CustomModelWrapper? {

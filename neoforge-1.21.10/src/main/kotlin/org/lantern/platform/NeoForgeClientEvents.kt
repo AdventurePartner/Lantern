@@ -296,32 +296,13 @@ object NeoForgeClientEvents {
         org.lantern.internal.handler.SessionCleanup.onDisconnect()
         pressedKeys.clear()
         actionPressedKeys.clear()
-        org.lantern.action.PlayerActionStore.clearDash()
-        // 动作定义随会话作废：留着的话在新服首包到达前，旧服的翻滚键和连招还在生效，
-        // server-checked 条目还会朝新服发请求
-        org.lantern.action.PlayerActionStore.clear()
-        org.lantern.model.handler.AnimationControlHandler.clearPending()
-        org.lantern.core.anim.molang.MolangVariableStore.clear()
-        // 绑定是会话内状态，换服必须归零，否则新服的实体会带着旧绑定渲染
-        org.lantern.core.bind.BindStore.clear()
         parsedKeys.clear()
         wasMouseDown = false
     }
 
     private fun onEntityLeaveLevel(event: EntityLeaveLevelEvent) {
         if (event.level.isClientSide) {
-            // 本地玩家离场（换维度/重生）：进行中的翻滚位移不能带到新实体上继续推
-            if (event.entity === Minecraft.getInstance().player) {
-                org.lantern.action.PlayerActionStore.clearDash()
-            }
-            CostumeHandler.evictRenderers(event.entity.uuid)
-            // 淘汰 Lantern 实体模型的 per-UUID 状态，防止长期游玩内存无上限增长；
-            // 渲染器懒重建，实体换维度重新进入视距时会自动恢复
-            RendererHandler.evict(event.entity.uuid)
-            AnimationHost.remove(event.entity.uuid)
-            org.lantern.core.bind.BindStore.remove(event.entity.uuid)
-            AnimationControlStore.stop(event.entity.uuid, null)
-            org.lantern.core.anim.molang.MolangVariableStore.remove(event.entity.uuid)
+            org.lantern.internal.handler.SessionCleanup.onEntityLeave(event.entity)
         }
     }
 

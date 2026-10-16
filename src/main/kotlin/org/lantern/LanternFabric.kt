@@ -26,7 +26,6 @@ import net.minecraft.resources.ResourceLocation
 import org.lantern.platform.IdentifierBridge
 import net.minecraft.server.packs.PackType
 import net.minecraft.server.packs.resources.ResourceManager
-import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.handler.CycleHandler
 import org.lantern.internal.handler.LocalPackLoader
 import org.lantern.internal.handler.ResourceHandler
@@ -72,12 +71,13 @@ class LanternFabric : ClientModInitializer {
         // 实体卸载时清理位置缓存与外观渲染器，防止长期游玩内存无上限增长
         ClientEntityEvents.ENTITY_UNLOAD.register { entity, _ ->
             EntityStateUtil.cleanupEntityPosition(entity.id)
-            CostumeHandler.evictRenderers(entity.uuid)
+            SessionCleanup.onEntityLeave(entity)
         }
 
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             PacketNetwork.clearPendingMainChunks()
             SessionCleanup.onDisconnect()
+            org.lantern.feature.FeatureHooks.onDisconnect()
             FabricClientListener.clearInputState()
         }
 
@@ -90,7 +90,7 @@ class LanternFabric : ClientModInitializer {
 
         // 注册网络包
         PacketNetwork.registerPackets()
-        org.lantern.feature.FeatureHooks.register()
+        org.lantern.feature.FeatureHooks.register(PacketNetwork::sendAnimationEvent)
         Lantern.logger.info("Registered communication data packets")
 
         // 注册自定义物品模型插件（纯代码烘焙，不需要 JSON 文件）

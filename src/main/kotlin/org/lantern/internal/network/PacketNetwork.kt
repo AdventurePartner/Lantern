@@ -55,4 +55,13 @@ object PacketNetwork {
             ClientPlayNetworking.send(KeyboardPacket(key, press, inGui))
         }
     }
+
+    /** C2S 动画生命周期事件上报（type 3），由 NetworkParser.animationEventSender 调用 */
+    fun sendAnimationEvent(uuid: java.util.UUID, animation: String, event: String) {
+        if (ClientPlayNetworking.canSend(LanternMainPacket.TYPE)) {
+            ClientPlayNetworking.send(
+                LanternMainPacket(LanternProtocol.encodeAnimationEventC2S(uuid.toString(), animation, event))
+            )
+        }
+    }
 }

@@ -20,6 +20,7 @@ object FabricClientListener {
     fun register() {
         // Poll keyboard and mouse each tick (only when no screen is open).
         ClientTickEvents.END_CLIENT_TICK.register tick@{ client ->
+            org.lantern.feature.FeatureHooks.onClientTick(client)
             if (client.screen is GuiCanvas) {
                 wasMouseDown = false
                 return@tick

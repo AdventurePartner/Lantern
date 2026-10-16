@@ -77,6 +77,24 @@ object CostumeHandler {
 
     fun hasAny(playerUUID: UUID): Boolean = playerCostumes[playerUUID]?.isNotEmpty() == true
 
+    /** 该玩家是否套着 hostDriven 的 full_body 整替外观（原版身体此时不再绘制） */
+    @JvmStatic
+    fun hasHostDrivenFullBody(playerUUID: UUID): Boolean = hostFullBodyId(playerUUID) != null
+
+    /** 该玩家当前生效的 hostDriven 整替外观 id；连招按外观限定时用它选组 */
+    @JvmStatic
+    fun hostCostumeId(playerUUID: UUID): String? = hostFullBodyId(playerUUID)
+
+    /** hostDriven 整替外观定义：动画库与状态表从这里取，盔甲/附件也要它的 scale/offset */
+    @JvmStatic
+    fun hostWrapper(playerUUID: UUID): CostumeModelWrapper? =
+        hostFullBodyId(playerUUID)?.let(costumeDefinitions::get)
+
+    private fun hostFullBodyId(playerUUID: UUID): String? {
+        val costumeId = playerCostumes[playerUUID]?.get(CostumeSlot.FULL_BODY) ?: return null
+        return if (costumeDefinitions[costumeId]?.hostDriven == true) costumeId else null
+    }
+
     fun assignCostume(playerUUID: UUID, costumeId: String) {
         val wrapper = costumeDefinitions[costumeId] ?: return
         val slot = wrapper.slot

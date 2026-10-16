@@ -4,3 +4,4 @@ typealias AnimatableManager<T> = software.bernie.geckolib.core.animation.Animata
 typealias AnimationController<T> = software.bernie.geckolib.core.animation.AnimationController<T>
 typealias RawAnimation = software.bernie.geckolib.core.animation.RawAnimation
 typealias PlayState = software.bernie.geckolib.core.`object`.PlayState
+typealias AnimationProcessor<T> = software.bernie.geckolib.core.animation.AnimationProcessor<T>

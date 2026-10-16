@@ -54,7 +54,15 @@ object ForgePacketNetwork {
     }
 
     fun sendKeyboardPacket(key: String, press: Boolean, inGui: Boolean) {
-        val data = LanternProtocol.encodeKeyboardC2S(key, press, inGui)
+        sendMain(LanternProtocol.encodeKeyboardC2S(key, press, inGui))
+    }
+
+    /** C2S 动画生命周期事件上报（type 3），由 NetworkParser.animationEventSender 调用 */
+    fun sendAnimationEvent(uuid: java.util.UUID, animation: String, event: String) {
+        sendMain(LanternProtocol.encodeAnimationEventC2S(uuid.toString(), animation, event))
+    }
+
+    private fun sendMain(data: ByteArray) {
         val packet = ServerboundCustomPayloadPacket(
             IdentifierBridge.of("lantern", "main"),
             FriendlyByteBuf(Unpooled.wrappedBuffer(data))

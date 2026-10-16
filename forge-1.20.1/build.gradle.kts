@@ -90,6 +90,9 @@ sourceSets {
             "org/lantern/costume/entity/CostumeAnimatable.kt",
             "org/lantern/model/block/LanternBlockEntity.kt",
             "org/lantern/model/entity/GenericReplacedEntity.kt",
+            // GeckoLib 4.x 旧接口（逐轴 setter、mclib molang）的副本顶替
+            "org/lantern/model/geo/GenericGeoModel.kt",
+            "org/lantern/animation/GeckoLibMolang.kt",
             "org/lantern/model/renderer/GenericGeoRenderer.kt",
             "org/lantern/model/block/LanternBlockRenderer.kt",
             "org/lantern/costume/renderer/CostumeRenderer.kt",
@@ -117,7 +120,9 @@ dependencies {
     modImplementation(geckolibDependency)
     shade(geckolibDependency)
     shade("com.eliotlash.mclib:mclib:20")
-    // 发布 jar 里 mclib 随 GeckoLib 一起 shade；dev 运行时 GeckoLib 是独立 mod，mclib 得单独上类路径
+    // 发布 jar 里 mclib 随 GeckoLib 一起 shade；dev 运行时 GeckoLib 是独立 mod，mclib 得单独上类路径。
+    // GeckoLibMolang 直接用到 MolangParser / LazyVariable，编译期也要看到它们的 mclib 父类
+    compileOnly("com.eliotlash.mclib:mclib:20")
     forgeRuntimeLibrary("com.eliotlash.mclib:mclib:20")
     implementation("net.lingala.zip4j:zip4j:2.11.5")
     forgeRuntimeLibrary(kotlin("stdlib"))

@@ -19,7 +19,7 @@ public abstract class EntityRenderDispatcherMixin {
             return;
         }
         String customName = entity.getCustomName().getString();
-        GenericGeoRenderer<?> renderer = RendererHandler.INSTANCE.getRenderer(entity.getType(), customName);
+        GenericGeoRenderer<?> renderer = RendererHandler.INSTANCE.getRenderer(entity.getType(), customName, entity.getUUID());
         if (renderer == null) {
             return;
         }
