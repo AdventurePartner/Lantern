@@ -304,14 +304,8 @@ object NeoForgeClientEvents {
         org.lantern.core.anim.molang.MolangVariableStore.clear()
         // 绑定是会话内状态，换服必须归零，否则新服的实体会带着旧绑定渲染
         org.lantern.core.bind.BindStore.clear()
-        // 输入锁同理，不跨服残留
-        org.lantern.core.input.InputLockStore.clear()
         parsedKeys.clear()
         wasMouseDown = false
-        // 相机演出状态（lock/shake/fov/offset）不跨服残留
-        org.lantern.core.camera.CameraControl.hardReset()
-        // 越肩偏移是服务端会话态下发，同样归零
-        org.lantern.core.camera.ShoulderCameraState.clear()
     }
 
     private fun onEntityLeaveLevel(event: EntityLeaveLevelEvent) {

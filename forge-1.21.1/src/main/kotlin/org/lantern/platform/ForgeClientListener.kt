@@ -3,10 +3,12 @@ package org.lantern.platform
 import net.minecraft.client.Minecraft
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent
 import net.minecraftforge.client.event.ScreenEvent
+import net.minecraftforge.client.event.ViewportEvent
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import org.lantern.LanternForge
+import org.lantern.camera.control.CameraRoll
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.storage.HudLayer
@@ -40,6 +42,13 @@ object ForgeClientListener {
 
         handleKeyboardInput(client)
         handleMouseInput(client)
+    }
+
+    // Forge 在 Camera.setup 之后按本事件的 yaw/pitch/roll 重写相机旋转，演出翻滚只能从这里补
+    @SubscribeEvent
+    fun onComputeCameraAngles(event: ViewportEvent.ComputeCameraAngles) {
+        val roll = CameraRoll.current
+        if (roll != 0f) event.roll = event.roll + roll
     }
 
     @SubscribeEvent

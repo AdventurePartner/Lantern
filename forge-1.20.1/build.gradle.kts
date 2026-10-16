@@ -82,6 +82,10 @@ sourceSets {
             "org/lantern/internal/mixin/accessor/ChatComponentAccessor.java",
             "org/lantern/internal/mixin/chat/ChatComponentMixin.java",
             "org/lantern/internal/mixin/uix/ContainerBackgroundRenderMixin.java",
+            // move/getMaxZoom 在 1.20.1 收 double，由 Camera1201Mixin 顶替
+            "org/lantern/internal/mixin/camera/CameraMixin.java",
+            // turnPlayer 在 1.20.1 无参且自己清零累计位移，由 MouseHandler1201Mixin 顶替
+            "org/lantern/internal/mixin/input/MouseHandlerMixin.java",
             "org/lantern/internal/pack/LanternVirtualPackResources.java",
             "org/lantern/costume/entity/CostumeAnimatable.kt",
             "org/lantern/model/block/LanternBlockEntity.kt",

@@ -6,6 +6,7 @@ import net.minecraftforge.client.event.ClientPlayerNetworkEvent
 import net.minecraftforge.client.event.RenderGuiEvent
 import net.minecraftforge.client.event.RenderGuiOverlayEvent
 import net.minecraftforge.client.event.ScreenEvent
+import net.minecraftforge.client.event.ViewportEvent
 import net.minecraftforge.client.gui.overlay.ForgeGui
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay
 import net.minecraftforge.event.TickEvent
@@ -13,6 +14,7 @@ import net.minecraftforge.event.entity.EntityLeaveLevelEvent
 import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import org.lantern.LanternForge
+import org.lantern.camera.control.CameraRoll
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.internal.storage.HudLayer
@@ -49,6 +51,13 @@ object ForgeClientListener {
 
         handleKeyboardInput(client)
         handleMouseInput(client)
+    }
+
+    // 1.20.1 的视图由本事件的 yaw/pitch/roll 经 PoseStack 拼出，演出翻滚只能从这里补
+    @SubscribeEvent
+    fun onComputeCameraAngles(event: ViewportEvent.ComputeCameraAngles) {
+        val roll = CameraRoll.current
+        if (roll != 0f) event.roll = event.roll + roll
     }
 
     @SubscribeEvent

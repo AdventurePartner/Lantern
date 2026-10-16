@@ -90,6 +90,7 @@ class LanternFabric : ClientModInitializer {
 
         // 注册网络包
         PacketNetwork.registerPackets()
+        org.lantern.feature.FeatureHooks.register()
         Lantern.logger.info("Registered communication data packets")
 
         // 注册自定义物品模型插件（纯代码烘焙，不需要 JSON 文件）

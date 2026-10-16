@@ -52,6 +52,8 @@ sourceSets {
         )
         java.exclude(
             "org/lantern/LanternFabric.kt",
+            "org/lantern/camera/**",
+            "org/lantern/feature/**",
             "org/lantern/internal/atlas/**",
             "org/lantern/internal/listen/**",
             "org/lantern/internal/network/PacketNetwork.kt",

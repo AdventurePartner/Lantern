@@ -48,6 +48,7 @@ class LanternForge {
         modBus.addListener(Consumer<RegisterClientReloadListenersEvent> { event -> registerReloadListeners(event) })
 
         ForgePacketNetwork.registerPackets()
+        org.lantern.feature.FeatureHooks.register()
         MinecraftForge.EVENT_BUS.register(ForgeClientListener)
         MinecraftForge.EVENT_BUS.register(org.lantern.platform.WorldImageForgeEvents)
 

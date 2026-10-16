@@ -51,6 +51,7 @@ class LanternForge {
         modBus.addListener(Consumer<RegisterGuiOverlaysEvent> { event -> registerGuiOverlays(event) })
 
         ForgePacketNetwork.registerPackets()
+        org.lantern.feature.FeatureHooks.register()
         MinecraftForge.EVENT_BUS.register(ForgeClientListener)
         MinecraftForge.EVENT_BUS.register(org.lantern.platform.WorldImageForgeEvents)
 

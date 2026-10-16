@@ -1,5 +1,8 @@
 package org.lantern.internal.handler
 
+import org.lantern.core.camera.CameraControl
+import org.lantern.core.camera.ShoulderCameraState
+import org.lantern.core.input.InputLockStore
 import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatStyleHandler
 import org.lantern.internal.parser.UiParser
@@ -20,5 +23,9 @@ object SessionCleanup {
         UiParser.resetAll()
         FocusManager.blur()
         WorldImageManager.clear()
+        // 相机演出（lock/shake/fov/offset/path）与越肩参数都是服务端会话态
+        CameraControl.hardReset()
+        ShoulderCameraState.clear()
+        InputLockStore.clear()
     }
 }
