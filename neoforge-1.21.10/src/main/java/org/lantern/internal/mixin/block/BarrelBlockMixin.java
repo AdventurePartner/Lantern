@@ -9,7 +9,10 @@ import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.lantern.model.handler.BlockRendererHandler;
 import org.lantern.model.wrapper.BlockModelWrapper;
 import org.spongepowered.asm.mixin.Mixin;
@@ -70,5 +73,34 @@ public abstract class BarrelBlockMixin extends BaseEntityBlock {
             case "shovel" -> Blocks.DIRT.defaultBlockState();
             default -> Blocks.BARREL.defaultBlockState();
         };
+    }
+
+    // ==================== 渲染属性 ====================
+    // 服务端放置自定义方块时设 open=true 作为载体标记态。几何隐藏按位置做（TrackedBarrelModel），
+    // 但遮挡、光照这几项在 1.21.2+ 只收 BlockState、还按状态缓存，只能按标记态判断——
+    // 否则载体仍是完整不透光方块：邻面被剔除露出空洞、周围被压暗。与共享端 BarrelBlockMixin 对齐
+
+    @Override
+    protected VoxelShape getOcclusionShape(BlockState state) {
+        if (state.getValue(BlockStateProperties.OPEN)) return Shapes.empty();
+        return super.getOcclusionShape(state);
+    }
+
+    @Override
+    protected float getShadeBrightness(BlockState state, BlockGetter level, BlockPos pos) {
+        if (state.getValue(BlockStateProperties.OPEN)) return 1.0f;
+        return super.getShadeBrightness(state, level, pos);
+    }
+
+    @Override
+    protected boolean propagatesSkylightDown(BlockState state) {
+        if (state.getValue(BlockStateProperties.OPEN)) return true;
+        return super.propagatesSkylightDown(state);
+    }
+
+    @Override
+    protected int getLightBlock(BlockState state) {
+        if (state.getValue(BlockStateProperties.OPEN)) return 0;
+        return super.getLightBlock(state);
     }
 }

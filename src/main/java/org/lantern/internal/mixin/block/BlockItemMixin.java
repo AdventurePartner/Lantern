@@ -12,6 +12,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import org.lantern.model.handler.BlockRendererHandler;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -23,18 +24,31 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(BlockItem.class)
 public abstract class BlockItemMixin {
 
+    /** place 返回前会 consume 手里的物品，最后一个用完时 RETURN 处已读不到组件，在 HEAD 先取 */
+    @Unique
+    private static Integer lantern$placingCmd;
+
+    @Inject(method = "place", at = @At("HEAD"))
+    private void lantern$capturePlacingCmd(BlockPlaceContext context, CallbackInfoReturnable<InteractionResult> cir) {
+        lantern$placingCmd = null;
+        if (!context.getLevel().isClientSide) return;
+        ItemStack stack = context.getItemInHand();
+        CustomModelData cmd = stack.get(DataComponents.CUSTOM_MODEL_DATA);
+        if (cmd != null && cmd.value() > 0) {
+            lantern$placingCmd = cmd.value();
+        }
+    }
+
     @Inject(method = "place", at = @At("RETURN"))
     private void lantern$onBlockPlaced(BlockPlaceContext context, CallbackInfoReturnable<InteractionResult> cir) {
-        if (!cir.getReturnValue().consumesAction()) return;
+        Integer cmd = lantern$placingCmd;
+        lantern$placingCmd = null;
+        if (cmd == null || !cir.getReturnValue().consumesAction()) return;
 
         Level level = context.getLevel();
         if (!level.isClientSide) return;
 
-        ItemStack stack = context.getItemInHand();
-        CustomModelData cmd = stack.get(DataComponents.CUSTOM_MODEL_DATA);
-        if (cmd == null || cmd.value() <= 0) return;
-
-        Integer variation = BlockRendererHandler.INSTANCE.getVariationByCmd(cmd.value());
+        Integer variation = BlockRendererHandler.INSTANCE.getVariationByCmd(cmd);
         if (variation == null) return;
 
         BlockPos pos = context.getClickedPos();

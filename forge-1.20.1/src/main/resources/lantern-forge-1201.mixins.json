@@ -27,6 +27,7 @@
     "block.LevelRendererMixin",
     "block.ParticleEngineMixin",
     "block.BlockRenderDispatcherMixin",
+    "block.ForgeBlockRenderDispatcherMixin",
     "block.BlockItem1201Mixin",
     "block.BarrelBlock1201Mixin",
     "model.BarrelModelMixin"

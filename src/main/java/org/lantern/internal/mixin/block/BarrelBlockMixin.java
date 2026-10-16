@@ -41,7 +41,8 @@ public abstract class BarrelBlockMixin extends BaseEntityBlock {
     private void lantern$cancelUse(BlockState state, Level level, BlockPos pos,
                                     Player player, BlockHitResult hitResult,
                                     CallbackInfoReturnable<InteractionResult> cir) {
-        if (BlockRendererHandler.INSTANCE.isTrackedPosition(pos)) {
+        // 跟踪表只属于客户端：单人模式的集成服务端也走这个类，不能读客户端的表
+        if (level.isClientSide && BlockRendererHandler.INSTANCE.isTrackedPosition(pos)) {
             cir.setReturnValue(InteractionResult.PASS);
         }
     }
@@ -51,7 +52,8 @@ public abstract class BarrelBlockMixin extends BaseEntityBlock {
 
     @Override
     protected float getDestroyProgress(BlockState state, Player player, BlockGetter level, BlockPos pos) {
-        if (!BlockRendererHandler.INSTANCE.isTrackedPosition(pos)) {
+        if (!(level instanceof Level clientLevel) || !clientLevel.isClientSide
+                || !BlockRendererHandler.INSTANCE.isTrackedPosition(pos)) {
             return super.getDestroyProgress(state, player, level, pos);
         }
 

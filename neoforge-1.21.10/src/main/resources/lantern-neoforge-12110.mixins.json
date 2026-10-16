@@ -11,6 +11,7 @@
     "accessor.PoseStackAccessor",
     "accessor.SlotAccessor",
     "block.BarrelBlockMixin",
+    "block.BlockItemMixin",
     "camera.CameraMixin",
     "camera.GameRendererMixin",
     "camera.GuiMixin",
