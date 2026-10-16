@@ -128,8 +128,14 @@ object BlockRendererHandler {
     }
 
     fun clearPositions() {
+        val oldPositions = blockPositions.values.flatMap { it.keys }
         blockPositions.clear()
         blockEntityCache.clear()
+        // 被撤掉的位置所在 section 还留着「隐藏木桶」的编译结果，不重编就一直是个透明洞
+        val levelRenderer = Minecraft.getInstance().levelRenderer
+        if (Minecraft.getInstance().level != null) {
+            oldPositions.forEach { levelRenderer.setSectionDirty(it.x shr 4, it.y shr 4, it.z shr 4) }
+        }
     }
 
     fun getVariation(pos: BlockPos): Int? = blockPositions[chunkKey(pos)]?.get(pos)
@@ -213,7 +219,8 @@ object BlockRendererHandler {
         val level = Minecraft.getInstance().level
         if (level != null) {
             val state = level.getBlockState(pos)
-            if (state.`is`(Blocks.BARREL) && !state.getValue(BlockStateProperties.OPEN)) {
+            // 只给仍在跟踪的位置落标记态：packet 12 的 remove 也走这里，不能把恢复成普通木桶的位置再藏起来
+            if (isTrackedPosition(pos) && state.`is`(Blocks.BARREL) && !state.getValue(BlockStateProperties.OPEN)) {
                 level.setBlock(pos, state.setValue(BlockStateProperties.OPEN, true), 0)
             } else {
                 Minecraft.getInstance().levelRenderer.setSectionDirty(pos.x shr 4, pos.y shr 4, pos.z shr 4)
