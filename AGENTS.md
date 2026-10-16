@@ -35,10 +35,19 @@
 ./gradlew idea
 
 # 运行 Minecraft 客户端 (开发环境)
-./gradlew runClient
+./gradlew runClient                              # NeoForge 1.21.10
+./gradlew :fabric-1.21.1:runFabricClient
+./gradlew :forge-1.20.1:runForge1201Client
+./gradlew :forge-1.21.1:runForge1211Client       # 目前起不来，见下
 ```
 
 构建产物统一同步到 `object/`。
+
+Forge dev 运行时要点：
+- common-core 必须经 `loom.mods.named("main") { sourceSet("main", project(":common-core")) }` 并进 lantern 模块，依赖写成 `compileOnly(project(":common-core"))` + `runtimeOnly(common-core 的 classes 目录)`；否则两个模块导出同一个包，FML 报拆分包
+- Forge 1.20.1 编译后删掉 `software/bernie/geckolib` 下 typealias 生成的空门面类（同样是拆分包），mclib 用 `forgeRuntimeLibrary` 单独上类路径
+- Forge 1.21.1 dev 仍起不来：Architectury Loom 1.7 把合并后的 MC jar 模块名定成 `net.minecraftforge.forge`，FML 52 找的是 `forge`。要升级 Loom 才能解决，在那之前只能 build + javap 核对
+- dev 客户端要停时只杀自己起的进程（命令行带本仓库路径），用户常开着自己的 MC 客户端
 
 ### Bukkit 插件 (bukkit 子项目)
 
@@ -146,9 +155,18 @@ bukkit/src/main/
 使用 GeckoLib 渲染自定义模型：
 
 1. 服务端 `entityModels.yml` 定义模型配置 (geo, texture, animation 路径)
-2. 客户端 `RendererHandler` 注册和管理渲染器
+2. 客户端 `RendererHandler` 注册和管理渲染器（按实体 UUID 一个，`evict` 随实体离场淘汰）
 3. Mixin `EntityMixin` 修改实体碰撞箱
 4. Mixin `EntityRendererMixin` 注入自定义渲染逻辑
+
+### 动画内核与扩展协议（四端对齐）
+
+1. **动画驱动**: 实体模型与 host-driven 外观的骨骼都由 common-core `AnimationPlayer` 驱动，不用 GeckoLib 控制器。共享 `org/lantern/animation/`（`AnimationHost` 按帧判重算姿势、`PoseToBones` 写骨骼、`GeckoLibMolang` 接 molang）供 Fabric / Forge 1.21.1 / Forge 1.20.1 用，NeoForge 排除该包、保留 1.21.10 的提取-提交两段式副本。每个渲染器经 `IsolatedBones` 深拷贝骨骼树，GeckoLib 的 `handleAnimations` 置空
+2. **协议挂钩**: `NetworkParser` 的 `animationControlHandler`(15)、`animationEventSender`(C2S 3)、`molangVariableHandler`(17)、`cameraActionHandler`(18)、`playerActionHandler`(19)、`entityBindHandler`(20)、`inputLockHandler`(21) 默认为空，Fabric / 两个 Forge 由 `feature/FeatureHooks.register` 统一注册，NeoForge 在 `LanternNeoForge` 里注册。新增 packet 时四端入口都要接上
+3. **会话清理**: 断线调 `SessionCleanup.onDisconnect()`，实体离场调 `onEntityLeave(entity)`；外观分配只在登出或服务端 removals 时清，离场只淘汰渲染器（服务端只在分配变化时广播）
+4. **相机与输入锁**: 1.21.1 共享 `mixin/camera/`、`mixin/input/`；Forge 1.20.1 用 `Camera1201Mixin`（`move` 收 double）与 `MouseHandler1201Mixin`（`turnPlayer()` 无参且自己清零累计位移，取消时要手动清零）。roll：Fabric 在 `Camera.setup` TAIL 改四元数，两个 Forge 走 `ViewportEvent.ComputeCameraAngles`
+5. **host-driven 玩家整替外观**（1.21.1 / 1.20.1 共享 `mixin/costume/*HostMixin`，签名两版一致）: `LivingEntityRenderer.render` HEAD 经 `HostAttach.begin` 先算本帧姿势、RETURN 还原；`getRenderType` 返回 null 压掉原版身体；`PlayerModel.setupAnim` TAIL 把骨骼写进原版六部件（这两版 setupAnim 不整体复位部件，必须渲染完还原）；披风 / 鞘翅 / 鹦鹉换到躯干骨空间；手持物由 `CostumeItemLayer` 挂骨。NeoForge 走 RenderState，有自己的一套
+6. **版本差异 API**: 放在各模块同 FQN 的 `org.lantern.platform.*Bridge`（`TimeBridge`、`EntityLookupBridge`、`InteractionBridge`、`PlayerBridge`），共享代码只调 Bridge
 
 ### UI 组件系统 (uix)
 
@@ -195,6 +213,6 @@ Mixin 类使用 Java 编写，位于共享 `src/main/java/org/lantern/internal/m
 
 1. **Java 版本差异**: Fabric 1.21.1、Forge 1.21.1 和 NeoForge 1.21.10 使用 Java 21，Forge 1.20.1 使用 Java 17，Bukkit 插件使用 Java 8
 2. **Mixin 仅客户端**: 当前所有 Mixin 都在 `client` 数组中，仅客户端运行
-3. **GeckoLib 4.7+**: 不需要手动初始化，自动注册
+3. **GeckoLib 4.7+**: 不需要手动初始化，自动注册。版本：1.21.1 为 4.7.1，Forge 1.20.1 为 4.7.1.2（包名 `software.bernie.geckolib.core.*`、mclib molang、GeoBone 只有逐轴 setter、`RenderUtils`），NeoForge 为 5.3。1.20.1 模块在 `forge-1.20.1/src/main/kotlin/software/bernie/geckolib/` 用 typealias 把新名字映射到旧类，共享代码能直接编译；接口真不一样的文件（逐轴 setter、molang）在 1.20.1 的 `java.exclude` 里排除、放同 FQN 副本
 4. **资源重载**: 客户端通过 `ResourceManagerHelper` 监听资源重载事件
 5. **全模块验证**: 代码修改完成后从仓库根目录执行 `./gradlew clean build --no-daemon`
