@@ -1,0 +1,36 @@
+# FML 4（NeoForge 21.1）还要求 modLoader / loaderVersion，1.21.10 的模板里没有
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All-Rights-Reserved"
+
+[[mods]]
+modId="lantern"
+version="${version}"
+displayName="Lantern"
+authors="Lantern"
+description='''Lantern client mod'''
+
+[[mixins]]
+config="lantern-neoforge-1211.mixins.json"
+
+[[dependencies.lantern]]
+modId="neoforge"
+type="required"
+versionRange="[${neoforge_version},)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.lantern]]
+modId="minecraft"
+type="required"
+versionRange="[${minecraft_version}]"
+ordering="NONE"
+side="CLIENT"
+
+# GeckoLib 4.9.3 把自己的网络包注册为 optional，连 Bukkit/Paper 服务端不会被拒；更低版本未核对
+[[dependencies.lantern]]
+modId="geckolib"
+type="required"
+versionRange="[${geckolib_version},)"
+ordering="AFTER"
+side="CLIENT"

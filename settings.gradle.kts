@@ -18,6 +18,7 @@ rootProject.name = "Lantern"
 include(":common-core")
 include(":fabric-1.21.1")
 include(":forge-1.21.1")
+include(":neoforge-1.21.1")
 include(":forge-1.20.1")
 include(":neoforge-1.21.10")
 include(":bukkit")
