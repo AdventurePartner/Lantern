@@ -13,7 +13,7 @@ import software.bernie.geckolib.cache.`object`.BakedGeoModel
 import software.bernie.geckolib.model.GeoModel
 
 /**
- * 外观模型（Fabric 1.21.1 / Forge 1.21.1；1.20.1 与 1.21.10 各有副本）。
+ * 外观模型（Fabric 1.21.1 / NeoForge 1.21.1；1.20.1 与 1.21.10 各有副本）。
  *
  * hostDriven（玩家整替）外观由 Lantern 动画内核驱动：每个玩家的渲染器持有深拷贝骨骼树，
  * 贴图取该玩家的真实皮肤，GeckoLib 的动画处理置空。普通装饰外观维持原来的共享模型与

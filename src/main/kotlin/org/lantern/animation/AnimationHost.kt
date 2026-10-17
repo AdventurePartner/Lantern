@@ -14,7 +14,7 @@ import org.lantern.platform.TimeBridge
 import software.bernie.geckolib.animation.AnimationProcessor
 
 /**
- * Lantern 自托管动画宿主入口（Fabric 1.21.1 / Forge 1.21.1 / Forge 1.20.1；1.21.10 有同名副本）。
+ * Lantern 自托管动画宿主入口（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1；1.21.10 有同名副本）。
  *
  * 取代 GeckoLib 的谓词控制器体系：GeckoLib 只保留资产解析与渲染，动画决策、时间轴、
  * 混合、骨骼写入全部由 common-core 的 AnimationPlayer 完成，且是唯一骨骼写入方。

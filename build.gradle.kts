@@ -32,7 +32,6 @@ allprojects {
 
 val artifactTasksByProject = mapOf(
     "fabric-1.21.1" to "remapJar",
-    "forge-1.21.1" to "remapJar",
     "neoforge-1.21.1" to "jar",
     "forge-1.20.1" to "remapJar",
     "neoforge-1.21.10" to "jar",

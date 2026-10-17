@@ -8,7 +8,7 @@ import software.bernie.geckolib.animation.AnimatableManager
 import software.bernie.geckolib.util.GeckoLibUtil
 
 /**
- * GeckoLib 替换实体的壳实现（Fabric 1.21.1 / Forge 1.21.1；1.20.1 与 1.21.10 各有副本）。
+ * GeckoLib 替换实体的壳实现（Fabric 1.21.1 / NeoForge 1.21.1；1.20.1 与 1.21.10 各有副本）。
  *
  * 刻意不注册任何控制器：动画决策、时间轴与骨骼写入全部由 Lantern 的 AnimationHost 接管，
  * GeckoLib 只负责资产解析与渲染

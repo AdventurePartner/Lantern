@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /**
  * 服务端下发的聊天窗口样式。render 只按方法名匹配：1.21.1 是 (GuiGraphics,IIIZ)V、
  * Forge 1.20.1 是 (GuiGraphics,III)V，两者的 translate / fill / drawString 序号一致，
- * Fabric 1.21.1、Forge 1.21.1、Forge 1.20.1 共用本类；NeoForge 1.21.10 有自己的版本。
+ * Fabric 1.21.1、NeoForge 1.21.1、Forge 1.20.1 共用本类；NeoForge 1.21.10 有自己的版本。
  */
 @Mixin(ChatComponent.class)
 public abstract class ChatComponentStyleMixin {

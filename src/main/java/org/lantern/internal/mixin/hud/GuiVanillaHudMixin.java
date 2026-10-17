@@ -18,7 +18,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * 1.21.1 原版 HUD 元素的隐藏与摆放（Fabric 与 Forge 1.21.1 共用原版 Gui，签名逐字一致）。
+ * Fabric 1.21.1 原版 HUD 元素的隐藏与摆放。NeoForge 1.21.1 把 renderPlayerHealth 拆成了独立图层，
+ * 本类的气泡重定向在那里找不到目标，改走 RenderGuiLayerEvent（构建时排除本类）。
  * 隐藏由 hide-vanilla 决定（{@link VanillaHudVisibility}）；摆放由 HUD 里的 vanilla 节点决定：
  * HEAD 按元素本帧的原版参考点推入平移，RETURN 弹出。隐藏时在 HEAD 取消且不推入——
  * 取消插入的 return 不会触发 RETURN 注入，位姿栈保持配平。
@@ -46,7 +47,6 @@ public abstract class GuiVanillaHudMixin {
         VanillaHudPoses.end(graphics, VanillaHudElement.HOTBAR);
     }
 
-    // Forge 另有 (GuiGraphics;I)V 重载，原版单参版在 Forge 上只是转调，拦单参版两边都生效
     @Inject(
         method = "renderSelectedItemName(Lnet/minecraft/client/gui/GuiGraphics;)V",
         at = @At("HEAD"), cancellable = true

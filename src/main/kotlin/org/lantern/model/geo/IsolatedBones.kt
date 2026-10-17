@@ -7,7 +7,7 @@ import software.bernie.geckolib.cache.`object`.GeoBone
  * GeckoLibCache 里的 BakedGeoModel 及其 GeoBone 按模型 ID 全局共享，渲染管线直接遍历
  * 这棵树绘制。由 Lantern 动画内核驱动的模型（实体模型、hostDriven 外观）每个渲染器
  * 要深拷贝一份，否则同名模型的多个实体 / 玩家会互相覆盖姿势。
- * Fabric 1.21.1 / Forge 1.21.1 共用；1.20.1 的 GeoBone 只有逐轴 setter，另有一份
+ * Fabric 1.21.1 / NeoForge 1.21.1 共用；1.20.1 的 GeoBone 只有逐轴 setter，另有一份
  */
 object IsolatedBones {
 

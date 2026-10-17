@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * F5 四视角循环：一人称 → 越肩 → 原版第三人称背后 → 正面 → 一人称。
  * 越肩不占用原版第三人称形态——激活时底层 CameraType 保持 THIRD_PERSON_BACK，
  * 由 [ShoulderCameraState.active] 区分「越肩」与「原版背后」。
- * Fabric 1.21.1、Forge 1.21.1、Forge 1.20.1 共用（handleKeybinds 里只有一次 cycle）
+ * Fabric 1.21.1、NeoForge 1.21.1、Forge 1.20.1 共用（handleKeybinds 里只有一次 cycle）
  */
 @Mixin(Minecraft.class)
 public abstract class MinecraftMixin {

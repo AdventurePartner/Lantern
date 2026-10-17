@@ -10,9 +10,9 @@ import org.lantern.platform.EntityLookupBridge
 
 /**
  * packetId 15 动画播控入口：校验目标实体确由 Lantern 实体模型渲染后，写入强制动画存储。
- * 在共享 NetworkParser 的钩子上注册（Fabric 1.21.1 / Forge 1.21.1 / Forge 1.20.1；1.21.10 有同名副本）。
+ * 在共享 NetworkParser 的钩子上注册（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1；1.21.10 有同名副本）。
  *
- * 各平台的收包处理都已在主线程（Fabric client.execute、Forge enqueueWork / Minecraft.execute），
+ * 各平台的收包处理都已在主线程（Fabric client.execute、Forge enqueueWork / Minecraft.execute、NeoForge 默认主线程处理器），
  * 所以这里**同步**解析，不再 Minecraft.execute 推后一拍：外观分配包是同步落表的，
  * 播控晚一拍就会落到切换后的动画库上。
  *

@@ -14,7 +14,7 @@ import software.bernie.geckolib.util.RenderUtil
 
 /**
  * hostDriven 外观的手持物：挂到整替模型的 rightItem / leftItem 骨，盾挂 rightShield / leftShield。
- * Fabric 1.21.1 / Forge 1.21.1 / Forge 1.20.1 共用（1.21.10 走 ItemStackRenderState，有自己的一份）。
+ * Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1 共用（1.21.10 走 ItemStackRenderState，有自己的一份）。
  *
  * 变换链：
  * 1. 正向骨链到挂点骨的父级，补上前臂——geo 里 rightItem 挂在上臂下、与前臂同级，

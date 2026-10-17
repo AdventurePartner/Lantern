@@ -5,7 +5,7 @@ import org.lantern.core.action.PlayerActionDefs
 import org.lantern.internal.util.KeySpec
 
 /**
- * 玩家主动动作的按键轮询（Fabric 1.21.1 / Forge 1.21.1 / Forge 1.20.1 每客户端 tick 调用）：
+ * 玩家主动动作的按键轮询（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1 每客户端 tick 调用）：
  * 按下边沿本地触发，不发包、不等服务端。与 keys.yml 的通道分开跟踪按下集，
  * 两者绑同一个键时互不干扰。NeoForge 在 NeoForgeClientEvents 里有同样的一份
  */

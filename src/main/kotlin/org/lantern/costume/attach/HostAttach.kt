@@ -13,7 +13,7 @@ import software.bernie.geckolib.cache.`object`.GeoBone
 import software.bernie.geckolib.util.RenderUtil
 
 /**
- * hostDriven 外观下原版玩家渲染的挂钩状态与空间换算（Fabric 1.21.1 / Forge 1.21.1 / Forge 1.20.1；
+ * hostDriven 外观下原版玩家渲染的挂钩状态与空间换算（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1；
  * 1.21.10 有同名副本，走 RenderState 不走这里的 begin/end）。
  *
  * 一次玩家渲染内（LivingEntityRenderer.render HEAD 到 RETURN）：

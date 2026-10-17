@@ -4,7 +4,7 @@ import net.minecraft.client.gui.GuiGraphics
 import org.lantern.Lantern
 
 /**
- * 原版元素摆放的位姿推入/弹出（PoseStack 版：Fabric/Forge 1.21.1 与 Forge 1.20.1 共用；
+ * 原版元素摆放的位姿推入/弹出（PoseStack 版：Fabric 1.21.1、NeoForge 1.21.1 与 Forge 1.20.1 共用；
  * NeoForge 1.21.10 模块有同名的 Matrix3x2fStack 副本）。
  * 平台挂钩在元素绘制前调 [begin]、绘制后调 [end]；一帧结束前调 [popPending]，
  * 兜底被其他模组取消或异常打断而没走到 [end] 的推入。

@@ -4,8 +4,9 @@ import java.util.EnumSet
 
 /**
  * 原版 HUD 元素：可被 HUD 配置 `hide-vanilla` 隐藏，也可被 `type: vanilla` 节点摆放。
- * 新增元素：在此加一项（原生尺寸、对齐方式、原版默认布局参考点），再在三处平台挂钩
- * （1.21.1 GuiVanillaHudMixin、Forge 1.20.1 ForgeClientListener、NeoForge NeoForgeClientEvents）
+ * 新增元素：在此加一项（原生尺寸、对齐方式、原版默认布局参考点），再在四处平台挂钩
+ * （Fabric 1.21.1 GuiVanillaHudMixin、NeoForge 1.21.1 NeoForgeClientListener、
+ * Forge 1.20.1 ForgeClientListener、NeoForge 1.21.10 NeoForgeClientEvents）
  * 同时补上隐藏与摆放的映射。聊天、Tab 列表、标题、调试屏刻意不纳入。
  */
 enum class VanillaHudElement(

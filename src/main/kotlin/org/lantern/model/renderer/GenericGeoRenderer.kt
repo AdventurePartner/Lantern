@@ -25,7 +25,7 @@ import software.bernie.geckolib.cache.GeckoLibCache
 import software.bernie.geckolib.renderer.GeoReplacedEntityRenderer
 
 /**
- * Lantern 实体模型渲染器（Fabric 1.21.1 / Forge 1.21.1；1.20.1 与 1.21.10 各有副本）。
+ * Lantern 实体模型渲染器（Fabric 1.21.1 / NeoForge 1.21.1；1.20.1 与 1.21.10 各有副本）。
  *
  * 每个实体一个实例（RendererHandler 按 UUID 分配），骨骼树由 GenericGeoModel 深拷贝隔离。
  * render 里先由 AnimationHost 计算本帧姿势并写入骨骼，再交给 GeckoLib 绘制

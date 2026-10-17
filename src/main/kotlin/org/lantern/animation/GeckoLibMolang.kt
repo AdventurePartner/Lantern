@@ -10,7 +10,7 @@ import software.bernie.geckolib.loading.math.MathValue
 import software.bernie.geckolib.loading.math.value.Variable
 
 /**
- * GeckoLib 4.7 的 molang 求值桥（Fabric 1.21.1 / Forge 1.21.1；1.20.1 与 1.21.10 各有副本）。
+ * GeckoLib 4.7 / 4.9 的 molang 求值桥（Fabric 1.21.1 / NeoForge 1.21.1；1.20.1 与 1.21.10 各有副本）。
  *
  * 4.7 的 Variable 按名全局共享、没有求值期作用域：GeckoLib 自己的 query 大多是读当前
  * 渲染对象的惰性 supplier，只有 anim_time 每个控制器重设一次。所以求值时把本实体作用域里
@@ -32,7 +32,7 @@ object GeckoLibMolang : MolangCompiler {
     }
 }
 
-/** 渲染线程独占：Fabric / Forge 的实体渲染与收包处理都在主线程 */
+/** 渲染线程独占：Fabric / NeoForge 的实体渲染与收包处理都在主线程 */
 private object ScopedVariables {
 
     private val variables = HashMap<String, Variable>()

@@ -16,7 +16,7 @@ import org.lantern.internal.network.NetworkParser
 import org.lantern.model.handler.AnimationControlHandler
 
 /**
- * Fabric 1.21.1 / Forge 1.21.1 / Forge 1.20.1 共用的可选能力注册：把 NetworkParser 的
+ * Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1 共用的可选能力注册：把 NetworkParser 的
  * 平台钩子接到 common-core 的状态机上。NeoForge 1.21.10 在 LanternNeoForge 里自己接
  * （本包被它排除），两边接的是同一批 common-core 对象。
  * 三个平台的收包处理都已调度到主线程，这里的处理器直接同步执行

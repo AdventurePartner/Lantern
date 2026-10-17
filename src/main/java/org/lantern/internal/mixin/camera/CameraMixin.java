@@ -8,7 +8,6 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.lantern.camera.control.CameraPick;
-import org.lantern.camera.control.CameraRoll;
 import org.lantern.core.camera.CameraControl;
 import org.lantern.core.camera.ShoulderCameraState;
 import org.spongepowered.asm.mixin.Final;
@@ -21,13 +20,13 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * 越肩视角与相机演出（Fabric 1.21.1 / Forge 1.21.1 共用；1.20.1 与 1.21.10 各有副本）。
+ * 越肩视角与相机演出（Fabric 1.21.1 / NeoForge 1.21.1 共用；1.20.1 与 1.21.10 各有副本）。
  *
  * 越肩：拦截第三人称 detached 分支的 move 调用，距离先经原版 getMaxZoom 做防穿墙收缩，
  * 再叠加高度与横向偏移；move 轴序为 (前向, 上, 左)，offsetX > 0 = 右肩。
  * 演出：setup 尾部应用 CameraControl 的位姿（offset → lock → path/watch → shake）。
- * 原版 1.21.1 只有两参 setRotation，翻滚角直接写进 rotation 四元数；Forge 随后按
- * ComputeCameraAngles 事件重写旋转，翻滚由 ForgeClientListener 从 CameraRoll 补回。
+ * 原版 1.21.1 只有两参 setRotation，翻滚角直接写进 rotation 四元数。NeoForge 1.21.1 在
+ * setup 开头就发出 ComputeCameraAngles，本注入在其后，写入的翻滚即为最终结果。
  */
 @Mixin(Camera.class)
 public abstract class CameraMixin {
@@ -118,7 +117,6 @@ public abstract class CameraMixin {
         float partialTick,
         CallbackInfo ci
     ) {
-        CameraRoll.current = 0.0F;
         // 沉睡实体：原版床视角是刻意摆放的机位，演出覆写不与其打架
         if (cameraEntity instanceof LivingEntity livingEntity && livingEntity.isSleeping()) {
             return;
@@ -130,7 +128,6 @@ public abstract class CameraMixin {
             this.setRotation(pose.getYaw(), pose.getPitch());
             if (pose.getRoll() != 0.0F) {
                 lantern$applyRoll(pose.getYaw(), pose.getPitch(), pose.getRoll());
-                CameraRoll.current = pose.getRoll();
             }
             // path/watch/回程为绝对位置覆写（shake 扰动照常叠加）；其余为相对扰动
             org.lantern.core.camera.Position base = pose.getAbsolutePos() != null
@@ -143,7 +140,7 @@ public abstract class CameraMixin {
         CameraPick.recompute(partialTick);
     }
 
-    /** 与 Forge 三参 setRotation 同式：rotationYXZ(π - yaw, -pitch, roll) 后重算三个基向量 */
+    /** 与 NeoForge 三参 setRotation 同式：rotationYXZ(π - yaw, -pitch, roll) 后重算三个基向量 */
     @Unique
     private void lantern$applyRoll(float yaw, float pitch, float roll) {
         float rad = (float) (Math.PI / 180.0);

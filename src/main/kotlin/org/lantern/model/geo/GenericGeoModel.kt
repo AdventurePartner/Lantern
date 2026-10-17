@@ -11,7 +11,7 @@ import software.bernie.geckolib.cache.`object`.BakedGeoModel
 import software.bernie.geckolib.model.GeoModel
 
 /**
- * Lantern 实体模型（Fabric 1.21.1 / Forge 1.21.1；1.20.1 与 1.21.10 各有副本）。
+ * Lantern 实体模型（Fabric 1.21.1 / NeoForge 1.21.1；1.20.1 与 1.21.10 各有副本）。
  * 每个渲染器（= 每个实体 UUID）持有一份深拷贝骨骼树（IsolatedBones），
  * 骨骼唯一写入方是 AnimationHost，GeckoLib 的动画处理整个置空
  */
