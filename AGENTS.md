@@ -7,21 +7,21 @@
 **Lantern** 是一个 Gradle 多项目，包含共享协议、四个客户端模组和一个服务端插件：
 
 1. **共享协议** (`common-core/`) - 定义 Bukkit 与各客户端共用的字节协议和解码逻辑
-2. **客户端模组** (`fabric-1.21.1/`、`forge-1.21.1/`、`forge-1.20.1/`、`neoforge-1.21.10/`) - 复用根目录 `src/main` 的客户端源码，并提供各平台适配
+2. **客户端模组** (`fabric-1.21.1/`、`neoforge-1.21.1/`、`forge-1.20.1/`、`neoforge-1.21.10/`) - 复用根目录 `src/main` 的客户端源码，并提供各平台适配
 3. **Bukkit 插件** (`bukkit/`) - Spigot/Bukkit/Paper 服务端插件，提供配置管理和客户端通信
 
 > 服务端架构约束：生产环境是 Bukkit/Paper + LanternPlugin，服务端不安装 Fabric、Forge、NeoForge 或 Lantern 服务端模组。所有客户端模块必须能连接没有对应模组加载器的服务端，不得把“要求服务端安装 Mod”作为解决方案。
 
-> 重要协作规则：功能实现必须覆盖所有当前有效客户端模块，不能只改 Fabric/root 代码。涉及 Mixin、资源加载、平台 API 或网络协议时，必须同时检查共享 `src/main`、`fabric-1.21.1`、`forge-1.21.1`、`forge-1.20.1`、`neoforge-1.21.10`、`common-core` 和 `bukkit` 中受影响的路径，并运行全模块构建。
+> 重要协作规则：功能实现必须覆盖所有当前有效客户端模块，不能只改 Fabric/root 代码。涉及 Mixin、资源加载、平台 API 或网络协议时，必须同时检查共享 `src/main`、`fabric-1.21.1`、`neoforge-1.21.1`、`forge-1.20.1`、`neoforge-1.21.10`、`common-core` 和 `bukkit` 中受影响的路径，并运行全模块构建。
 
 ### 技术栈
 
 | 组件 | 客户端模组 | 服务端插件 |
 |------|------------|------------|
-| 平台 | Fabric 1.21.1、Forge 1.21.1、Forge 1.20.1、NeoForge 1.21.10 | Bukkit/Paper (Spigot API 1.20.1) |
+| 平台 | Fabric 1.21.1、NeoForge 1.21.1、Forge 1.20.1、NeoForge 1.21.10 | Bukkit/Paper (Spigot API 1.20.1) |
 | Java | 1.20.1 使用 Java 17，其余客户端使用 Java 21 | Java 8 |
 | 构建工具 | Gradle 8.x + Loom/ModDev | Gradle 8.x + Shadow |
-| 关键库 | Fabric API、GeckoLib 4.7/5.3 | AyCore、PlaceholderAPI |
+| 关键库 | Fabric API、GeckoLib 4.7/4.9/5.3 | AyCore、PlaceholderAPI |
 
 ## 构建命令
 
@@ -37,16 +37,15 @@
 # 运行 Minecraft 客户端 (开发环境)
 ./gradlew runClient                              # NeoForge 1.21.10
 ./gradlew :fabric-1.21.1:runFabricClient
+./gradlew :neoforge-1.21.1:runNeoforge1211Client
 ./gradlew :forge-1.20.1:runForge1201Client
-./gradlew :forge-1.21.1:runForge1211Client       # 目前起不来，见下
 ```
 
 构建产物统一同步到 `object/`。
 
-Forge dev 运行时要点：
-- common-core 必须经 `loom.mods.named("main") { sourceSet("main", project(":common-core")) }` 并进 lantern 模块，依赖写成 `compileOnly(project(":common-core"))` + `runtimeOnly(common-core 的 classes 目录)`；否则两个模块导出同一个包，FML 报拆分包
-- Forge 1.20.1 编译后删掉 `software/bernie/geckolib` 下 typealias 生成的空门面类（同样是拆分包），mclib 用 `forgeRuntimeLibrary` 单独上类路径
-- Forge 1.21.1 dev 仍起不来：Architectury Loom 1.7 把合并后的 MC jar 模块名定成 `net.minecraftforge.forge`，FML 52 找的是 `forge`。要升级 Loom 才能解决，在那之前只能 build + javap 核对
+dev 运行时要点：
+- Forge 1.20.1：common-core 必须经 `loom.mods.named("main") { sourceSet("main", project(":common-core")) }` 并进 lantern 模块，依赖写成 `compileOnly(project(":common-core"))` + `runtimeOnly(common-core 的 classes 目录)`；否则两个模块导出同一个包，FML 报拆分包。编译后还要删掉 `software/bernie/geckolib` 下 typealias 生成的空门面类（同样是拆分包），mclib 用 `forgeRuntimeLibrary` 单独上类路径
+- NeoForge 1.21.1（ModDevGradle）：run 名不能叫 `client`，否则任务 `runClient` 会被根目录裸 `runClient` 连带启动；FML 4 不把类路径上的普通库放进游戏层，kotlin stdlib / zip4j 要加进 `additionalRuntimeClasspath`；`neoforge.mods.toml` 必须写 `modLoader` / `loaderVersion`（1.21.10 不需要）
 - dev 客户端要停时只杀自己起的进程（命令行带本仓库路径），用户常开着自己的 MC 客户端
 
 ### Bukkit 插件 (bukkit 子项目)
@@ -161,10 +160,10 @@ bukkit/src/main/
 
 ### 动画内核与扩展协议（四端对齐）
 
-1. **动画驱动**: 实体模型与 host-driven 外观的骨骼都由 common-core `AnimationPlayer` 驱动，不用 GeckoLib 控制器。共享 `org/lantern/animation/`（`AnimationHost` 按帧判重算姿势、`PoseToBones` 写骨骼、`GeckoLibMolang` 接 molang）供 Fabric / Forge 1.21.1 / Forge 1.20.1 用，NeoForge 排除该包、保留 1.21.10 的提取-提交两段式副本。每个渲染器经 `IsolatedBones` 深拷贝骨骼树，GeckoLib 的 `handleAnimations` 置空
-2. **协议挂钩**: `NetworkParser` 的 `animationControlHandler`(15)、`animationEventSender`(C2S 3)、`molangVariableHandler`(17)、`cameraActionHandler`(18)、`playerActionHandler`(19)、`entityBindHandler`(20)、`inputLockHandler`(21) 默认为空，Fabric / 两个 Forge 由 `feature/FeatureHooks.register` 统一注册，NeoForge 在 `LanternNeoForge` 里注册。新增 packet 时四端入口都要接上
+1. **动画驱动**: 实体模型与 host-driven 外观的骨骼都由 common-core `AnimationPlayer` 驱动，不用 GeckoLib 控制器。共享 `org/lantern/animation/`（`AnimationHost` 按帧判重算姿势、`PoseToBones` 写骨骼、`GeckoLibMolang` 接 molang）供 Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1 用，NeoForge 1.21.10 排除该包、保留提取-提交两段式副本。每个渲染器经 `IsolatedBones` 深拷贝骨骼树，GeckoLib 的 `handleAnimations` 置空
+2. **协议挂钩**: `NetworkParser` 的 `animationControlHandler`(15)、`animationEventSender`(C2S 3)、`molangVariableHandler`(17)、`cameraActionHandler`(18)、`playerActionHandler`(19)、`entityBindHandler`(20)、`inputLockHandler`(21) 默认为空，Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1 由 `feature/FeatureHooks.register` 统一注册，NeoForge 1.21.10 在自己的 `LanternNeoForge` 里注册。新增 packet 时四端入口都要接上
 3. **会话清理**: 断线调 `SessionCleanup.onDisconnect()`，实体离场调 `onEntityLeave(entity)`；外观分配只在登出或服务端 removals 时清，离场只淘汰渲染器（服务端只在分配变化时广播）
-4. **相机与输入锁**: 1.21.1 共享 `mixin/camera/`、`mixin/input/`；Forge 1.20.1 用 `Camera1201Mixin`（`move` 收 double）与 `MouseHandler1201Mixin`（`turnPlayer()` 无参且自己清零累计位移，取消时要手动清零）。roll：Fabric 在 `Camera.setup` TAIL 改四元数，两个 Forge 走 `ViewportEvent.ComputeCameraAngles`
+4. **相机与输入锁**: 1.21.1 共享 `mixin/camera/`、`mixin/input/`；Forge 1.20.1 用 `Camera1201Mixin`（`move` 收 double）与 `MouseHandler1201Mixin`（`turnPlayer()` 无参且自己清零累计位移，取消时要手动清零）。roll：Fabric 与 NeoForge 1.21.1 在 `Camera.setup` TAIL 改四元数（NeoForge 21.1 的 ComputeCameraAngles 在 setup 开头，先于 TAIL）；Forge 1.20.1 的事件在 setup 之后，经 `CameraRoll` 加到 `ViewportEvent.ComputeCameraAngles` 上
 5. **host-driven 玩家整替外观**（1.21.1 / 1.20.1 共享 `mixin/costume/*HostMixin`，签名两版一致）: `LivingEntityRenderer.render` HEAD 经 `HostAttach.begin` 先算本帧姿势、RETURN 还原；`getRenderType` 返回 null 压掉原版身体；`PlayerModel.setupAnim` TAIL 把骨骼写进原版六部件（这两版 setupAnim 不整体复位部件，必须渲染完还原）；披风 / 鞘翅 / 鹦鹉换到躯干骨空间；手持物由 `CostumeItemLayer` 挂骨。NeoForge 走 RenderState，有自己的一套
 6. **版本差异 API**: 放在各模块同 FQN 的 `org.lantern.platform.*Bridge`（`TimeBridge`、`EntityLookupBridge`、`InteractionBridge`、`PlayerBridge`），共享代码只调 Bridge
 
@@ -172,16 +171,16 @@ bukkit/src/main/
 
 1. **组件基类**: `BaseComponent`/`BaseWidget` + `WidgetRendererRegistry` 按类型分发渲染
 2. **界面类型** (`screen-type`): `hud`（常驻）、`gui`（弹窗 GuiCanvas）、`overlay`（贴在原版界面上）
-3. **HUD 渲染挂钩（各平台不同）**: Fabric/Forge 1.21.1 用共享 `GuiHudRenderMixin`（顶层 `Gui.render` TAIL、原版层 `renderCameraOverlays` TAIL）；Forge 1.20.1 用 `RegisterGuiOverlaysEvent`（ForgeGui 不调用 `Gui.render`，注入它的 Mixin 永远不执行）；NeoForge 用 `RegisterGuiLayersEvent`（`hud_base` registerAbove CAMERA_OVERLAYS，顶层 registerAboveAll）
-4. **隐藏原版 HUD**: HUD 配置 `hide-vanilla` → `VanillaHudVisibility`（元素枚举 `VanillaHudElement`），1.21.1 由 `GuiVanillaHudMixin` 取消渲染，Forge 1.20.1 取消 `RenderGuiOverlayEvent.Pre`，NeoForge 取消 `RenderGuiLayerEvent.Pre`；新增元素要同时补三处平台映射
-5. **摆放原版 HUD**: HUD 节点 `type: vanilla` + `source` → `VanillaHudPlacement`（按节点绝对位置与元素本帧的原版参考点算平移量），`VanillaHudPoses.begin/end` 推入/弹出位姿（共享 PoseStack 版，NeoForge 有 Matrix3x2fStack 同名副本）。1.21.1 在 `GuiVanillaHudMixin` 各方法 HEAD 推入、RETURN 弹出（气泡在 blitSprite 重定向里）；Forge 1.20.1 在 overlay Pre（MONITOR）推入、Post（LOWEST）弹出，经验条/等级在 `ExperienceBar1201Mixin` 的重定向里分开处理；NeoForge 在图层 Pre（LOWEST）推入、Post（LOWEST）弹出，contextual 信息栏经 `GuiContextualBarAccessor` 判断是经验条还是跳跃条。三平台都在下一图层 Pre / 整帧结束时 `popPending` 兜底。新增元素要同时补隐藏与摆放两套映射
+3. **HUD 渲染挂钩（各平台不同）**: Fabric 1.21.1 用共享 `GuiHudRenderMixin`（顶层 `Gui.render` TAIL、原版层 `renderCameraOverlays` TAIL）；Forge 1.20.1 用 `RegisterGuiOverlaysEvent`（ForgeGui 不调用 `Gui.render`，注入它的 Mixin 永远不执行）；NeoForge 两个版本都用 `RegisterGuiLayersEvent`（`hud_base` registerAbove CAMERA_OVERLAYS，顶层 registerAboveAll），NeoForge 1.21.1 构建时排除共享的 `GuiHudRenderMixin` / `GuiVanillaHudMixin`
+4. **隐藏原版 HUD**: HUD 配置 `hide-vanilla` → `VanillaHudVisibility`（元素枚举 `VanillaHudElement`），Fabric 1.21.1 由 `GuiVanillaHudMixin` 取消渲染，Forge 1.20.1 取消 `RenderGuiOverlayEvent.Pre`，NeoForge 两个版本取消 `RenderGuiLayerEvent.Pre`（1.21.1 在 `NeoForgeClientListener`，1.21.10 在 `NeoForgeClientEvents`）；新增元素要同时补四处平台映射
+5. **摆放原版 HUD**: HUD 节点 `type: vanilla` + `source` → `VanillaHudPlacement`（按节点绝对位置与元素本帧的原版参考点算平移量），`VanillaHudPoses.begin/end` 推入/弹出位姿（共享 PoseStack 版，NeoForge 1.21.10 有 Matrix3x2fStack 同名副本）。Fabric 1.21.1 在 `GuiVanillaHudMixin` 各方法 HEAD 推入、RETURN 弹出（气泡在 blitSprite 重定向里）；Forge 1.20.1 在 overlay Pre（MONITOR）推入、Post（LOWEST）弹出，经验条/等级在 `ExperienceBar1201Mixin` 的重定向里分开处理；NeoForge 在图层 Pre（LOWEST）推入、Post（LOWEST）弹出，1.21.1 的经验条与跳跃条是两个独立图层，1.21.10 的 contextual 信息栏经 `GuiContextualBarAccessor` 判断是经验条还是跳跃条。各平台都在下一图层 Pre / 整帧结束时 `popPending` 兜底。新增元素要同时补隐藏与摆放两套映射
 6. **自绘状态控件**: `icon-bar`（心/鸡腿式图标行）、`progress-bar`（按比例裁切的进度条）读 `HudStat`；`text` 里的 `{health}` 等由 `HudStatTokens` 在客户端每帧替换。贴图裁切走 `ImageRenderer.drawTextureCropped`（共享版与 NeoForge 副本各一份）
 7. **HUD 分层**: `index < 0` 画进原版 HUD 图层栈（替代原版元素用），`index >= 0` 画在最上层；slot 节点在容器 overlay 里是槽位位置声明（SlotLayoutManager），在 HUD 里是背包物品镜像
 
 ### 聊天频道与聊天样式
 
 1. **协议**: `config.yml` 的 `chat-channels` 与 `chat-style` 都经 opcode 14 下发（顶层 `style` + 频道条目 `style`），解析与校验在 common-core `ChatStyleCodec`，客户端状态在 `ChatStyleHandler`
-2. **聊天窗口**: 共享 `chat/ChatComponentStyleMixin` 同时服务 Fabric 1.21.1、Forge 1.21.1、Forge 1.20.1（render 只按方法名匹配，两种签名的 translate / fill / drawString 序号一致）；NeoForge 1.21.10 有自己的版本，逐行背景与文字在 `lambda$render$0` / `lambda$render$1` 里，升级 NeoForge 时要用 javap 复核 lambda 名与序号
+2. **聊天窗口**: 共享 `chat/ChatComponentStyleMixin` 同时服务 Fabric 1.21.1、NeoForge 1.21.1、Forge 1.20.1（render 只按方法名匹配，两种签名的 translate / fill / drawString 序号一致）；NeoForge 1.21.10 有自己的版本，逐行背景与文字在 `lambda$render$0` / `lambda$render$1` 里，升级 NeoForge 时要用 javap 复核 lambda 名与序号
 3. **位置偏移**: 改 render 里第一个 translate 的参数（所有绘制都在其后），鼠标命中在 `screenToChatX/Y` 与 `handleChatQueueClicked` 入口反向平移，两边必须同时改
 4. **频道按钮 / 提示**: `ChatChannelTabsRenderer`、`ChatChannelNotificationRenderer` 只用 `fill` / `drawString` / `BackgroundPainter`，四个客户端共用一份；不要在里面用 `renderOutline` 或位姿 API，否则 NeoForge 又得维护副本。Forge 1.20.1 的提示挂在 `chat_notification` overlay 上
 
@@ -211,8 +210,8 @@ Mixin 类使用 Java 编写，位于共享 `src/main/java/org/lantern/internal/m
 
 ## 注意事项
 
-1. **Java 版本差异**: Fabric 1.21.1、Forge 1.21.1 和 NeoForge 1.21.10 使用 Java 21，Forge 1.20.1 使用 Java 17，Bukkit 插件使用 Java 8
+1. **Java 版本差异**: Fabric 1.21.1、NeoForge 1.21.1 和 NeoForge 1.21.10 使用 Java 21，Forge 1.20.1 使用 Java 17，Bukkit 插件使用 Java 8
 2. **Mixin 仅客户端**: 当前所有 Mixin 都在 `client` 数组中，仅客户端运行
-3. **GeckoLib 4.7+**: 不需要手动初始化，自动注册。版本：1.21.1 为 4.7.1，Forge 1.20.1 为 4.7.1.2（包名 `software.bernie.geckolib.core.*`、mclib molang、GeoBone 只有逐轴 setter、`RenderUtils`），NeoForge 为 5.3。1.20.1 模块在 `forge-1.20.1/src/main/kotlin/software/bernie/geckolib/` 用 typealias 把新名字映射到旧类，共享代码能直接编译；接口真不一样的文件（逐轴 setter、molang）在 1.20.1 的 `java.exclude` 里排除、放同 FQN 副本
+3. **GeckoLib 4.7+**: 不需要手动初始化，自动注册。版本：Fabric 1.21.1 为 4.7.1，NeoForge 1.21.1 为 4.9.3（自身 payload 已是 optional，不需要 1.21.10 那个 Mixin），Forge 1.20.1 为 4.7.1.2（包名 `software.bernie.geckolib.core.*`、mclib molang、GeoBone 只有逐轴 setter、`RenderUtils`），NeoForge 1.21.10 为 5.3。1.20.1 模块在 `forge-1.20.1/src/main/kotlin/software/bernie/geckolib/` 用 typealias 把新名字映射到旧类，共享代码能直接编译；接口真不一样的文件（逐轴 setter、molang）在 1.20.1 的 `java.exclude` 里排除、放同 FQN 副本
 4. **资源重载**: 客户端通过 `ResourceManagerHelper` 监听资源重载事件
 5. **全模块验证**: 代码修改完成后从仓库根目录执行 `./gradlew clean build --no-daemon`

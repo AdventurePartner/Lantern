@@ -12,7 +12,7 @@ Lantern 分为两部分：
 | 位置 | 需要的内容 |
 |---|---|
 | 服务器 | Minecraft 1.20.1 服务端、Lantern 插件、AyCore |
-| 玩家客户端 | Minecraft 1.21.1、Fabric、Fabric API、Fabric Kotlin、GeckoLib、Lantern 模组 |
+| 玩家客户端 | Minecraft 1.21.1 + Fabric（Fabric API、Fabric Kotlin、GeckoLib），或 Minecraft 1.21.1 + NeoForge 21.1.259 以上（GeckoLib 4.9.3 以上），再加对应版本的 Lantern 模组；另有 Forge 1.20.1 与 NeoForge 1.21.10 版本 |
 | 可选 | PlaceholderAPI，用来在界面文字里显示玩家名字、血量、等级等内容 |
 
 ## 第一次安装
