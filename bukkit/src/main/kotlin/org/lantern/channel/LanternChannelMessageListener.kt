@@ -3,10 +3,9 @@ package org.lantern.channel
 import org.bukkit.entity.Player
 import org.bukkit.plugin.messaging.PluginMessageListener
 import org.lantern.animation.AnimationOrchestrator
+import org.lantern.core.protocol.LanternProtocol
 import org.lantern.handler.CacheHandler
 import org.lantern.util.PlayerUtils.executeCommands
-import java.io.ByteArrayInputStream
-import java.io.DataInputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -48,43 +47,27 @@ class LanternChannelMessageListener : PluginMessageListener {
         message: ByteArray
     ) {
         when (message.firstOrNull()?.toInt()) {
-            1 -> {
+            LanternProtocol.C2S_KEYBOARD_PACKET_TYPE -> {
                 // 键盘包保留 50ms 限流
                 val now = System.currentTimeMillis()
                 val lastTime = lastMessageTime.put(player.uniqueId, now)
                 if (lastTime != null && now - lastTime < COOLDOWN_MS) return
-                ByteArrayInputStream(message).use {
-                    DataInputStream(it).use { dataInputStream ->
-                        dataInputStream.readByte()
-                        resolveKeyboards(player, dataInputStream)
-                    }
-                }
+                // 长度字段是客户端写的：共享解码器限长并校验剩余字节，坏包直接丢
+                val packet = LanternProtocol.decodeKeyboardC2S(message) ?: return
+                resolveKeyboard(player, packet.key, packet.press, packet.inGui)
             }
-            3 -> {
+            LanternProtocol.C2S_ANIMATION_EVENT_PACKET_TYPE -> {
                 // 动画生命周期事件。编码: type(1) + utf uuid + utf animation + utf event。
                 // 发包玩家一并传下去：suppress/invuln/request 只能作用于发包者本人，
                 // finish 对实体的情况要校验发包者确实在该实体附近——包里的 UUID 是客户端写的，不可信
                 if (!allowEvent(player.uniqueId)) return
-                ByteArrayInputStream(message).use {
-                    DataInputStream(it).use { input ->
-                        input.readByte()
-                        val uuid = input.readUTF()
-                        val animation = input.readUTF()
-                        val event = input.readUTF()
-                        AnimationOrchestrator.onClientFinished(player, uuid, animation, event)
-                    }
-                }
+                val packet = LanternProtocol.decodeAnimationEventC2S(message) ?: return
+                AnimationOrchestrator.onClientFinished(player, packet.uuid, packet.animation, packet.event)
             }
         }
     }
 
-    private fun resolveKeyboards(player: Player, dataInputStream: DataInputStream) {
-        val length = dataInputStream.readInt()
-        val bytes = ByteArray(length)
-        dataInputStream.read(bytes)
-        val press = dataInputStream.readBoolean()
-        val inGui = if (dataInputStream.available() > 0) dataInputStream.readBoolean() else false
-        val key = String(bytes, Charsets.UTF_8)
+    private fun resolveKeyboard(player: Player, key: String, press: Boolean, inGui: Boolean) {
         // 相机调节键优先消化（返回 true = 相机已处理，不再走 keys.yml 命令派发）
         if (org.lantern.camera.ShoulderCameraService.handleKey(player, key, press, inGui)) return
         CacheHandler.keys[key]
