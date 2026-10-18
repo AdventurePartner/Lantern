@@ -12,7 +12,6 @@ import org.lantern.core.protocol.LanternProtocol;
 import org.lantern.core.protocol.MainPayloadDecoder;
 import org.lantern.core.protocol.MainS2CPacket;
 import org.lantern.internal.network.NetworkParser;
-import org.lantern.internal.util.JsonUtils;
 
 public final class NeoForgePacketNetwork {
     private static final MainPayloadDecoder DECODER = new MainPayloadDecoder();
@@ -49,10 +48,7 @@ public final class NeoForgePacketNetwork {
     private static void handleClientPayload(LanternMainPayload payload, IPayloadContext context) {
         MainS2CPacket packet = DECODER.decode(payload.data());
         if (packet != null) {
-            NetworkParser.INSTANCE.parse(
-                packet.getPacketId(),
-                JsonUtils.INSTANCE.fromString(packet.getJson())
-            );
+            NetworkParser.INSTANCE.parse(packet.getPacketId(), packet.getPayload());
         }
     }
 

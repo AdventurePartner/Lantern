@@ -18,12 +18,11 @@ import org.lantern.config.Configurations
 import org.lantern.config.UiConfigurations
 import org.lantern.handler.CacheHandler
 import org.lantern.handler.CostumeAssignmentHandler
-import org.lantern.util.JsonUtil
+import org.lantern.core.protocol.LanternProtocol
 import org.lantern.util.TextUtil.colorify
-import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 
@@ -40,16 +39,13 @@ object NetworkHandler {
     private var cachedResourcePackKeyBytes: ByteArray? = null
     private var cachedChatChannelsBytes: ByteArray? = null
     private var cachedWorldImagesBytes: ByteArray? = null
-    private const val MAIN_CHANNEL = "lantern:main"
-    private const val S2C_JSON_PACKET_TYPE = 0
-    private const val S2C_CHUNK_PACKET_TYPE = 2
-    private const val MAX_PLUGIN_MESSAGE_BYTES = 32766
-    private const val CHUNK_HEADER_BYTES = 21
-    private const val MAX_CHUNK_PAYLOAD_BYTES = 32_000
-    /** lantern:main 的 JSON opcode：22 世界图片配置 / 23 世界图片实例指令（与客户端分发表对齐） */
+    private val protocolInfoBytes = LanternProtocol.encodeProtocolInfo()
+    private const val MAIN_CHANNEL = LanternProtocol.CHANNEL_MAIN
+    /** lantern:main 的 opcode：22 世界图片配置 / 23 世界图片实例指令（与客户端分发表对齐） */
     private const val WORLD_IMAGES_PACKET_ID = 22
     private const val WORLD_IMAGE_COMMAND_PACKET_ID = 23
     private val chunkMessageIds = AtomicInteger()
+    private val reportedSchemaMisses = ConcurrentHashMap.newKeySet<String>()
 
 
     fun invalidateCache() {
@@ -65,25 +61,27 @@ object NetworkHandler {
         cachedWorldImagesBytes = null
     }
 
-    private fun serializePacket(internalPacketId: Int, obj: JsonObject): ByteArray {
-        ByteArrayOutputStream().use { byteStream ->
-            DataOutputStream(byteStream).use { dataStream ->
-                val str = JsonUtil.toJson(obj)
-                dataStream.writeByte(S2C_JSON_PACKET_TYPE)
-                dataStream.writeInt(internalPacketId)
-                dataStream.write(str.toByteArray(Charsets.UTF_8))
-            }
-            return byteStream.toByteArray()
-        }
+    private fun serializePacket(internalPacketId: Int, obj: JsonObject): ByteArray =
+        LanternProtocol.encodeS2C(internalPacketId, obj) { path -> reportSchemaMiss(internalPacketId, path) }
+
+    /** 字段落进附加字段区：数据照样送达，只是带着键名多花字节，提示开发者补字段表 */
+    private fun reportSchemaMiss(packetId: Int, path: String) {
+        if (!reportedSchemaMisses.add("$packetId:$path")) return
+        LanternPlugin.instance.logger.warning(
+            "lantern:main packet $packetId 的字段 $path 不在 common-core PacketSchemas 里（或类型不符），" +
+                "已带键名下发；补进字段表时记得把 PROTOCOL_VERSION 加一"
+        )
     }
 
     private fun sendSerializedPacket(player: Player, bytes: ByteArray) {
-        if (bytes.size <= MAX_PLUGIN_MESSAGE_BYTES) {
+        if (bytes.size <= LanternProtocol.MAX_FRAME_BYTES) {
             sendPluginMessage(player, bytes)
             return
         }
 
-        sendChunkedPacket(player, bytes)
+        LanternProtocol.splitIntoChunks(bytes, chunkMessageIds.incrementAndGet()).forEach {
+            sendPluginMessage(player, it)
+        }
     }
 
     private fun sendPluginMessage(player: Player, bytes: ByteArray) {
@@ -94,29 +92,9 @@ object NetworkHandler {
         }
     }
 
-    private fun sendChunkedPacket(player: Player, bytes: ByteArray) {
-        val messageId = chunkMessageIds.incrementAndGet()
-        val totalChunks = (bytes.size + MAX_CHUNK_PAYLOAD_BYTES - 1) / MAX_CHUNK_PAYLOAD_BYTES
-
-        for (chunkIndex in 0 until totalChunks) {
-            val offset = chunkIndex * MAX_CHUNK_PAYLOAD_BYTES
-            val chunkLength = (bytes.size - offset).coerceAtMost(MAX_CHUNK_PAYLOAD_BYTES)
-            ByteArrayOutputStream(CHUNK_HEADER_BYTES + chunkLength).use { byteStream ->
-                DataOutputStream(byteStream).use { dataStream ->
-                    dataStream.writeByte(S2C_CHUNK_PACKET_TYPE)
-                    dataStream.writeInt(messageId)
-                    dataStream.writeInt(totalChunks)
-                    dataStream.writeInt(chunkIndex)
-                    dataStream.writeInt(bytes.size)
-                    dataStream.writeInt(chunkLength)
-                    dataStream.write(bytes, offset, chunkLength)
-                }
-                sendPluginMessage(player, byteStream.toByteArray())
-            }
-        }
-    }
-
     fun sendPackets(player: Player) {
+        // 协议版本包必须最先到：客户端收到同版本号之前丢弃一切数据
+        sendPluginMessage(player, protocolInfoBytes)
         sendResourcePackKey(player)
         sendCharactersPacket(player, Configurations.characters)
         sendEntityModelsPacket(player, Configurations.models)

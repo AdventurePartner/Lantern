@@ -10,7 +10,6 @@ import net.minecraftforge.fml.LogicalSide
 import org.lantern.core.protocol.LanternProtocol
 import org.lantern.core.protocol.MainPayloadDecoder
 import org.lantern.internal.network.NetworkParser
-import org.lantern.internal.util.JsonUtils
 import java.util.function.Consumer
 
 object ForgePacketNetwork {
@@ -24,7 +23,7 @@ object ForgePacketNetwork {
 
     fun handleMainPayload(bytes: ByteArray) {
         mainPayloadDecoder.decode(bytes)?.let { packet ->
-            NetworkParser.parse(packet.packetId, JsonUtils.fromString(packet.json))
+            NetworkParser.parse(packet.packetId, packet.payload)
         }
     }
 

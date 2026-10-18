@@ -9,7 +9,6 @@ import net.neoforged.neoforge.network.handling.IPayloadContext
 import org.lantern.core.protocol.LanternProtocol
 import org.lantern.core.protocol.MainPayloadDecoder
 import org.lantern.internal.network.NetworkParser
-import org.lantern.internal.util.JsonUtils
 import java.util.UUID
 import java.util.function.Consumer
 
@@ -34,7 +33,7 @@ object NeoForgePacketNetwork {
     private fun handleMainPayload(payload: LanternMainPayload, context: IPayloadContext) {
         if (context.flow() != PacketFlow.CLIENTBOUND) return
         mainPayloadDecoder.decode(payload.data)?.let { packet ->
-            NetworkParser.parse(packet.packetId, JsonUtils.fromString(packet.json))
+            NetworkParser.parse(packet.packetId, packet.payload)
         }
     }
 

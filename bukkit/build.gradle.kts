@@ -19,6 +19,8 @@ repositories {
 }
 
 dependencies {
+    // lantern:main 的编解码与字段表和客户端共用，打进插件
+    implementation(project(":common-core"))
     compileOnly(fileTree("libs") { include("*.jar") })
     compileOnly("org.spigotmc:spigot-api:1.20.1-R0.1-SNAPSHOT")
     compileOnly("com.aystudio.core:AyCore:1.3.1-BETA")

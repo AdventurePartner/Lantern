@@ -1,8 +1,11 @@
 package org.lantern.internal.network
 
 import com.google.gson.JsonObject
+import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
+import net.minecraft.network.chat.Component
 import org.lantern.Lantern
+import org.lantern.core.protocol.LanternProtocol
 import org.lantern.internal.chat.ChatChannel
 import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatStyleCodec
@@ -130,6 +133,24 @@ object NetworkParser {
             22 -> parseWorldImageConfig(obj)
             23 -> parseWorldImageCommand(obj)
             99 -> AssetSync.onSyncComplete(obj.get("full")?.asBoolean ?: false)
+            LanternProtocol.PROTOCOL_INFO_PACKET_ID -> onProtocolInfo(obj)
+        }
+    }
+
+    /**
+     * 服务端的协议版本。版本不一致时解码器已经在丢弃后续数据，这里只负责告诉玩家为什么
+     * 自定义内容一个都没加载。旧版 JSON 插件由解码器识别出来，报成 v1
+     */
+    private fun onProtocolInfo(obj: JsonObject) {
+        val serverVersion = obj.get("version")?.asInt ?: return
+        if (serverVersion == LanternProtocol.PROTOCOL_VERSION) return
+        val message = "服务端 LanternPlugin 与客户端 Lantern 的通信协议不一致" +
+            "（服务端 v$serverVersion，客户端 v${LanternProtocol.PROTOCOL_VERSION}），" +
+            "自定义内容不会加载，请同时更新服务端插件和客户端模组"
+        Lantern.logger.warn("[Lantern] {}", message)
+        val client = Minecraft.getInstance()
+        client.execute {
+            client.gui.chat.addMessage(Component.literal("[Lantern] $message").withStyle(ChatFormatting.RED))
         }
     }
 

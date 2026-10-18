@@ -11,7 +11,6 @@ import org.lantern.core.protocol.MainPayloadDecoder
 import org.lantern.internal.network.packet.KeyboardPacket
 import org.lantern.internal.network.packet.LanternDataPacket
 import org.lantern.internal.network.packet.LanternMainPacket
-import org.lantern.internal.util.JsonUtils
 import org.lantern.platform.IdentifierBridge
 
 object PacketNetwork {
@@ -37,7 +36,7 @@ object PacketNetwork {
         ClientPlayNetworking.registerGlobalReceiver(LanternMainPacket.TYPE) { payload, context ->
             context.client().execute {
                 mainPayloadDecoder.decode(payload.data)?.let { packet ->
-                    NetworkParser.parse(packet.packetId, JsonUtils.fromString(packet.json))
+                    NetworkParser.parse(packet.packetId, packet.payload)
                 }
             }
         }
