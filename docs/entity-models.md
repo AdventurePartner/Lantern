@@ -88,7 +88,7 @@ assets/lantern/animations/entity/example_pig.animation.json
 
 1. 保存 `entityModels.yml`。
 2. 执行 `/lantern reload`。
-3. 如果模型没有立刻出现，让玩家重新进入服务器。
+3. 模型和贴图在玩家客户端后台读取，读完之前生物先显示原版样子，读完后自动换成自定义模型；一直没出现时，让玩家重新进入服务器。
 
 ## 手动播放动画
 

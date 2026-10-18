@@ -95,7 +95,7 @@ assets/lantern/animations/block/ruby_ore.animation.json
 
 1. 保存 `blockModels.yml`。
 2. 执行 `/lantern reload`。
-3. 如果换了模型或贴图，让玩家等待资源刷新；仍未显示时重新进入服务器。
+3. 如果换了模型或贴图，玩家客户端会在后台重新读取，读完后自动生效。读取完成前，已放置的方块暂不显示，背包里的方块物品显示成原版木桶。
 
 ## 常见问题
 

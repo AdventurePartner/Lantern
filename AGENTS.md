@@ -149,6 +149,14 @@ bukkit/src/main/
 
 > GeckoLib 兼容约束：NeoForge 1.21.10 使用的 GeckoLib `5.3-alpha-3` 会把自身 payload 注册为 mandatory，项目通过 `GeckoLibNetworkingNeoForgeMixin` 将其 registrar 改为 optional。升级 GeckoLib 时必须重新核对上游注册行为和该 Mixin 的注入目标，并连接真实 Bukkit/Paper 服务端验证登录、S2C 初始同步和 C2S 键盘消息。
 
+### 资源加载（进服不整包重载）
+
+1. **流程**: packet 7（密码）→ `AssetSync.onResourcePackKey` → `EncryptedPackLoader.loadAsync` 在 `AssetSync.executor` 后台解密、主线程 `replaceEncryptedPackResources` 发布；packet 99（同步结束）→ `AssetSync.onSyncComplete`：载荷 `full=true`（服务端 `client-full-reload`）才走原版 `reloadResourcePacks()`，否则只做后台刷新——加密包发布版本变了才经 `org.lantern.platform.GeckoCacheBridge.refresh` 单独重跑 GeckoLib 的 reload listener（立即放行的 barrier，后台解析、主线程换表），最后 `ResourceHandler.onAssetsRefreshed`（两份 ResourceHandler 各一份）
+2. **解密快照**: 按「密码 + zip 路径/大小/修改时间」复用内存快照，重连与 F3+T 的 `rebuild()` 都经 `republishSnapshot()` 重新发布、不读盘。不要在 rebuild 或主线程里重新解密
+3. **GeckoCacheBridge**: Fabric 1.21.1 / NeoForge 1.21.1 直接调公开的 `GeckoLibCache.reload`，Forge 1.20.1（GeckoLib 打包并重定位，reload 是 private）用反射，NeoForge 1.21.10 调 `GeckoLibResources.reload(SharedState, ...)`、`hasModel` 先经 `GeckoResourceIds.model` 换键。升级 GeckoLib 时要复核这四处签名
+4. **未就绪回退**: 渲染入口统一问 `LanternAssets`（`isGeoReady` / `isTextureReady` / `isModelReady` / `isTexturePathReady`）。实体模型、外观、手持外观物品、木桶物品没就绪画原版；放置的自定义方块不画（木桶网格按 open 标记态压掉，为了 Sodium 按状态缓存不能改成按就绪判断）；界面图片、世界图片、字符图标不画。本地贴图只在 `AssetSync.isLoading` 期间按存在性挡住，加载结束后缺的贴图照常画紫黑格子暴露配置错误。加载期间缺资源不要记成损坏（`brokenCostumes` 之类）
+5. **运行时物品图标**: `ItemIconMeshes` 在后台按 ImageIO 读贴图、`IconMeshBuilder` 按原版 ItemModelGenerator 规则挤出网格，不进方块图集、不依赖烘焙。Fabric / NeoForge 1.21.1 / Forge 1.20.1 在各自 ItemRenderer mixin 的 `getModel` HEAD 返回占位 `LanternIconBakedModel`、`render` HEAD 由 `ItemIconModels.render` 画（RenderType 用 `entityTranslucentCull`，`itemEntity*` 在极佳画质下 GUI 里看不见）；NeoForge 1.21.10 在 `LanternItemModel.update` 里选 `IconSpecialRenderer`（`submitCustomGeometry`）。顶点提交 `IconVertexEmitter` 在 Forge 1.20.1 有同 FQN 副本
+
 ### 自定义实体模型
 
 使用 GeckoLib 渲染自定义模型：
@@ -165,7 +173,7 @@ bukkit/src/main/
 3. **会话清理**: 断线调 `SessionCleanup.onDisconnect()`，实体离场调 `onEntityLeave(entity)`；外观分配只在登出或服务端 removals 时清，离场只淘汰渲染器（服务端只在分配变化时广播）
 4. **相机与输入锁**: 1.21.1 共享 `mixin/camera/`、`mixin/input/`；Forge 1.20.1 用 `Camera1201Mixin`（`move` 收 double）与 `MouseHandler1201Mixin`（`turnPlayer()` 无参且自己清零累计位移，取消时要手动清零）。roll：Fabric 与 NeoForge 1.21.1 在 `Camera.setup` TAIL 改四元数（NeoForge 21.1 的 ComputeCameraAngles 在 setup 开头，先于 TAIL）；Forge 1.20.1 的事件在 setup 之后，经 `CameraRoll` 加到 `ViewportEvent.ComputeCameraAngles` 上
 5. **host-driven 玩家整替外观**（1.21.1 / 1.20.1 共享 `mixin/costume/*HostMixin`，签名两版一致）: `LivingEntityRenderer.render` HEAD 经 `HostAttach.begin` 先算本帧姿势、RETURN 还原；`getRenderType` 返回 null 压掉原版身体；`PlayerModel.setupAnim` TAIL 把骨骼写进原版六部件（这两版 setupAnim 不整体复位部件，必须渲染完还原）；披风 / 鞘翅 / 鹦鹉换到躯干骨空间；手持物由 `CostumeItemLayer` 挂骨。NeoForge 走 RenderState，有自己的一套
-6. **版本差异 API**: 放在各模块同 FQN 的 `org.lantern.platform.*Bridge`（`TimeBridge`、`EntityLookupBridge`、`InteractionBridge`、`PlayerBridge`），共享代码只调 Bridge
+6. **版本差异 API**: 放在各模块同 FQN 的 `org.lantern.platform.*Bridge`（`TimeBridge`、`EntityLookupBridge`、`InteractionBridge`、`PlayerBridge`、`GeckoCacheBridge`），共享代码只调 Bridge
 
 ### UI 组件系统 (uix)
 
