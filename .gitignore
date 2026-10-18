@@ -46,6 +46,8 @@ bin/
 object/
 .mimosa/
 .zcode/
+AGENTS.md
+.zcodeignore
 .eclipse/
 run/
 /docs/animation-control-plan.md
