@@ -1,4 +1,10 @@
 resource-pack-key: ""
+
+# 进服与 /lantern reload 后客户端是否整包重载资源（等同 F3+T，会弹加载遮罩）。
+# 默认 false：自定义模型、外观、方块、物品图标、界面图片在后台加载，加载完前显示原版。
+# 只有加密包里放了声音(sounds.json)、语言、字体、方块状态或原版图集贴图覆盖时才需要打开。
+client-full-reload: false
+
 chat-channels: []
 
 # 聊天样式（可选）。不写就是原版外观；颜色必须加引号，写 #RRGGBB 或 #AARRGGBB。

@@ -134,7 +134,7 @@ object NetworkHandler {
         // 登录补发：绑定按宿主位置做半径广播，中途进服的玩家没收到过任何一条
         org.lantern.bind.BindRegistry.syncTo(player)
 
-        // 延迟一秒发送重载资源数据包
+        // 延迟一秒发送同步结束包：新客户端据此后台刷新资源，旧客户端据此整包重载
         val reloadRunnable = Runnable { sendReloadResourceManagerPacket(player) }
         Bukkit.getScheduler().runTaskLater(LanternPlugin.instance, reloadRunnable, 20L)
     }
@@ -1079,8 +1079,14 @@ object NetworkHandler {
         Bukkit.getOnlinePlayers().forEach { sendSerializedPacket(it, bytes) }
     }
 
+    /**
+     * packet 99：初始同步结束。旧客户端忽略载荷、一律整包重载；
+     * 新客户端只在 full=true 时整包重载，否则后台刷新自定义资源
+     */
     fun sendReloadResourceManagerPacket(player: Player) {
-        sendPacket(player, 99, JsonObject())
+        val packet = JsonObject()
+        packet.addProperty("full", LanternPlugin.instance.config.getBoolean("client-full-reload", false))
+        sendPacket(player, 99, packet)
     }
 
     /**
