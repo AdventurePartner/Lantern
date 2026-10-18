@@ -139,11 +139,15 @@ bukkit/src/main/
 
 各平台客户端与 Bukkit 服务端通过自定义协议通信：
 
-1. **通道**: `lantern:main` (插件通道), `lantern:data` (Fabric API)
+1. **通道**: `lantern:main` (插件通道), `lantern:data` (Fabric 遗留，Bukkit 不发)
 2. **方向**:
    - S2C (Server to Client): 服务端推送配置数据
-   - C2S (Client to Server): 客户端发送键盘事件
+   - C2S (Client to Server): 客户端发送键盘事件（type 1）与动画事件（type 3）
 3. **数据包类**: `LanternMainPacket`, `LanternDataPacket`, `KeyboardPacket`
+4. **编解码只有一份**: 帧格式、字段表、解码器都在 common-core `org.lantern.core.protocol`，Bukkit 以 `implementation(project(":common-core"))` 打进插件，四端客户端各自持有一个 `MainPayloadDecoder`（断线 `clear()`）
+5. **S2C 是二进制，不是 JSON**: 帧首字节 = packetId（最高位 = zlib 压缩），`0x00` 分片，`0x7F` 协议版本包。有字段表的包按 `PacketSchemas` 逐字段写、不写键名，其余（5 UI、22 世界图片模板）走 `BinaryJson` 通用编码。客户端解码回与 JSON 时代等价的 `JsonObject`（数字是 `LazilyParsedNumber(服务端 toString)`），`NetworkParser` 及其下游不感知编码
+6. **版本守卫**: `sendPackets` 最先发协议版本包，客户端收到同版本号之前丢弃一切数据；版本不一致或识别出旧版 JSON 帧时 `NetworkParser` 在聊天栏提示。两端必须一起更新，没有 JSON 回退
+7. **改字段表**: `PacketSchemas` 按位置编码，任何改动（增删字段、换顺序、改类型、改 choice 取值）都要把 `LanternProtocol.PROTOCOL_VERSION` 加一并更新 `PacketSchemasTest` 的指纹。服务端多写了字段表外的键不会丢，只是带键名进附加字段区，Bukkit 按 (packetId, 字段路径) 打一次警告——看到警告就该补表。新增 packet 时同时在 `PacketSchemas` 登记字段表、在 `PacketSamples` 加样例（`PacketCodecTest` 会逐键比对 JSON 路径）
 
 > 网络互通约束：`lantern:main` 是 Bukkit 与客户端之间的 wire contract。Forge/NeoForge 的 channel 或 payload 注册必须允许远端缺失；对于 NeoForge，应使用 `PayloadRegistrar.optional()`。运行时依赖注册的 payload 也必须检查，不能只检查 Lantern 自身代码。
 
