@@ -21,6 +21,10 @@ import org.lantern.internal.storage.BlockModelEntry
 import java.util.concurrent.ConcurrentHashMap
 import com.google.gson.JsonObject
 import org.lantern.costume.handler.CostumeHandler
+import org.lantern.internal.asset.AssetSync
+import org.lantern.internal.asset.LanternAssets
+import org.lantern.internal.icon.IconSpec
+import org.lantern.internal.icon.ItemIconMeshes
 import org.lantern.model.handler.RendererHandler
 
 /*
@@ -86,6 +90,9 @@ object ResourceHandler {
         return itemCustomIcons[customModeLData]
     }
 
+    fun getItemIconSpec(customModelData: Int): IconSpec? =
+        clientStorage.itemIcons[customModelData]?.let { (identifier, texture, type) -> IconSpec(identifier, texture, type) }
+
     /**
      * 根据 ModelBakery 传入的模型路径（如 "item/custom_wrapper"）查找对应纹理路径。
      * Fabric ModelLoadingPlugin.resolveModel() 的 ctx.id().path 为 "item/{identifier}"。
@@ -110,11 +117,12 @@ object ResourceHandler {
         encryptedPackResources.add(rl)
     }
 
-    fun clearEncryptedPackResources() {
-        encryptedPackResources.forEach { rl ->
-            dynamicResourceLinked.remove(rl)
-        }
+    /** 先加新再删旧：后台线程（GeckoLib 刷新）随时可能在读这张表，中途不能出现空窗 */
+    fun replaceEncryptedPackResources(next: Map<ResourceLocation, IResourceWrapper>) {
+        val previous = encryptedPackResources.toSet()
         encryptedPackResources.clear()
+        next.forEach { (rl, wrapper) -> addEncryptedPackResource(rl, wrapper) }
+        previous.filterNot(encryptedPackResources::contains).forEach(dynamicResourceLinked::remove)
     }
 
     fun addLocalPackResource(rl: ResourceLocation, wrapper: IResourceWrapper) {
@@ -239,7 +247,7 @@ object ResourceHandler {
     /**
      * 退出服务器时清掉该会话下发的全部定义，否则旧服的按键、字符图标、物品图标、
      * 方块与实体模型会带进下一个服务器（F3+T 的 rebuild 还会把它们重新注册回来）。
-     * 本地包/加密包是客户端本地资源，保留：清掉会让重连后 pkt 99 的重载给 GeckoLib 空包
+     * 本地包/加密包是客户端本地资源，保留：GeckoLib 缓存里的模型就是按它们建的，重连同一服也不必再解密
      */
     fun clearSession() {
         EncryptedPackLoader.clearPassword()
@@ -255,6 +263,25 @@ object ResourceHandler {
         BlockRendererHandler.clearPositions()
         BlockRendererHandler.resetDiagnosticFlags()
         CostumeHandler.reload()
+    }
+
+    /**
+     * 后台资源刷新完成（AssetSync）。定义表由各 packet 自己维护，这里只丢掉按旧资源建出的缓存；
+     * resourcesChanged 为 false 时资源集合没变（重连同一服、/lantern reload），渲染器不必重建
+     */
+    fun onAssetsRefreshed(resourcesChanged: Boolean) {
+        LanternAssets.invalidate()
+        ItemIconMeshes.invalidate()
+        if (resourcesChanged) {
+            // 资源发布前就被请求过的贴图在 TextureManager 里登记成了缺失贴图，释放后按新资源懒加载
+            val textureManager = Minecraft.getInstance().textureManager
+            encryptedPackResources.filter { it.path.startsWith("textures/") }.forEach(textureManager::release)
+            RendererHandler.dropRenderers()
+            CostumeHandler.refreshRenderers()
+            BlockRendererHandler.clearCache()
+            BlockRendererHandler.markSectionsDirty()
+        }
+        ModelDiagnostics.validateEntityModels(RendererHandler.getCustomModelWrappers())
     }
 
     /**
@@ -276,8 +303,8 @@ object ResourceHandler {
         dynamicResourceLinked.clear()
         encryptedPackResources.clear()
         localPackResources.clear()
-        // 重新加载加密资源包
-        EncryptedPackLoader.reloadEncryptedPacks()
+        // 加密包按内存快照重新发布，不再解密一遍
+        EncryptedPackLoader.republishSnapshot()
         // 重新加载本地未加密资源包
         LocalPackLoader.reload()
         // 重新载入资源
@@ -334,6 +361,8 @@ object ResourceHandler {
         // 资源重载完成后校验实体模型路径前缀与文件存在性，缺失时 WARN 暴露配置错误
         ModelDiagnostics.validateEntityModels(RendererHandler.getCustomModelWrappers())
         CostumeHandler.refreshRenderers()
+        ItemIconMeshes.invalidate()
+        AssetSync.onResourceReloaded()
         Lantern.logger.debug("[Lantern] rebuild: restored {} entity models", clientStorage.entityModels.size)
         Lantern.logger.debug("[Lantern] rebuild: END - itemCustomIcons={}, blockCustomModels={}", itemCustomIcons.size, blockCustomModels.size)
     }

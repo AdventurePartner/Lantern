@@ -1,6 +1,7 @@
 package org.lantern.model.wrapper
 
 import net.minecraft.resources.ResourceLocation
+import org.lantern.internal.asset.LanternAssets
 
 /**
  * 自定义方块模型配置包装类。
@@ -34,4 +35,7 @@ data class BlockModelWrapper(
     val hardness: Float = 1.5f,
     val preferredTool: String? = null,
     val breakSound: String? = null
-)
+) {
+    /** geo 已进 GeckoLib 缓存且贴图可用；没就绪时放置的方块与物品都照原版木桶画 */
+    fun isReady(): Boolean = LanternAssets.isModelReady(modelLocation, textureLocation, textureUrl)
+}

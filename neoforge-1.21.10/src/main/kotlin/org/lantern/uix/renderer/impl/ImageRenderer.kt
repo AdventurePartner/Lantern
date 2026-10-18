@@ -2,6 +2,7 @@ package org.lantern.uix.renderer.impl
 
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.resources.ResourceLocation
+import org.lantern.internal.asset.LanternAssets
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.platform.IdentifierBridge
 import org.lantern.uix.layout.LayoutCache
@@ -70,16 +71,21 @@ object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
         )
     }
 
+    /** 贴图还在下载或资源还在后台加载时返回 null，这一帧不画 */
     private fun resolve(texture: String): ResourceLocation? {
         if (texture.isBlank() || texture in invalidPaths) return null
-        if (TextureHandler.isHttpUrl(texture)) return TextureHandler.getTexture(texture)
-        locations[texture]?.let { return it }
-        val parsed = runCatching { IdentifierBridge.parse(texture) }.getOrNull()
-        if (parsed == null) {
-            invalidPaths.add(texture)
-            return null
+        if (TextureHandler.isHttpUrl(texture)) {
+            return TextureHandler.getTexture(texture).takeIf { LanternAssets.isTextureReady(it, texture) }
         }
-        locations[texture] = parsed
-        return parsed
+        val location = locations[texture] ?: run {
+            val parsed = runCatching { IdentifierBridge.parse(texture) }.getOrNull()
+            if (parsed == null) {
+                invalidPaths.add(texture)
+                return null
+            }
+            locations[texture] = parsed
+            parsed
+        }
+        return location.takeIf { LanternAssets.isTextureReady(it, null) }
     }
 }

@@ -8,6 +8,7 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSink;
 import org.joml.Matrix4f;
+import org.lantern.internal.asset.LanternAssets;
 import org.lantern.internal.handler.ResourceHandler;
 import org.lantern.internal.handler.TextureHandler;
 import org.lantern.internal.wrapper.key.CharacterWrapper;
@@ -50,7 +51,10 @@ public abstract class StringRenderOutputMixin implements FormattedCharSink {
             return;
         }
 
-        lantern$renderIcon(wrapper);
+        // 贴图还在后台加载时只占位不画，原字符（通常是私用区码位）也不画
+        if (LanternAssets.isTexturePathReady(wrapper.getResource())) {
+            lantern$renderIcon(wrapper);
+        }
         x += wrapper.getWide();
         cir.setReturnValue(true);
     }

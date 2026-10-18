@@ -16,6 +16,7 @@ import org.joml.Vector3f
 import org.lantern.Lantern
 import org.lantern.core.image.ImageAnims
 import org.lantern.core.image.ImagePose
+import org.lantern.internal.asset.LanternAssets
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.platform.IdentifierBridge
 
@@ -237,12 +238,14 @@ object WorldImageRenderer {
     /** 渲染时现解析：http 走 TextureHandler（下载完成后自动换真图），本地路径走动态资源包。 */
     private fun resolveTexture(path: String?): ResourceLocation? {
         if (path == null) return null
-        return runCatching {
+        val location = runCatching {
             if (TextureHandler.isHttpUrl(path)) TextureHandler.getTexture(path)
             else IdentifierBridge.of(Lantern.MOD_ID, path)
         }.getOrElse {
             Lantern.logger.warn("[Lantern] world image: 非法贴图路径 '$path'：${it.message}")
             null
-        }
+        } ?: return null
+        // 贴图还在下载或资源还在后台加载：这一帧不画
+        return location.takeIf { LanternAssets.isTextureReady(it, path.takeIf(TextureHandler::isHttpUrl)) }
     }
 }

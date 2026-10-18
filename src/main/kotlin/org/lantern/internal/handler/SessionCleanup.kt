@@ -11,6 +11,7 @@ import org.lantern.core.camera.CameraControl
 import org.lantern.core.camera.ShoulderCameraState
 import org.lantern.core.input.InputLockStore
 import org.lantern.costume.handler.CostumeHandler
+import org.lantern.internal.asset.AssetSync
 import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatStyleHandler
 import org.lantern.internal.parser.UiParser
@@ -31,6 +32,7 @@ object SessionCleanup {
         ChatChannelHandler.clear()
         ChatStyleHandler.clear()
         ResourceHandler.clearSession()
+        AssetSync.onDisconnect()
         TextureHandler.reload()
         UiParser.resetAll()
         FocusManager.blur()

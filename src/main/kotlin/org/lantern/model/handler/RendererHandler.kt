@@ -8,6 +8,7 @@ import net.minecraft.world.entity.EntityType
 import org.lantern.Lantern
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.handler.CycleHandler
+import org.lantern.internal.asset.LanternAssets
 import org.lantern.model.renderer.GenericGeoRenderer
 import org.lantern.core.anim.statemap.AnimationStateMapping
 import org.lantern.model.wrapper.CustomModelWrapper
@@ -108,6 +109,12 @@ object RendererHandler {
         version++
     }
 
+    /** 资源刷新换了 GeckoLib 缓存：渲染器持有旧模型的骨骼深拷贝，丢掉待懒重建 */
+    fun dropRenderers() {
+        renderers.clear()
+        AnimationRepository.reset()
+    }
+
     fun getRenderer(entityType: EntityType<*>, customName: String, uuid: UUID): GenericGeoRenderer<*>? {
         if (CycleHandler.context == null) return null
         val wrapper = getCustomModelWrapper(customName) ?: run {
@@ -117,6 +124,8 @@ object RendererHandler {
             }
             return null
         }
+        // 模型或贴图还在后台加载：先画原版模型，就绪后下一帧自动切换
+        if (!LanternAssets.isModelReady(wrapper.modelLocation, wrapper.textureLocation, wrapper.textureUrl)) return null
         val byUuid = renderers.computeIfAbsent(entityType) { mutableMapOf() }
         val cached = byUuid[uuid]
         // 实体改名换了模型：旧渲染器的骨骼树属于旧模型，必须重建

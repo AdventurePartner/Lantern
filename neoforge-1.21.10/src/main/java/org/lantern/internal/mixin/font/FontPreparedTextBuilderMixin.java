@@ -3,6 +3,7 @@ package org.lantern.internal.mixin.font;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.util.ARGB;
+import org.lantern.internal.asset.LanternAssets;
 import org.lantern.internal.handler.ResourceHandler;
 import org.lantern.internal.font.CharacterIconSupport.Icon;
 import org.lantern.internal.font.CharacterIconSupport.IconSink;
@@ -76,12 +77,15 @@ public abstract class FontPreparedTextBuilderMixin implements IconSink {
         }
         float iconX = this.x + wrapper.getOffsetX();
         float iconY = this.y + wrapper.getOffsetY();
-        this.lantern$icons.add(new Icon(
-            iconX, iconY,
-            wrapper.getWidth(), wrapper.getHeight(),
-            wrapper.getResource(),
-            baseColor, shadowColor
-        ));
+        // 贴图还在后台加载时只占位不画，原字符（通常是私用区码位）也不画
+        if (LanternAssets.isTexturePathReady(wrapper.getResource())) {
+            this.lantern$icons.add(new Icon(
+                iconX, iconY,
+                wrapper.getWidth(), wrapper.getHeight(),
+                wrapper.getResource(),
+                baseColor, shadowColor
+            ));
+        }
         this.markSize(iconX, iconY, iconX + wrapper.getWidth(), iconY + wrapper.getHeight());
         this.x += wrapper.getWide();
         cir.setReturnValue(true);

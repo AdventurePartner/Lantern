@@ -1,11 +1,16 @@
 package org.lantern.internal.handler
 
 import com.google.gson.JsonObject
+import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.network.chat.FormattedText
 import net.minecraft.resources.ResourceLocation
 import org.lantern.Lantern
 import org.lantern.costume.handler.CostumeHandler
+import org.lantern.internal.asset.AssetSync
+import org.lantern.internal.asset.LanternAssets
+import org.lantern.internal.icon.IconSpec
+import org.lantern.internal.icon.ItemIconMeshes
 import org.lantern.internal.storage.BlockModelEntry
 import org.lantern.internal.storage.ClientStorage
 import org.lantern.internal.wrapper.key.CharacterWrapper
@@ -43,8 +48,12 @@ object ResourceHandler {
         addPackResource(location, wrapper, encryptedResources)
     }
 
-    fun clearEncryptedPackResources() {
-        clearResources(encryptedResources)
+    /** 先加新再删旧：后台线程（GeckoLib 刷新）随时可能在读这张表，中途不能出现空窗 */
+    fun replaceEncryptedPackResources(next: Map<ResourceLocation, IResourceWrapper>) {
+        val previous = encryptedResources.toSet()
+        encryptedResources.clear()
+        next.forEach { (location, wrapper) -> addPackResource(location, wrapper, encryptedResources) }
+        previous.filterNot(encryptedResources::contains).forEach(resources::remove)
     }
 
     fun addLocalPackResource(location: ResourceLocation, wrapper: IResourceWrapper) {
@@ -88,6 +97,9 @@ object ResourceHandler {
     }
 
     fun getItemIcon(customModelData: Int): String? = itemIcons[customModelData]
+
+    fun getItemIconSpec(customModelData: Int): IconSpec? =
+        clientStorage.itemIcons[customModelData]?.let { (identifier, texture, type) -> IconSpec(identifier, texture, type) }
 
     fun getItemIcons(): Map<Int, String> = itemIcons.toMap()
 
@@ -173,6 +185,24 @@ object ResourceHandler {
         clientStorage.keyboards.clear()
     }
 
+    /**
+     * 后台资源刷新完成（AssetSync）。定义表由各 packet 自己维护，这里只丢掉按旧资源建出的缓存；
+     * resourcesChanged 为 false 时资源集合没变（重连同一服、/lantern reload），渲染器不必重建
+     */
+    fun onAssetsRefreshed(resourcesChanged: Boolean) {
+        LanternAssets.invalidate()
+        ItemIconMeshes.invalidate()
+        if (resourcesChanged) {
+            // 资源发布前就被请求过的贴图在 TextureManager 里登记成了缺失贴图，释放后按新资源懒加载
+            val textureManager = Minecraft.getInstance().textureManager
+            encryptedResources.filter { it.path.startsWith("textures/") }.forEach(textureManager::release)
+            RendererHandler.dropRenderers()
+            CostumeHandler.refreshRenderers()
+            BlockRendererHandler.markSectionsDirty()
+        }
+        ModelDiagnostics.validateEntityModels(RendererHandler.getWrappers())
+    }
+
     fun reload() {
         Lantern.logger.info("[Lantern] Reloading dynamic resources")
         rebuild()
@@ -188,7 +218,8 @@ object ResourceHandler {
         localResources.clear()
         generatedResources.clear()
 
-        EncryptedPackLoader.reloadEncryptedPacks()
+        // 加密包按内存快照重新发布，不再解密一遍
+        EncryptedPackLoader.republishSnapshot()
         LocalPackLoader.reload()
         characters.putAll(clientStorage.characters)
         keyboards.putAll(clientStorage.keyboards)
@@ -219,12 +250,14 @@ object ResourceHandler {
         CostumeHandler.refreshRenderers()
         // 盔甲部件树随 vanilla 模型生命周期重建（几何为静态数值，重建只为对齐时序）
         org.lantern.costume.armor.LanternArmorModel.invalidate()
+        ItemIconMeshes.invalidate()
+        AssetSync.onResourceReloaded()
     }
 
     fun clearSession() {
         EncryptedPackLoader.clearPassword()
-        // 本地包/加密包是客户端本地资源，退出服务器时保留；
-        // 清空会导致重连后 pkt 99 的重载向 GeckoLib 提供空包，模型全部消失
+        // 本地包/加密包是客户端本地资源，退出服务器时保留：
+        // GeckoLib 缓存里的模型就是按它们建的，重连同一服也不必再解密
         clearResources(generatedResources)
         itemIcons.clear()
         blockModels.clear()

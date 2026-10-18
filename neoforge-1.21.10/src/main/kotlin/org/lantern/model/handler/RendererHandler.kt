@@ -6,6 +6,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.EntityType
 import org.lantern.Lantern
 import org.lantern.animation.AnimationRepository
+import org.lantern.internal.asset.LanternAssets
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.core.anim.control.AnimationControlStore
 import org.lantern.core.anim.statemap.AnimationStateMapping
@@ -88,6 +89,22 @@ object RendererHandler {
         wrappers[name] = wrapper
         wrappers[normalizedName] = wrapper
         version++
+    }
+
+    /** 资源刷新换了 GeckoLib 缓存：渲染器持有旧模型的骨骼深拷贝，丢掉待懒重建 */
+    fun dropRenderers() {
+        renderers.clear()
+        AnimationRepository.reset()
+    }
+
+    /**
+     * 提取阶段按实体取渲染器：模型或贴图还在后台加载时返回 null，先画原版模型。
+     * 按 render state 取渲染器那条路径不能做这层判定——state 已带着 Lantern 数据，交给原版会类型不符
+     */
+    fun getReadyRenderer(entityType: EntityType<*>, customName: String, uuid: java.util.UUID): GenericGeoRenderer<*>? {
+        val wrapper = getCustomModelWrapper(customName) ?: return getRenderer(entityType, customName, uuid)
+        if (!LanternAssets.isModelReady(wrapper.modelLocation, wrapper.textureLocation, wrapper.textureUrl)) return null
+        return getRenderer(entityType, customName, uuid)
     }
 
     /**

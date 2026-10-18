@@ -7,8 +7,9 @@ import org.lantern.internal.chat.ChatChannel
 import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatStyleCodec
 import org.lantern.internal.chat.ChatStyleHandler
-import org.lantern.internal.handler.EncryptedPackLoader
+import org.lantern.internal.asset.AssetSync
 import org.lantern.internal.handler.ResourceHandler
+import org.lantern.internal.icon.ItemIconMeshes
 import org.lantern.internal.parser.UiParser
 import org.lantern.internal.placeholder.PlaceholderStore
 import org.lantern.internal.storage.UiScreenStorage
@@ -128,7 +129,7 @@ object NetworkParser {
             21 -> inputLockHandler?.invoke(obj)
             22 -> parseWorldImageConfig(obj)
             23 -> parseWorldImageCommand(obj)
-            99 -> reloadResourcePack()
+            99 -> AssetSync.onSyncComplete(obj.get("full")?.asBoolean ?: false)
         }
     }
 
@@ -290,13 +291,14 @@ object NetworkParser {
             val res = ItemIconResourceWrapperImpl(identifier, texture, type)
             ResourceHandler.addItemIcon(customModelData, identifier, res)
         }
+        ItemIconMeshes.invalidate()
     }
 
     private fun handleResourcePackKey(obj: JsonObject) {
         val key = obj.get("key")?.asString ?: return
         if (key.isBlank()) return
-        Lantern.logger.info("[Lantern] Received resource pack key, loading encrypted packs...")
-        EncryptedPackLoader.loadEncryptedPacks(key)
+        Lantern.logger.info("[Lantern] Received resource pack key, loading encrypted packs in background...")
+        AssetSync.onResourcePackKey(key)
     }
 
     private fun parseCostumes(obj: JsonObject) {
@@ -534,9 +536,5 @@ object NetworkParser {
     /** packetId 23（世界图片实例指令）：spawn 同 id = 替换并重启动画，remove 按 id，clear 清空。 */
     private fun parseWorldImageCommand(obj: JsonObject) {
         Minecraft.getInstance().execute { org.lantern.worldimage.WorldImageManager.handleCommand(obj) }
-    }
-
-    private fun reloadResourcePack() {
-        Minecraft.getInstance().execute { Minecraft.getInstance().reloadResourcePacks(); }
     }
 }

@@ -53,7 +53,7 @@ public abstract class EntityRenderDispatcherMixin {
         if (!entity.hasCustomName()) {
             return;
         }
-        GenericGeoRenderer<?> renderer = RendererHandler.INSTANCE.getRenderer(
+        GenericGeoRenderer<?> renderer = RendererHandler.INSTANCE.getReadyRenderer(
             entity.getType(),
             entity.getCustomName().getString(),
             entity.getUUID()

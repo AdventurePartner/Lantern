@@ -26,6 +26,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.item.Items;
 import org.lantern.Lantern;
 import org.lantern.internal.handler.ResourceHandler;
+import org.lantern.item.icon.ItemIconModels;
 import org.lantern.model.block.LanternBlockEntity;
 import org.lantern.model.block.LanternBlockRenderer;
 import org.lantern.model.handler.BlockRendererHandler;
@@ -62,6 +63,13 @@ public abstract class ItemRendererMixin {
             return;
         }
 
+        // 运行时图标优先：不依赖模型烘焙，进服后台加载完就能显示；还没生成时退到烘焙模型或原版物品
+        BakedModel runtimeIcon = ItemIconModels.model(customData, itemStack);
+        if (runtimeIcon != null) {
+            cir.setReturnValue(runtimeIcon);
+            return;
+        }
+
         String identifier = ResourceHandler.INSTANCE.getItemIcon(customData);
         if (identifier == null) {
             return;
@@ -77,6 +85,16 @@ public abstract class ItemRendererMixin {
         cir.cancel();
     }
 
+    @Inject(method = "render", at = @At("HEAD"), cancellable = true)
+    private void lantern$renderRuntimeIcon(ItemStack stack, ItemDisplayContext displayContext,
+                                           boolean leftHand, PoseStack poseStack,
+                                           MultiBufferSource buffer, int light, int overlay,
+                                           BakedModel model, CallbackInfo ci) {
+        if (ItemIconModels.render(model, stack, displayContext, leftHand, poseStack, buffer, light, overlay)) {
+            ci.cancel();
+        }
+    }
+
     // ==================== Block Item GeckoLib Rendering ====================
     // ItemInHandRendererMixin handles first/third person hand rendering.
     // This injection handles ALL other contexts: GUI, ground, item frame, etc.
@@ -90,7 +108,8 @@ public abstract class ItemRendererMixin {
         Integer cmd = lantern$getCustomModelDataValue(stack);
         if (cmd == null) return;
         BlockModelWrapper wrapper = BlockRendererHandler.INSTANCE.getWrapperByCustomModelData(cmd);
-        if (wrapper == null) return;
+        // 模型还在后台加载时画原版木桶
+        if (wrapper == null || !wrapper.isReady()) return;
 
         if (lantern$blockRenderer == null) {
             lantern$blockRenderer = new LanternBlockRenderer();

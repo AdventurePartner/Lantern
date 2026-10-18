@@ -1,10 +1,13 @@
 package org.lantern.neoforge.item
 
+import com.google.common.collect.ImmutableMap
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.math.Axis
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.block.model.ItemTransform
 import net.minecraft.client.renderer.block.model.ItemTransforms
 import net.minecraft.client.renderer.item.ItemModel
 import net.minecraft.client.renderer.item.ItemModelResolver
@@ -25,6 +28,9 @@ import org.lantern.Lantern
 import org.lantern.costume.handler.CostumeHandler
 import org.lantern.costume.wrapper.CostumeModelWrapper
 import org.lantern.internal.handler.ResourceHandler
+import org.lantern.internal.icon.IconMesh
+import org.lantern.internal.icon.IconVertexEmitter
+import org.lantern.internal.icon.ItemIconMeshes
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.model.GeckoResourceIds
 import org.lantern.model.handler.BlockRendererHandler
@@ -63,16 +69,24 @@ object LanternItemModels {
         val properties = ModelRenderProperties(true, particle, ItemTransforms.NO_TRANSFORMS)
         val blockItemModel: ItemModel = SpecialModelWrapper(BlockItemSpecialRenderer(), properties)
         val costumeItemModel: ItemModel = SpecialModelWrapper(CostumeItemSpecialRenderer(), properties)
+        val iconRenderer = IconSpecialRenderer()
+        val runtimeIcons = RuntimeIconModels(
+            generated = SpecialModelWrapper(iconRenderer, ModelRenderProperties(false, particle, IconTransforms.GENERATED)),
+            handheld = SpecialModelWrapper(iconRenderer, ModelRenderProperties(false, particle, IconTransforms.HANDHELD))
+        )
 
         originals.forEach { (location, original) ->
-            itemModels[location] = LanternItemModel(original, iconModels, blockItemModel, costumeItemModel)
+            itemModels[location] = LanternItemModel(original, iconModels, runtimeIcons, blockItemModel, costumeItemModel)
         }
     }
 }
 
+private class RuntimeIconModels(val generated: ItemModel, val handheld: ItemModel)
+
 private class LanternItemModel(
     private val original: ItemModel,
     private val iconModels: Map<Int, ItemModel>,
+    private val runtimeIcons: RuntimeIconModels,
     private val blockItemModel: ItemModel,
     private val costumeItemModel: ItemModel
 ) : ItemModel {
@@ -85,13 +99,86 @@ private class LanternItemModel(
         owner: ItemOwner?,
         seed: Int
     ) {
+        // 外观物品、木桶方块模型还在后台加载时画原版物品
         val selected = when {
-            displayContext.isHandContext() && getCostume(stack) != null -> costumeItemModel
-            stack.`is`(Items.BARREL) && getBlockWrapper(stack) != null -> blockItemModel
-            else -> customModelData(stack)?.let(iconModels::get) ?: original
+            displayContext.isHandContext() && getCostume(stack)?.let(CostumeHandler::isItemReady) == true -> costumeItemModel
+            stack.`is`(Items.BARREL) && getBlockWrapper(stack)?.isReady() == true -> blockItemModel
+            else -> customModelData(stack)?.let(::iconModel) ?: original
         }
         selected.update(renderState, stack, resolver, displayContext, level, owner, seed)
     }
+
+    /** 运行时图标优先（不依赖模型烘焙）；网格还没生成时退到烘焙时的快照，再没有就是原版物品 */
+    private fun iconModel(customModelData: Int): ItemModel? {
+        val mesh = ItemIconMeshes.get(customModelData) ?: return iconModels[customModelData]
+        return if (mesh.handheld) runtimeIcons.handheld else runtimeIcons.generated
+    }
+}
+
+/**
+ * 运行时图标：网格由 ItemIconMeshes 在后台按贴图生成，贴图单独绑定、不进方块图集。
+ * 图层已应用 display 变换与 -0.5 平移，这里直接按 0..1 模型空间提交；
+ * 参数（网格实例）进入 GUI 物品缓存的身份，网格重建后缓存自然失效
+ */
+private class IconSpecialRenderer : SpecialModelRenderer<IconMesh> {
+    override fun submit(
+        argument: IconMesh?,
+        displayContext: ItemDisplayContext,
+        poseStack: PoseStack,
+        submitNodes: SubmitNodeCollector,
+        packedLight: Int,
+        packedOverlay: Int,
+        hasFoil: Boolean,
+        outlineColor: Int
+    ) {
+        val mesh = argument ?: return
+        submitNodes.submitCustomGeometry(poseStack, RenderType.itemEntityTranslucentCull(mesh.texture)) { pose, consumer ->
+            IconVertexEmitter.emit(pose, consumer, mesh, packedLight, packedOverlay)
+        }
+    }
+
+    override fun getExtents(extents: MutableSet<Vector3f>) {
+        extents.add(Vector3f(0.0f, 0.0f, 7.5f / 16.0f))
+        extents.add(Vector3f(1.0f, 1.0f, 8.5f / 16.0f))
+    }
+
+    override fun extractArgument(stack: ItemStack): IconMesh? = customModelData(stack)?.let(ItemIconMeshes::get)
+}
+
+/** 原版 models/item/generated.json 与 handheld.json 的 display 表；平移按 json 的像素值换算成方块单位 */
+private object IconTransforms {
+    val GENERATED: ItemTransforms = build(handheld = false)
+    val HANDHELD: ItemTransforms = build(handheld = true)
+
+    private fun build(handheld: Boolean): ItemTransforms {
+        val thirdPersonRight = if (handheld) transform(0f, -90f, 55f, 0f, 4f, 0.5f, 0.85f)
+            else transform(0f, 0f, 0f, 0f, 3f, 1f, 0.55f)
+        val thirdPersonLeft = if (handheld) transform(0f, 90f, -55f, 0f, 4f, 0.5f, 0.85f) else thirdPersonRight
+        val firstPersonRight = transform(0f, -90f, 25f, 1.13f, 3.2f, 1.13f, 0.68f)
+        val firstPersonLeft = if (handheld) transform(0f, 90f, -25f, 1.13f, 3.2f, 1.13f, 0.68f) else firstPersonRight
+        return ItemTransforms(
+            thirdPersonLeft,
+            thirdPersonRight,
+            firstPersonLeft,
+            firstPersonRight,
+            transform(0f, 180f, 0f, 0f, 13f, 7f, 1f),
+            ItemTransform.NO_TRANSFORM,
+            transform(0f, 0f, 0f, 0f, 2f, 0f, 0.5f),
+            transform(0f, 180f, 0f, 0f, 0f, 0f, 1f),
+            ItemTransform.NO_TRANSFORM,
+            ImmutableMap.of()
+        )
+    }
+
+    private fun transform(
+        rotationX: Float, rotationY: Float, rotationZ: Float,
+        translationX: Float, translationY: Float, translationZ: Float,
+        scale: Float
+    ): ItemTransform = ItemTransform(
+        Vector3f(rotationX, rotationY, rotationZ),
+        Vector3f(translationX / 16f, translationY / 16f, translationZ / 16f),
+        Vector3f(scale, scale, scale)
+    )
 }
 
 private data class BlockItemRenderData(

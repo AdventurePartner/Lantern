@@ -13,6 +13,8 @@ import org.lantern.costume.renderer.CostumeRenderer
 import org.lantern.costume.slot.CostumeSlot
 import org.lantern.costume.wrapper.CostumeModelWrapper
 import org.lantern.core.anim.control.AnimationControlStore
+import org.lantern.internal.asset.AssetSync
+import org.lantern.internal.asset.LanternAssets
 import org.lantern.internal.mixin.accessor.PoseStackAccessor
 import software.bernie.geckolib.animation.AnimationProcessor
 import software.bernie.geckolib.cache.GeckoLibCache
@@ -198,16 +200,29 @@ object CostumeHandler {
         }
     }
 
+    /** 手持外观物品：没就绪时调用方走原版物品渲染 */
+    @JvmStatic
+    fun isItemReady(costumeId: String): Boolean {
+        val wrapper = costumeDefinitions[costumeId] ?: return false
+        if (brokenCostumes.contains(costumeId) || !isCostumeReady(costumeId, wrapper)) return false
+        return LanternAssets.isTextureReady(wrapper.textureLocation, wrapper.textureUrl)
+    }
+
+    /**
+     * 资源还在后台加载（AssetSync.isLoading）时缺文件只返回 false，不记成损坏：
+     * 加载完成后 refreshRenderers 之前记下的损坏标记会一直挡住渲染
+     */
     private fun isCostumeReady(costumeId: String, wrapper: CostumeModelWrapper): Boolean {
         if (!validatedCostumes.contains(costumeId)) {
-            val manager = Minecraft.getInstance().resourceManager
-            if (manager.getResource(wrapper.modelLocation).isEmpty) {
+            if (!LanternAssets.hasResource(wrapper.modelLocation)) {
+                if (AssetSync.isLoading) return false
                 brokenCostumes.add(costumeId)
                 Lantern.logger.warn("[Lantern] Costume model resource missing: {} ({})", wrapper.modelLocation, costumeId)
                 return false
             }
             // hostDriven 外观画的是玩家自己的皮肤，配置里的贴图路径不参与渲染
-            if (!wrapper.hostDriven && wrapper.textureUrl == null && manager.getResource(wrapper.textureLocation).isEmpty) {
+            if (!wrapper.hostDriven && wrapper.textureUrl == null && !LanternAssets.hasResource(wrapper.textureLocation)) {
+                if (AssetSync.isLoading) return false
                 brokenCostumes.add(costumeId)
                 Lantern.logger.warn("[Lantern] Costume texture resource missing: {} ({})", wrapper.textureLocation, costumeId)
                 return false
@@ -216,7 +231,7 @@ object CostumeHandler {
         }
 
         if (GeckoLibCache.getBakedModels()[wrapper.modelLocation] == null) {
-            if (deferredModels.add(wrapper.modelLocation)) {
+            if (!AssetSync.isLoading && deferredModels.add(wrapper.modelLocation)) {
                 Lantern.logger.warn("[Lantern] Costume model not yet cached, deferring render: {}", wrapper.modelLocation)
             }
             return false

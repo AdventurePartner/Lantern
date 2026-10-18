@@ -50,6 +50,8 @@ class TrackedBarrelRenderer(ctx: BlockEntityRendererProvider.Context) : BlockEnt
         }
 
         if (wrapper == null) return
+        // 模型还在后台加载：先不画（原版木桶网格按 open 标记态已被压掉），就绪后下一帧出现
+        if (!wrapper.isReady()) return
         val level = blockEntity.level ?: return
 
         val lanternBE = BlockRendererHandler.getOrCreateCachedEntity(pos, wrapper, level)

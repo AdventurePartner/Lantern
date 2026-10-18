@@ -4,6 +4,7 @@ import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.resources.ResourceLocation
 
 import org.lantern.platform.IdentifierBridge
+import org.lantern.internal.asset.LanternAssets
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.renderer.BackgroundPainter
@@ -63,16 +64,21 @@ object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
         graphics.blit(loc, x + cropX, y + cropY, cropW, cropH, cropX.toFloat(), cropY.toFloat(), cropW, cropH, fullW, fullH)
     }
 
+    /** 贴图还在下载或资源还在后台加载时返回 null，这一帧不画 */
     private fun resolve(texture: String): ResourceLocation? {
         if (texture.isBlank() || texture in invalidPaths) return null
-        if (TextureHandler.isHttpUrl(texture)) return TextureHandler.getTexture(texture)
-        rlCache[texture]?.let { return it }
-        val parsed = try { IdentifierBridge.parse(texture) } catch (_: Exception) { null }
-        if (parsed == null) {
-            invalidPaths.add(texture)
-            return null
+        if (TextureHandler.isHttpUrl(texture)) {
+            return TextureHandler.getTexture(texture).takeIf { LanternAssets.isTextureReady(it, texture) }
         }
-        rlCache[texture] = parsed
-        return parsed
+        val location = rlCache[texture] ?: run {
+            val parsed = try { IdentifierBridge.parse(texture) } catch (_: Exception) { null }
+            if (parsed == null) {
+                invalidPaths.add(texture)
+                return null
+            }
+            rlCache[texture] = parsed
+            parsed
+        }
+        return location.takeIf { LanternAssets.isTextureReady(it, null) }
     }
 }

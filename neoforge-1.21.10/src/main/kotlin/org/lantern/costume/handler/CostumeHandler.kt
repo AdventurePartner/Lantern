@@ -1,7 +1,6 @@
 package org.lantern.costume.handler
 
 import com.mojang.blaze3d.vertex.PoseStack
-import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.SubmitNodeCollector
 import net.minecraft.client.renderer.state.CameraRenderState
 import net.minecraft.resources.ResourceLocation
@@ -11,6 +10,8 @@ import org.lantern.costume.renderer.CostumeRenderer
 import org.lantern.costume.renderstate.CostumeRenderContext
 import org.lantern.costume.slot.CostumeSlot
 import org.lantern.costume.wrapper.CostumeModelWrapper
+import org.lantern.internal.asset.AssetSync
+import org.lantern.internal.asset.LanternAssets
 import org.lantern.internal.mixin.accessor.PoseStackAccessor
 import org.lantern.model.GeckoResourceIds
 import software.bernie.geckolib.cache.GeckoLibResources
@@ -48,6 +49,11 @@ object CostumeHandler {
 
     fun getCostume(costumeId: String): CostumeModelWrapper? = definitions[costumeId]
 
+    /** 手持外观物品：模型或贴图还在后台加载时调用方画原版物品 */
+    @JvmStatic
+    fun isItemReady(wrapper: CostumeModelWrapper): Boolean =
+        LanternAssets.isModelReady(wrapper.modelLocation, wrapper.textureLocation, wrapper.textureUrl)
+
     fun refreshRenderers() {
         renderers.clear()
         warnedModels.clear()
@@ -64,9 +70,11 @@ object CostumeHandler {
      */
     @JvmStatic
     fun hasHostDrivenFullBody(playerUUID: UUID): Boolean {
-        val slots = playerCostumes[playerUUID] ?: return false
-        val costumeId = slots[CostumeSlot.FULL_BODY] ?: return false
-        return definitions[costumeId]?.hostDriven == true
+        val costumeId = hostFullBodyId(playerUUID) ?: return false
+        if (costumeId in brokenCostumes) return false
+        val wrapper = definitions[costumeId] ?: return false
+        // 外观模型还在后台加载或已停用：照原版画身体，否则玩家没有身体、手持物和盔甲也跟着错位
+        return isCostumeReady(costumeId, wrapper)
     }
 
     /**
@@ -189,11 +197,10 @@ object CostumeHandler {
      */
     private fun isCostumeReady(costumeId: String, wrapper: CostumeModelWrapper): Boolean {
         if (costumeId !in validatedCostumes) {
-            val manager = Minecraft.getInstance().resourceManager
             // hostDriven 外观画的是玩家皮肤，配置里的 texture 不参与渲染
-            if (!wrapper.hostDriven && wrapper.textureUrl == null &&
-                manager.getResource(wrapper.textureLocation).isEmpty
-            ) {
+            if (!wrapper.hostDriven && wrapper.textureUrl == null && !LanternAssets.hasResource(wrapper.textureLocation)) {
+                // 资源还在后台加载时不记成损坏：加载完成前记下的标记会一直挡住渲染
+                if (AssetSync.isLoading) return false
                 brokenCostumes.add(costumeId)
                 Lantern.logger.warn("[Lantern] Costume texture resource missing: {} ({})", wrapper.textureLocation, costumeId)
                 return false
@@ -202,7 +209,7 @@ object CostumeHandler {
         }
         val modelId = GeckoResourceIds.model(wrapper.modelLocation)
         if (!GeckoLibResources.getBakedModels().containsKey(modelId)) {
-            if (warnedModels.add(modelId)) {
+            if (!AssetSync.isLoading && warnedModels.add(modelId)) {
                 Lantern.logger.warn("[Lantern] Costume model not yet cached, deferring render: {}", modelId)
             }
             return false

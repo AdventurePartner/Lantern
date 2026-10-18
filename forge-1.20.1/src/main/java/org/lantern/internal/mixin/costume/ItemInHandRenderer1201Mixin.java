@@ -16,6 +16,7 @@ import net.minecraft.world.level.block.Blocks;
 import org.lantern.Lantern;
 import org.lantern.costume.handler.CostumeHandler;
 import org.lantern.costume.renderer.CostumeItemRenderer;
+import org.lantern.internal.mixin.accessor.PoseStackAccessor;
 import org.lantern.model.block.LanternBlockEntity;
 import org.lantern.model.block.LanternBlockRenderer;
 import org.lantern.model.handler.BlockRendererHandler;
@@ -46,17 +47,20 @@ public abstract class ItemInHandRenderer1201Mixin {
     @Unique
     private static final Set<ResourceLocation> lantern$warnedModels = new HashSet<>();
 
+    @Unique
+    private static final Set<String> lantern$warnedCostumeItems = new HashSet<>();
+
     @Inject(method = "renderItem", at = @At("HEAD"), cancellable = true)
     private void lantern$renderItem(LivingEntity entity, ItemStack itemStack,
                                     ItemDisplayContext displayContext,
                                     boolean leftHand, PoseStack poseStack,
                                     MultiBufferSource bufferSource, int packedLight,
                                     CallbackInfo ci) {
+        // 外观物品资源没就绪时交给原版物品渲染
         String modelId = lantern$getLanternModelId(itemStack);
-        if (modelId != null) {
+        if (modelId != null && CostumeHandler.isItemReady(modelId)) {
             CostumeItemRenderer renderer = CostumeHandler.INSTANCE.getItemRenderer(modelId);
-            if (renderer != null) {
-                renderer.render(poseStack, bufferSource, packedLight, 0f);
+            if (renderer != null && lantern$renderCostumeItem(renderer, modelId, poseStack, bufferSource, packedLight)) {
                 ci.cancel();
                 return;
             }
@@ -74,9 +78,28 @@ public abstract class ItemInHandRenderer1201Mixin {
                 BlockRendererHandler.INSTANCE.getItemModelMapSize());
             return;
         }
+        if (!wrapper.isReady()) return;
 
         lantern$renderBlockModel(wrapper, poseStack, bufferSource, packedLight);
         ci.cancel();
+    }
+
+    @Unique
+    private boolean lantern$renderCostumeItem(CostumeItemRenderer renderer, String modelId, PoseStack poseStack,
+                                              MultiBufferSource bufferSource, int packedLight) {
+        int depth = ((PoseStackAccessor) poseStack).lantern$getPoseStack().size();
+        try {
+            renderer.render(poseStack, bufferSource, packedLight, 0f);
+            return true;
+        } catch (RuntimeException e) {
+            while (((PoseStackAccessor) poseStack).lantern$getPoseStack().size() > depth) {
+                poseStack.popPose();
+            }
+            if (lantern$warnedCostumeItems.add(modelId)) {
+                Lantern.INSTANCE.getLogger().warn("[Lantern] Costume item render failed for {}: {}", modelId, e.getMessage());
+            }
+            return false;
+        }
     }
 
     @Unique

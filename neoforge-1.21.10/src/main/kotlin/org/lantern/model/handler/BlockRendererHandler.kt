@@ -9,12 +9,12 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockState
 import org.lantern.Lantern
+import org.lantern.internal.asset.AssetSync
 import org.lantern.model.GeckoResourceIds
 import org.lantern.model.wrapper.BlockModelWrapper
 import org.lantern.neoforge.block.BlockAnimatable
 import org.lantern.neoforge.block.BlockGeoRenderer
 import org.lantern.neoforge.block.BlockRenderContext
-import software.bernie.geckolib.cache.GeckoLibResources
 import java.util.concurrent.ConcurrentHashMap
 
 object BlockRendererHandler {
@@ -98,8 +98,8 @@ object BlockRendererHandler {
         crumblingOverlay: ModelFeatureRenderer.CrumblingOverlay? = null
     ) {
         val modelId = GeckoResourceIds.model(wrapper.modelLocation)
-        if (!GeckoLibResources.getBakedModels().containsKey(modelId)) {
-            if (warnedModels.add(modelId)) {
+        if (!wrapper.isReady()) {
+            if (!AssetSync.isLoading && warnedModels.add(modelId)) {
                 Lantern.logger.warn("[Lantern] Block model not yet cached, deferring render: {}", modelId)
             }
             return

@@ -103,7 +103,8 @@ sourceSets {
             "org/lantern/ui/mixed/impl/PlayerInventoryMixed.kt",
             // 1.21.x 顶点提交链（addVertex/setColor/setUv/setLight）在 1.20.1 不存在，
             // 渲染器由本模块同 FQN 副本顶替
-            "org/lantern/worldimage/WorldImageRenderer.kt"
+            "org/lantern/worldimage/WorldImageRenderer.kt",
+            "org/lantern/internal/icon/IconVertexEmitter.kt"
         )
         resources.setSrcDirs(listOf(project.file("src/main/resources")))
     }
