@@ -1,7 +1,7 @@
 字符例子:
   # 字符
   character: "帅"
-  # 材质
+  # 材质（本地资源路径或 http(s) 地址，支持 png 与 gif，gif 会播放动画）
   texture: "textures/example/icon.png"
   # 宽
   width: 8
