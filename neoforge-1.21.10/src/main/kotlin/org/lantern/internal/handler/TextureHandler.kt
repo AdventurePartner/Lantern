@@ -2,10 +2,13 @@ package org.lantern.internal.handler
 
 import com.mojang.blaze3d.platform.NativeImage
 import net.minecraft.client.Minecraft
+import net.minecraft.client.renderer.texture.AbstractTexture
 import net.minecraft.client.renderer.texture.DynamicTexture
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite
 import net.minecraft.resources.ResourceLocation
 import org.lantern.Lantern
+import org.lantern.internal.asset.AssetSync
+import org.lantern.internal.asset.LanternAssets
 import org.lantern.platform.IdentifierBridge
 import java.awt.AlphaComposite
 import java.awt.image.BufferedImage
@@ -25,7 +28,25 @@ object TextureHandler {
     private val ownedLocations = ConcurrentHashMap.newKeySet<ResourceLocation>()
     private val idCounter = AtomicInteger()
 
+    /** 本地 gif 的解码状态：[Pending] / [Failed] / [Registered] */
+    private val localGifs = ConcurrentHashMap<ResourceLocation, Any>()
+
+    /** 每次排队解码用新实例占位，作废后迟到的结果按身份比对丢弃 */
+    private class Pending
+
+    private object Failed
+
+    private class Registered(val location: ResourceLocation, val texture: AbstractTexture)
+
+    private sealed interface Decoded {
+        class Gif(val frames: Array<NativeImage>, val delays: IntArray) : Decoded
+        class Still(val image: NativeImage) : Decoded
+    }
+
     fun isHttpUrl(path: String): Boolean = path.startsWith("http://") || path.startsWith("https://")
+
+    /** 原版 TextureManager 只认 PNG，gif 必须在交给它之前按扩展名截下来 */
+    fun isGifPath(path: String): Boolean = path.endsWith(".gif", ignoreCase = true)
 
     fun getTexture(path: String): ResourceLocation = textures[path] ?: run {
         if (isHttpUrl(path)) {
@@ -34,13 +55,60 @@ object TextureHandler {
             missingTexture
         } else {
             val location = IdentifierBridge.of(Lantern.MOD_ID, path)
-            if (Minecraft.getInstance().resourceManager.getResource(location).isPresent) {
+            if (isGifPath(path)) {
+                getLocalGif(location) ?: missingTexture
+            } else if (Minecraft.getInstance().resourceManager.getResource(location).isPresent) {
                 textures[path] = location
                 location
             } else {
                 missingTexture
             }
         }
+    }
+
+    /**
+     * 本地 gif：后台逐帧解码后注册成动态贴图。解码完成前（或资源还在后台加载时）返回 null，
+     * 调用方这一帧不画；加载结束后仍找不到、或解码失败时返回缺失贴图
+     */
+    fun getLocalGif(location: ResourceLocation): ResourceLocation? {
+        when (val entry = localGifs[location]) {
+            is Registered -> return entry.location
+            is Pending -> return null
+            Failed -> return missingTexture
+        }
+        if (!LanternAssets.hasResource(location)) {
+            return if (AssetSync.isLoading) null else missingTexture
+        }
+        val token = Pending()
+        if (localGifs.putIfAbsent(location, token) != null) return null
+        CompletableFuture.supplyAsync({ readLocal(location) }, AssetSync.executor).whenComplete { decoded, error ->
+            Minecraft.getInstance().execute {
+                if (localGifs[location] !== token) {
+                    decoded?.close()
+                    return@execute
+                }
+                localGifs[location] = if (decoded != null) {
+                    register(decoded)
+                } else {
+                    Lantern.logger.error("[Lantern] Failed to load local texture: {}", location, error)
+                    Failed
+                }
+            }
+        }
+        return null
+    }
+
+    /** 资源变了（后台刷新带来新资源、F3+T）：释放本地 gif，下次用到时按新资源重新解码。主线程调用 */
+    fun releaseLocalGifs() {
+        val textureManager = Minecraft.getInstance().textureManager
+        localGifs.values.forEach { entry ->
+            if (entry is Registered) {
+                (entry.texture as? AnimatedGifTexture)?.let(animatedTextures::remove)
+                ownedLocations.remove(entry.location)
+                textureManager.release(entry.location)
+            }
+        }
+        localGifs.clear()
     }
 
     fun downloadResource(path: String) {
@@ -51,25 +119,9 @@ object TextureHandler {
                 connection.connectTimeout = 5000
                 connection.readTimeout = 10000
                 val bytes = connection.getInputStream().use { it.readAllBytes() }
-                if (isGif(bytes)) {
-                    val (frames, delays) = decodeGif(bytes) ?: return@runAsync
-                    Minecraft.getInstance().execute {
-                        val texture = AnimatedGifTexture(frames, delays)
-                        val location = nextLocation("gif")
-                        Minecraft.getInstance().textureManager.register(location, texture)
-                        animatedTextures.add(texture)
-                        ownedLocations.add(location)
-                        textures[path] = location
-                    }
-                } else {
-                    val image = NativeImage.read(ByteArrayInputStream(bytes))
-                    Minecraft.getInstance().execute {
-                        val texture = DynamicTexture(Supplier { "Lantern dynamic texture" }, image)
-                        val location = nextLocation("image")
-                        Minecraft.getInstance().textureManager.register(location, texture)
-                        ownedLocations.add(location)
-                        textures[path] = location
-                    }
+                val decoded = decode(bytes) ?: return@runAsync
+                Minecraft.getInstance().execute {
+                    textures[path] = register(decoded).location
                 }
             } catch (exception: Exception) {
                 Lantern.logger.error("[Lantern] Failed to download texture: {}", path, exception)
@@ -87,10 +139,52 @@ object TextureHandler {
         ownedLocations.clear()
         animatedTextures.clear()
         textures.clear()
+        localGifs.clear()
     }
 
     private fun nextLocation(type: String): ResourceLocation =
         IdentifierBridge.of(Lantern.MOD_ID, "dynamic/${type}_${idCounter.getAndIncrement()}")
+
+    private fun readLocal(location: ResourceLocation): Decoded? {
+        val resource = Minecraft.getInstance().resourceManager.getResource(location).orElse(null) ?: return null
+        return decode(resource.open().use { it.readAllBytes() })
+    }
+
+    private fun decode(bytes: ByteArray): Decoded? =
+        if (isGif(bytes)) {
+            decodeGif(bytes)?.let { (frames, delays) -> Decoded.Gif(frames, delays) }
+        } else {
+            Decoded.Still(NativeImage.read(ByteArrayInputStream(bytes)))
+        }
+
+    /** TextureManager 非线程安全：贴图的构造与注册都在主线程 */
+    private fun register(decoded: Decoded): Registered {
+        val texture: AbstractTexture
+        val location: ResourceLocation
+        when (decoded) {
+            is Decoded.Gif -> {
+                texture = AnimatedGifTexture(decoded.frames, decoded.delays)
+                location = nextLocation("gif")
+                animatedTextures.add(texture)
+            }
+            is Decoded.Still -> {
+                texture = DynamicTexture(Supplier { "Lantern dynamic texture" }, decoded.image)
+                location = nextLocation("image")
+            }
+        }
+        Minecraft.getInstance().textureManager.register(location, texture)
+        // 第一帧在下一次 tick 之前就要可用，否则注册后到首个 tick 之间画的是空白底图
+        (texture as? AnimatedGifTexture)?.tick()
+        ownedLocations.add(location)
+        return Registered(location, texture)
+    }
+
+    private fun Decoded.close() {
+        when (this) {
+            is Decoded.Gif -> frames.forEach(NativeImage::close)
+            is Decoded.Still -> image.close()
+        }
+    }
 
     private fun isGif(bytes: ByteArray): Boolean =
         bytes.size >= 6 && bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte()

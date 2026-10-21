@@ -276,6 +276,7 @@ object ResourceHandler {
             // 资源发布前就被请求过的贴图在 TextureManager 里登记成了缺失贴图，释放后按新资源懒加载
             val textureManager = Minecraft.getInstance().textureManager
             encryptedPackResources.filter { it.path.startsWith("textures/") }.forEach(textureManager::release)
+            TextureHandler.releaseLocalGifs()
             RendererHandler.dropRenderers()
             CostumeHandler.refreshRenderers()
             BlockRendererHandler.clearCache()
@@ -303,6 +304,7 @@ object ResourceHandler {
         dynamicResourceLinked.clear()
         encryptedPackResources.clear()
         localPackResources.clear()
+        TextureHandler.releaseLocalGifs()
         // 加密包按内存快照重新发布，不再解密一遍
         EncryptedPackLoader.republishSnapshot()
         // 重新加载本地未加密资源包

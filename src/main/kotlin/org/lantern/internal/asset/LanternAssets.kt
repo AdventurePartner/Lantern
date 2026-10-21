@@ -42,10 +42,16 @@ object LanternAssets {
         return !AssetSync.isLoading || hasResource(location)
     }
 
-    /** TextureHandler 写法的贴图路径（http URL 或 lantern 命名空间下的相对路径），规则同 [isTextureReady] */
+    /**
+     * TextureHandler 写法的贴图路径（http URL 或 lantern 命名空间下的相对路径），规则同 [isTextureReady]；
+     * 本地 gif 要等后台解码完
+     */
     @JvmStatic
     fun isTexturePathReady(path: String): Boolean {
         if (TextureHandler.isHttpUrl(path)) return isTextureReady(MissingTextureAtlasSprite.getLocation(), path)
+        if (TextureHandler.isGifPath(path)) {
+            return TextureHandler.getLocalGif(IdentifierBridge.of(Lantern.MOD_ID, path)) != null
+        }
         return !AssetSync.isLoading || hasResource(IdentifierBridge.of(Lantern.MOD_ID, path))
     }
 

@@ -233,7 +233,7 @@ object WorldImageRenderer {
         consumer.addVertex(point.x, point.y, point.z).setColor(color).setUv(u, v).setLight(FULL_LIGHT)
     }
 
-    /** 渲染时现解析：http 走 TextureHandler（下载完成后自动换真图），本地路径走动态资源包。 */
+    /** 渲染时现解析：http 走 TextureHandler（下载完成后自动换真图），本地路径走动态资源包，本地 gif 由 TextureHandler 解码。 */
     private fun resolveTexture(path: String?): ResourceLocation? {
         if (path == null) return null
         val location = runCatching {
@@ -243,6 +243,7 @@ object WorldImageRenderer {
             Lantern.logger.warn("[Lantern] world image: 非法贴图路径 '$path'：${it.message}")
             null
         } ?: return null
+        if (!TextureHandler.isHttpUrl(path) && TextureHandler.isGifPath(path)) return TextureHandler.getLocalGif(location)
         // 贴图还在下载或资源还在后台加载：这一帧不画
         return location.takeIf { LanternAssets.isTextureReady(it, path.takeIf(TextureHandler::isHttpUrl)) }
     }

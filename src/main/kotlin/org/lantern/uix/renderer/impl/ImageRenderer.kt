@@ -79,6 +79,7 @@ object ImageRenderer : IWidgetRenderer<ImageWidgetImpl> {
             rlCache[texture] = parsed
             parsed
         }
+        if (TextureHandler.isGifPath(location.path)) return TextureHandler.getLocalGif(location)
         return location.takeIf { LanternAssets.isTextureReady(it, null) }
     }
 }
