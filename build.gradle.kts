@@ -35,6 +35,7 @@ val artifactTasksByProject = mapOf(
     "neoforge-1.21.1" to "jar",
     "forge-1.20.1" to "remapJar",
     "neoforge-1.21.10" to "jar",
+    "neoforge-1.21.11" to "jar",
     "bukkit" to "shadowJar"
 )
 

@@ -1,0 +1,145 @@
+package org.lantern.model.handler
+
+import com.google.gson.JsonObject
+import net.minecraft.client.renderer.entity.EntityRendererProvider
+import net.minecraft.resources.Identifier
+import net.minecraft.world.entity.EntityType
+import org.lantern.Lantern
+import org.lantern.animation.AnimationRepository
+import org.lantern.internal.asset.LanternAssets
+import org.lantern.internal.handler.TextureHandler
+import org.lantern.core.anim.control.AnimationControlStore
+import org.lantern.core.anim.statemap.AnimationStateMapping
+import org.lantern.model.wrapper.CustomModelWrapper
+import org.lantern.model.renderer.GenericGeoRenderer
+import org.lantern.platform.IdentifierBridge
+import java.util.concurrent.ConcurrentHashMap
+
+object RendererHandler {
+    private val wrappers = ConcurrentHashMap<String, CustomModelWrapper>()
+    private val renderers = ConcurrentHashMap<EntityType<*>, ConcurrentHashMap<String, GenericGeoRenderer<*>>>()
+    private val formatCodeRegex = Regex("\u00A7.")
+    private val unmatchedLogged = ConcurrentHashMap.newKeySet<String>()
+    @Volatile
+    private var context: EntityRendererProvider.Context? = null
+
+    var version: Int = 0
+        private set
+
+    fun reload() {
+        wrappers.clear()
+        renderers.clear()
+        AnimationControlStore.reset()
+        AnimationControlHandler.resetDiagnostics()
+        AnimationRepository.reset()
+        org.lantern.animation.AnimationHost.reset()
+        version++
+    }
+
+    fun updateContext(newContext: EntityRendererProvider.Context) {
+        if (context !== newContext) {
+            context = newContext
+            renderers.clear()
+        }
+    }
+
+    fun addEntityModel(name: String, obj: JsonObject) {
+        val texturePath = obj.get("texture").asString
+        val isHttpTexture = TextureHandler.isHttpUrl(texturePath)
+        val texture: Identifier
+        val textureUrl: String?
+        if (isHttpTexture) {
+            texture = TextureHandler.getTexture(texturePath)
+            textureUrl = texturePath
+        } else {
+            texture = IdentifierBridge.of(Lantern.MOD_ID, texturePath)
+            textureUrl = null
+        }
+
+        val animationLocation: Identifier
+        val animationStates: AnimationStateMapping
+        if (obj.has("animations") && obj.get("animations").isJsonObject) {
+            val animations = obj.getAsJsonObject("animations")
+            animationLocation = IdentifierBridge.of(Lantern.MOD_ID, animations.get("file").asString)
+            animationStates = AnimationStateMapping.fromStatesJson(animations.getAsJsonObject("states"))
+        } else if (obj.has("animation")) {
+            animationLocation = IdentifierBridge.of(Lantern.MOD_ID, obj.get("animation").asString)
+            animationStates = AnimationStateMapping.default()
+        } else {
+            Lantern.logger.warn("No animation configuration found for model: {}", name)
+            return
+        }
+
+        val wrapper = CustomModelWrapper(
+            modelLocation = IdentifierBridge.of(Lantern.MOD_ID, obj.get("geo").asString),
+            textureLocation = texture,
+            animationLocation = animationLocation,
+            scale = obj.get("scale")?.asFloat ?: 1.0f,
+            height = obj.get("height")?.asDouble ?: 1.0,
+            width = obj.get("width")?.asDouble ?: 1.0,
+            hiddenName = obj.get("hidden")?.asBoolean ?: false,
+            nameTagOffsetY = obj.get("offset-y")?.asFloat ?: 0.0f,
+            animationStates = animationStates,
+            textureUrl = textureUrl
+        )
+        val normalizedName = normalizeName(name)
+        renderers.values.forEach { byName ->
+            byName.entries.removeIf { (cachedName, _) -> normalizeName(cachedName) == normalizedName }
+        }
+        wrappers[name] = wrapper
+        wrappers[normalizedName] = wrapper
+        version++
+    }
+
+    /** 资源刷新换了 GeckoLib 缓存：渲染器持有旧模型的骨骼深拷贝，丢掉待懒重建 */
+    fun dropRenderers() {
+        renderers.clear()
+        AnimationRepository.reset()
+    }
+
+    /**
+     * 提取阶段按实体取渲染器：模型或贴图还在后台加载时返回 null，先画原版模型。
+     * 按 render state 取渲染器那条路径不能做这层判定——state 已带着 Lantern 数据，交给原版会类型不符
+     */
+    fun getReadyRenderer(entityType: EntityType<*>, customName: String, uuid: java.util.UUID): GenericGeoRenderer<*>? {
+        val wrapper = getCustomModelWrapper(customName) ?: return getRenderer(entityType, customName, uuid)
+        if (!LanternAssets.isModelReady(wrapper.modelLocation, wrapper.textureLocation, wrapper.textureUrl)) return null
+        return getRenderer(entityType, customName, uuid)
+    }
+
+    /**
+     * 按实体 UUID 实例化渲染器，实体离场由 evict 淘汰，残留渲染器由 reload() 清理。
+     */
+    fun getRenderer(entityType: EntityType<*>, customName: String, uuid: java.util.UUID): GenericGeoRenderer<*>? {
+        val rendererContext = context ?: return null
+        val normalizedName = normalizeName(customName)
+        val wrapper = getCustomModelWrapper(normalizedName) ?: run {
+            // 名字未匹配时原版渲染器无声接管，是模型不渲染且无日志的主要静默分支，DEBUG 级留痕
+            if (unmatchedLogged.add(normalizedName)) {
+                Lantern.logger.debug("[Lantern] 实体自定义名 \"{}\" 未匹配任何已注册模型，回退原版渲染器", normalizedName)
+            }
+            return null
+        }
+        return renderers.computeIfAbsent(entityType) { ConcurrentHashMap() }
+            .computeIfAbsent(uuid.toString()) {
+                GenericGeoRenderer.create(rendererContext, entityType, normalizedName, wrapper)
+            }
+    }
+
+    /**
+     * 实体离开世界（消失/死亡移除/区块卸载）时淘汰其渲染器，
+     * 释放克隆骨骼树；实体重新进入视距时由 getRenderer 懒重建
+     */
+    fun evict(uuid: java.util.UUID) {
+        val key = uuid.toString()
+        renderers.values.forEach { it.remove(key) }
+    }
+
+    fun getCustomModelWrapper(customName: String): CustomModelWrapper? =
+        wrappers[customName] ?: wrappers[normalizeName(customName)]
+
+    fun getWrappers(): Map<String, CustomModelWrapper> = wrappers
+
+    private fun normalizeName(name: String): String =
+        if ('\u00A7' in name) formatCodeRegex.replace(name, "") else name
+}

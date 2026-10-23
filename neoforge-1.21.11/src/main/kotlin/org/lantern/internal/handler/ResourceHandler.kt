@@ -1,0 +1,336 @@
+package org.lantern.internal.handler
+
+import com.google.gson.JsonObject
+import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.Font
+import net.minecraft.network.chat.FormattedText
+import net.minecraft.resources.Identifier
+import org.lantern.Lantern
+import org.lantern.costume.handler.CostumeHandler
+import org.lantern.internal.asset.AssetSync
+import org.lantern.internal.asset.LanternAssets
+import org.lantern.internal.icon.IconSpec
+import org.lantern.internal.icon.ItemIconMeshes
+import org.lantern.internal.storage.BlockModelEntry
+import org.lantern.internal.storage.ClientStorage
+import org.lantern.internal.wrapper.key.CharacterWrapper
+import org.lantern.internal.wrapper.key.KeyWrapper
+import org.lantern.internal.wrapper.resource.IResourceWrapper
+import org.lantern.internal.wrapper.resource.ByteArrayResourceWrapper
+import org.lantern.internal.wrapper.resource.ItemIconResourceWrapperImpl
+import org.lantern.model.handler.BlockRendererHandler
+import org.lantern.model.handler.RendererHandler
+import org.lantern.model.wrapper.BlockModelWrapper
+import org.lantern.platform.IdentifierBridge
+import java.util.concurrent.ConcurrentHashMap
+
+object ResourceHandler {
+    private val clientStorage = ClientStorage()
+    private val resources = ConcurrentHashMap<Identifier, IResourceWrapper>()
+    private val encryptedResources: MutableSet<Identifier> = ConcurrentHashMap.newKeySet()
+    private val localResources: MutableSet<Identifier> = ConcurrentHashMap.newKeySet()
+    private val generatedResources: MutableSet<Identifier> = ConcurrentHashMap.newKeySet()
+    private val itemIcons = ConcurrentHashMap<Int, String>()
+    private val blockModels = ConcurrentHashMap<Int, String>()
+    private val characters = ConcurrentHashMap<Char, CharacterWrapper>()
+    private val keyboards = ConcurrentHashMap<String, KeyWrapper>()
+
+    fun listDynamicResources(namespace: String, path: String): Map<Identifier, IResourceWrapper> =
+        resources.filter { (location, _) ->
+            location.namespace == namespace && location.path.startsWith(path)
+        }
+
+    fun getResource(location: Identifier): IResourceWrapper? = resources[location]
+
+    fun resourceSnapshot(): Map<Identifier, IResourceWrapper> = resources.toMap()
+
+    fun addEncryptedPackResource(location: Identifier, wrapper: IResourceWrapper) {
+        addPackResource(location, wrapper, encryptedResources)
+    }
+
+    /** 先加新再删旧：后台线程（GeckoLib 刷新）随时可能在读这张表，中途不能出现空窗 */
+    fun replaceEncryptedPackResources(next: Map<Identifier, IResourceWrapper>) {
+        val previous = encryptedResources.toSet()
+        encryptedResources.clear()
+        next.forEach { (location, wrapper) -> addPackResource(location, wrapper, encryptedResources) }
+        previous.filterNot(encryptedResources::contains).forEach(resources::remove)
+    }
+
+    fun addLocalPackResource(location: Identifier, wrapper: IResourceWrapper) {
+        addPackResource(location, wrapper, localResources)
+    }
+
+    fun clearLocalPackResources() {
+        clearResources(localResources)
+    }
+
+    fun clearItemIcons() {
+        itemIcons.clear()
+        clientStorage.itemIcons.clear()
+        clearResources(generatedResources)
+    }
+
+    fun addItemIcon(
+        customModelData: Int,
+        identifier: String,
+        resource: ItemIconResourceWrapperImpl
+    ) {
+        itemIcons[customModelData] = identifier
+        clientStorage.itemIcons[customModelData] = Triple(
+            identifier,
+            resource.getTexturePath(),
+            resource.getType()
+        )
+        addGeneratedResource(resource.getResourceLocation(), resource)
+        addGeneratedResource(resource.getSecondaryResourceLocation(), resource)
+        val clientItemLocation = IdentifierBridge.of(Lantern.MOD_ID, "items/$identifier.json")
+        val clientItem = JsonObject().apply {
+            add("model", JsonObject().apply {
+                addProperty("type", "minecraft:model")
+                addProperty("model", "${Lantern.MOD_ID}:item/$identifier")
+            })
+        }
+        addGeneratedResource(
+            clientItemLocation,
+            ByteArrayResourceWrapper(clientItemLocation, clientItem.toString().toByteArray(Charsets.UTF_8))
+        )
+    }
+
+    fun getItemIcon(customModelData: Int): String? = itemIcons[customModelData]
+
+    fun getItemIconSpec(customModelData: Int): IconSpec? =
+        clientStorage.itemIcons[customModelData]?.let { (identifier, texture, type) -> IconSpec(identifier, texture, type) }
+
+    fun getItemIcons(): Map<Int, String> = itemIcons.toMap()
+
+    fun clearBlockModels() {
+        blockModels.clear()
+        clientStorage.blockModels.clear()
+    }
+
+    fun addBlockModelEntry(
+        variation: Int,
+        identifier: String,
+        geo: String,
+        texture: String,
+        animation: String?,
+        scale: Float,
+        idleAnimation: String,
+        textureUrl: String?,
+        customModelData: Int = -1,
+        blockScale: Float = 1.0f,
+        itemOffsetX: Float = 0.0f,
+        itemOffsetY: Float = 0.0f,
+        itemOffsetZ: Float = 0.0f,
+        hardness: Float = 1.5f,
+        preferredTool: String? = null,
+        breakSound: String? = null
+    ) {
+        blockModels[variation] = identifier
+        clientStorage.blockModels[variation] = BlockModelEntry(
+            identifier,
+            geo,
+            texture,
+            animation,
+            scale,
+            idleAnimation,
+            textureUrl,
+            customModelData,
+            blockScale,
+            itemOffsetX,
+            itemOffsetY,
+            itemOffsetZ,
+            hardness,
+            preferredTool,
+            breakSound
+        )
+    }
+
+    fun addEntityModelEntry(name: String, data: JsonObject) {
+        clientStorage.entityModels[name] = data.deepCopy()
+    }
+
+    fun clearEntityModels() {
+        clientStorage.entityModels.clear()
+    }
+
+    fun getCharacterWrapper(character: Char): CharacterWrapper? = characters[character]
+
+    fun addCharacterWrapper(character: Char, wrapper: CharacterWrapper) {
+        characters[character] = wrapper
+        clientStorage.characters[character] = wrapper
+    }
+
+    fun getAdjustedWidth(font: Font, text: FormattedText): Int {
+        val vanillaWidth = font.width(text)
+        val extraWidth = text.string.sumOf { character ->
+            val wrapper = characters[character] ?: return@sumOf 0.0
+            (wrapper.wide - font.width(character.toString())).toDouble()
+        }
+        return (vanillaWidth + extraWidth).toInt()
+    }
+
+    fun getKeyboard(key: String): KeyWrapper? = keyboards[key]
+
+    fun getKeyboards(): Map<String, KeyWrapper> = keyboards
+
+    fun addKeyboard(key: String, wrapper: KeyWrapper) {
+        keyboards[key] = wrapper
+        clientStorage.keyboards[key] = wrapper
+    }
+
+    /** packet 3 是整表下发：服务端删掉的键必须同时从轮询集里消失 */
+    fun clearKeyboards() {
+        keyboards.clear()
+        clientStorage.keyboards.clear()
+    }
+
+    /**
+     * 后台资源刷新完成（AssetSync）。定义表由各 packet 自己维护，这里只丢掉按旧资源建出的缓存；
+     * resourcesChanged 为 false 时资源集合没变（重连同一服、/lantern reload），渲染器不必重建
+     */
+    fun onAssetsRefreshed(resourcesChanged: Boolean) {
+        LanternAssets.invalidate()
+        ItemIconMeshes.invalidate()
+        if (resourcesChanged) {
+            // 资源发布前就被请求过的贴图在 TextureManager 里登记成了缺失贴图，释放后按新资源懒加载
+            val textureManager = Minecraft.getInstance().textureManager
+            encryptedResources.filter { it.path.startsWith("textures/") }.forEach(textureManager::release)
+            TextureHandler.releaseLocalGifs()
+            RendererHandler.dropRenderers()
+            CostumeHandler.refreshRenderers()
+            BlockRendererHandler.markSectionsDirty()
+        }
+        ModelDiagnostics.validateEntityModels(RendererHandler.getWrappers())
+    }
+
+    fun reload() {
+        Lantern.logger.info("[Lantern] Reloading dynamic resources")
+        rebuild()
+    }
+
+    fun rebuild() {
+        characters.clear()
+        keyboards.clear()
+        itemIcons.clear()
+        blockModels.clear()
+        resources.clear()
+        encryptedResources.clear()
+        localResources.clear()
+        generatedResources.clear()
+        TextureHandler.releaseLocalGifs()
+
+        // 加密包按内存快照重新发布，不再解密一遍
+        EncryptedPackLoader.republishSnapshot()
+        LocalPackLoader.reload()
+        characters.putAll(clientStorage.characters)
+        keyboards.putAll(clientStorage.keyboards)
+
+        clientStorage.itemIcons.forEach { (customModelData, definition) ->
+            val (identifier, texturePath, type) = definition
+            addItemIcon(
+                customModelData,
+                identifier,
+                ItemIconResourceWrapperImpl(identifier, texturePath, type)
+            )
+        }
+
+        BlockRendererHandler.clear()
+        clientStorage.blockModels.forEach { (variation, entry) ->
+            blockModels[variation] = entry.identifier
+            BlockRendererHandler.register(variation, entry.identifier, entry.toWrapper(), entry.customModelData)
+        }
+        BlockRendererHandler.markSectionsDirty()
+
+        RendererHandler.reload()
+        clientStorage.entityModels.forEach(RendererHandler::addEntityModel)
+        // 资源重载完成后校验实体模型路径前缀与文件存在性，缺失时 WARN 暴露配置错误
+        ModelDiagnostics.validateEntityModels(RendererHandler.getWrappers())
+        // 与 common 版 rebuild 对齐：F3+T 时 GeckoLib 烘焙缓存整表换代（重载
+        // listener 按 id 排序 geckolib 先于 lantern 进入 apply），服装渲染器
+        // 持有的 isolatedModel 深拷贝不随之失效，必须丢弃待懒重建取新缓存
+        CostumeHandler.refreshRenderers()
+        // 盔甲部件树随 vanilla 模型生命周期重建（几何为静态数值，重建只为对齐时序）
+        org.lantern.costume.armor.LanternArmorModel.invalidate()
+        ItemIconMeshes.invalidate()
+        AssetSync.onResourceReloaded()
+    }
+
+    fun clearSession() {
+        EncryptedPackLoader.clearPassword()
+        // 本地包/加密包是客户端本地资源，退出服务器时保留：
+        // GeckoLib 缓存里的模型就是按它们建的，重连同一服也不必再解密
+        clearResources(generatedResources)
+        itemIcons.clear()
+        blockModels.clear()
+        characters.clear()
+        clearKeyboards()
+        clientStorage.characters.clear()
+        clientStorage.itemIcons.clear()
+        clientStorage.blockModels.clear()
+        clientStorage.entityModels.clear()
+        RendererHandler.reload()
+        BlockRendererHandler.clear()
+        BlockRendererHandler.clearPositions()
+        CostumeHandler.reload()
+    }
+
+    private fun addPackResource(
+        location: Identifier,
+        wrapper: IResourceWrapper,
+        owner: MutableSet<Identifier>
+    ) {
+        resources[location] = wrapper
+        owner.add(location)
+        geckoLibAlias(location)?.let { alias ->
+            resources[alias] = wrapper
+            owner.add(alias)
+        }
+    }
+
+    private fun addGeneratedResource(location: Identifier, wrapper: IResourceWrapper) {
+        resources[location] = wrapper
+        generatedResources.add(location)
+    }
+
+    private fun clearResources(locations: MutableSet<Identifier>) {
+        locations.forEach(resources::remove)
+        locations.clear()
+    }
+
+    private fun geckoLibAlias(location: Identifier): Identifier? {
+        val aliasPath = when {
+            location.path.startsWith("geo/") ->
+                "geckolib/models/${location.path.removePrefix("geo/")}"
+            location.path.startsWith("animations/") ->
+                "geckolib/animations/${location.path.removePrefix("animations/")}"
+            else -> return null
+        }
+        return IdentifierBridge.of(location.namespace, aliasPath)
+    }
+
+    private fun BlockModelEntry.toWrapper(): BlockModelWrapper {
+        val remoteTexture = TextureHandler.isHttpUrl(texture)
+        return BlockModelWrapper(
+            modelLocation = IdentifierBridge.of(Lantern.MOD_ID, geo),
+            textureLocation = if (remoteTexture) {
+                TextureHandler.getTexture(texture)
+            } else {
+                IdentifierBridge.of(Lantern.MOD_ID, texture)
+            },
+            animationLocation = animation?.takeIf(String::isNotBlank)?.let {
+                IdentifierBridge.of(Lantern.MOD_ID, it)
+            },
+            scale = scale,
+            idleAnimation = idleAnimation,
+            textureUrl = textureUrl,
+            blockScale = blockScale,
+            itemOffsetX = itemOffsetX,
+            itemOffsetY = itemOffsetY,
+            itemOffsetZ = itemOffsetZ,
+            hardness = hardness,
+            preferredTool = preferredTool,
+            breakSound = breakSound
+        )
+    }
+}

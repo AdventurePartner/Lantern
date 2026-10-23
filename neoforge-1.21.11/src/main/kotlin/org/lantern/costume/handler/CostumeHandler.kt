@@ -1,0 +1,227 @@
+package org.lantern.costume.handler
+
+import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.state.CameraRenderState
+import net.minecraft.resources.Identifier
+import org.lantern.Lantern
+import org.lantern.animation.AnimationHost
+import org.lantern.costume.attach.HostSkeleton
+import org.lantern.costume.entity.CostumeAnimatable
+import org.lantern.costume.renderer.CostumeRenderer
+import org.lantern.costume.renderstate.CostumeRenderContext
+import org.lantern.costume.slot.CostumeSlot
+import org.lantern.costume.wrapper.CostumeModelWrapper
+import org.lantern.internal.asset.AssetSync
+import org.lantern.internal.asset.LanternAssets
+import org.lantern.internal.mixin.accessor.PoseStackAccessor
+import org.lantern.model.GeckoResourceIds
+import software.bernie.geckolib.cache.GeckoLibResources
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+
+object CostumeHandler {
+    private val definitions = ConcurrentHashMap<String, CostumeModelWrapper>()
+    private val playerCostumes = ConcurrentHashMap<UUID, ConcurrentHashMap<CostumeSlot, String>>()
+    private val renderers = ConcurrentHashMap<String, RendererEntry>()
+    private val warnedModels = ConcurrentHashMap.newKeySet<Identifier>()
+    private val validatedCostumes = ConcurrentHashMap.newKeySet<String>()
+    private val brokenCostumes = ConcurrentHashMap.newKeySet<String>()
+
+    fun reload() {
+        definitions.clear()
+        playerCostumes.clear()
+        renderers.clear()
+        warnedModels.clear()
+        validatedCostumes.clear()
+        brokenCostumes.clear()
+    }
+
+    fun replaceDefinitions(newDefinitions: Map<String, CostumeModelWrapper>) {
+        definitions.clear()
+        definitions.putAll(newDefinitions)
+        renderers.clear()
+        warnedModels.clear()
+        validatedCostumes.clear()
+        brokenCostumes.clear()
+        playerCostumes.values.forEach { slots ->
+            slots.entries.removeIf { (_, costumeId) -> !definitions.containsKey(costumeId) }
+        }
+    }
+
+    fun getCostume(costumeId: String): CostumeModelWrapper? = definitions[costumeId]
+
+    /** 手持外观物品：模型或贴图还在后台加载时调用方画原版物品 */
+    @JvmStatic
+    fun isItemReady(wrapper: CostumeModelWrapper): Boolean =
+        LanternAssets.isModelReady(wrapper.modelLocation, wrapper.textureLocation, wrapper.textureUrl)
+
+    fun refreshRenderers() {
+        renderers.clear()
+        warnedModels.clear()
+        validatedCostumes.clear()
+        brokenCostumes.clear()
+    }
+
+    fun hasAny(playerUUID: UUID): Boolean = playerCostumes[playerUUID]?.isNotEmpty() == true
+
+    /**
+     * P1 玩家宿主化收尾：该玩家是否套着 hostDriven 的 full_body 整替外观。
+     * LivingEntityRendererMixin 据此把原版身体 tint 置 0（cutout 丢弃，
+     * 盔甲/手持/layers 不受影响）——两具身体重叠的终解
+     */
+    @JvmStatic
+    fun hasHostDrivenFullBody(playerUUID: UUID): Boolean {
+        val costumeId = hostFullBodyId(playerUUID) ?: return false
+        if (costumeId in brokenCostumes) return false
+        val wrapper = definitions[costumeId] ?: return false
+        // 外观模型还在后台加载或已停用：照原版画身体，否则玩家没有身体、手持物和盔甲也跟着错位
+        return isCostumeReady(costumeId, wrapper)
+    }
+
+    /**
+     * P1 盔甲适配：取该玩家 hostDriven 整替外观的骨架（盔甲、附属层、原版部件的姿态来源）。
+     * 骨骼树取 GeckoLib 缓存，姿势取 AnimationHost 最近一次驱动的结果（外观提交时驱动）。
+     * 渲染器还没建成（该外观尚未画过一帧）时返回 null，与 5.3 时读渲染器骨骼的时机一致
+     */
+    @JvmStatic
+    fun hostBones(playerUUID: UUID): HostSkeleton? {
+        val costumeId = hostFullBodyId(playerUUID) ?: return null
+        if (!renderers.containsKey("$playerUUID:$costumeId")) return null
+        val wrapper = definitions[costumeId] ?: return null
+        val model = GeckoLibResources.getBakedModels().cache()[GeckoResourceIds.model(wrapper.modelLocation)] ?: return null
+        return HostSkeleton(model, AnimationHost.currentPose(playerUUID))
+    }
+
+    /**
+     * 该玩家当前生效的 hostDriven 整替外观 id。
+     * 连招按外观限定时用它选组——切了动画组，招式也得跟着换
+     */
+    @JvmStatic
+    fun hostCostumeId(playerUUID: UUID): String? = hostFullBodyId(playerUUID)
+
+    /** P1 盔甲适配：取 hostDriven 整替外观定义（盔甲需要它的 scale/offset 对齐身体） */
+    @JvmStatic
+    fun hostWrapper(playerUUID: UUID): CostumeModelWrapper? =
+        hostFullBodyId(playerUUID)?.let(definitions::get)
+
+    private fun hostFullBodyId(playerUUID: UUID): String? {
+        val costumeId = playerCostumes[playerUUID]?.get(CostumeSlot.FULL_BODY) ?: return null
+        return if (definitions[costumeId]?.hostDriven == true) costumeId else null
+    }
+
+    fun getAssignedCostumes(playerUUID: UUID): Map<CostumeSlot, CostumeModelWrapper> =
+        playerCostumes[playerUUID]
+            ?.mapNotNull { (slot, costumeId) -> definitions[costumeId]?.let { slot to it } }
+            ?.toMap()
+            ?: emptyMap()
+
+    fun assignCostume(playerUUID: UUID, costumeId: String) {
+        val wrapper = definitions[costumeId] ?: return
+        val slots = playerCostumes.computeIfAbsent(playerUUID) { ConcurrentHashMap() }
+        val previous = slots.put(wrapper.slot, costumeId)
+        // 换整替外观 = 换动画库。播控指令是相对某一套库下发的，库换掉之后那条
+        // 指令引用的剪辑在新库里查不到，留着只会在换回去时凭空续播半段。
+        // 整替槽位真的变了才清，同 id 重复下发（登录全量同步）不受影响
+        if (wrapper.slot == CostumeSlot.FULL_BODY && previous != null && previous != costumeId) {
+            org.lantern.core.anim.control.AnimationControlStore.stop(playerUUID, null)
+        }
+    }
+
+    fun removeCostume(playerUUID: UUID, slot: CostumeSlot? = null) {
+        if (slot == null) {
+            playerCostumes.remove(playerUUID)
+        } else {
+            playerCostumes[playerUUID]?.remove(slot)
+        }
+    }
+
+    /**
+     * 实体离场时淘汰该玩家的渲染器缓存，外观分配保留：服务端只在分配变化时广播，
+     * 玩家走出视距再回来不会重发，删了分配外观就丢了
+     */
+    fun evictRenderers(playerUUID: UUID) {
+        // hostDriven 渲染器键为 "uuid:costumeId"（绑定玩家皮肤与实例 id），随实体离场
+        // 一并淘汰防止会话内无上限增长；共享渲染器（key=costumeId）不受影响，
+        // 换维度/重回视距时按 submitForPlayer 的 computeIfAbsent 懒重建恢复
+        val prefix = "$playerUUID:"
+        if (renderers.keys.removeIf { it.startsWith(prefix) }) {
+            Lantern.logger.debug("[Lantern] Evicted costume renderers for player {}", playerUUID)
+        }
+    }
+
+    fun submitForPlayer(
+        context: CostumeRenderContext,
+        poseStack: PoseStack,
+        submitNodes: SubmitNodeCollector,
+        cameraState: CameraRenderState,
+        packedLight: Int,
+        partialTick: Float
+    ) {
+        val assigned = playerCostumes[context.playerId] ?: return
+        assigned.values.forEach { costumeId ->
+            if (costumeId in brokenCostumes) return@forEach
+            val wrapper = definitions[costumeId] ?: return@forEach
+            if (!isCostumeReady(costumeId, wrapper)) return@forEach
+            // hostDriven 外观按玩家分配渲染器（皮肤贴图与 GeckoLib 实例 id 各玩家一份）；
+            // 普通装饰外观维持按 costumeId 共享（快照路径的历史行为）
+            val rendererKey = if (wrapper.hostDriven) "${context.playerId}:$costumeId" else costumeId
+            val entry = renderers.computeIfAbsent(rendererKey) {
+                val animatable = CostumeAnimatable(wrapper.animationStates, wrapper.hostDriven)
+                val renderer = CostumeRenderer(wrapper, animatable)
+                if (wrapper.hostDriven) renderer.bindPlayer(context.playerId)
+                RendererEntry(animatable, renderer)
+            }
+            val depth = (poseStack as PoseStackAccessor).`lantern$getLastIndex`()
+            try {
+                entry.renderer.submit(
+                    poseStack,
+                    context,
+                    submitNodes,
+                    cameraState,
+                    packedLight,
+                    partialTick
+                )
+            } catch (ex: RuntimeException) {
+                // 一套坏外观不能把整个玩家渲染（连带后面的图层）一起带崩：弹回位姿、停用该外观
+                while ((poseStack as PoseStackAccessor).`lantern$getLastIndex`() > depth) {
+                    poseStack.popPose()
+                }
+                brokenCostumes.add(costumeId)
+                renderers.remove(rendererKey)
+                Lantern.logger.error("[Lantern] Disabled broken costume renderer: {}", costumeId, ex)
+            }
+        }
+    }
+
+    /**
+     * 贴图资源缺失时标记为坏外观并只警告一次；模型还没进 GeckoLib 缓存时推迟。
+     * 模型不查资源文件：GeckoLib 5 允许放在 geckolib/models/ 下而 yml 写 geo/，按 yml 路径查会误判
+     */
+    private fun isCostumeReady(costumeId: String, wrapper: CostumeModelWrapper): Boolean {
+        if (costumeId !in validatedCostumes) {
+            // hostDriven 外观画的是玩家皮肤，配置里的 texture 不参与渲染
+            if (!wrapper.hostDriven && wrapper.textureUrl == null && !LanternAssets.hasResource(wrapper.textureLocation)) {
+                // 资源还在后台加载时不记成损坏：加载完成前记下的标记会一直挡住渲染
+                if (AssetSync.isLoading) return false
+                brokenCostumes.add(costumeId)
+                Lantern.logger.warn("[Lantern] Costume texture resource missing: {} ({})", wrapper.textureLocation, costumeId)
+                return false
+            }
+            validatedCostumes.add(costumeId)
+        }
+        val modelId = GeckoResourceIds.model(wrapper.modelLocation)
+        if (!GeckoLibResources.getBakedModels().cache().containsKey(modelId)) {
+            if (!AssetSync.isLoading && warnedModels.add(modelId)) {
+                Lantern.logger.warn("[Lantern] Costume model not yet cached, deferring render: {}", modelId)
+            }
+            return false
+        }
+        return true
+    }
+
+    private data class RendererEntry(
+        val animatable: CostumeAnimatable,
+        val renderer: CostumeRenderer
+    )
+}
