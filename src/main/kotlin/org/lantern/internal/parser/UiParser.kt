@@ -126,6 +126,7 @@ object UiParser {
             "vanilla" -> VanillaElementWidgetImpl(parseVanillaElement(node))
             "icon-bar" -> IconBarWidgetImpl(parseStat(type, node), parseTextures(node))
             "progress-bar" -> ProgressBarWidgetImpl(parseStat(type, node), parseTextures(node))
+            "div" -> PanelWidgetImpl("div")
             else -> PanelWidgetImpl()
         }
 

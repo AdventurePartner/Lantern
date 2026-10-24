@@ -5,9 +5,8 @@ import org.lantern.uix.IComponent
 import org.lantern.uix.widget.BaseWidget
 import org.lantern.uix.widget.IWidget
 
-class PanelWidgetImpl : BaseWidget() {
-
-    override val widgetType: String = "panel"
+/** `panel` 与 `div` 共用的容器；两者只有类型名不同。 */
+class PanelWidgetImpl(override val widgetType: String = "panel") : BaseWidget() {
 
     @get:JvmName("getChildWidgets")
     val children: MutableList<IWidget> = mutableListOf()

@@ -23,6 +23,7 @@ object WidgetRendererRegistry {
         register("button", ButtonRenderer)
         register("image", ImageRenderer)
         register("panel", PanelRenderer)
+        register("div", PanelRenderer)
         register("input", InputRenderer)
         register("slot", SlotRenderer)
         register("hotbar-selection", HotbarSelectionRenderer)
