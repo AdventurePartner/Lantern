@@ -31,8 +31,8 @@ object EventDispatcher {
         button: Int
     ): Boolean {
         val rect = findRect(component)
-        val cx = rect?.x ?: 0
-        val cy = rect?.y ?: 0
+        val cx = rect?.x ?: styleX(component)
+        val cy = rect?.y ?: styleY(component)
 
         // Children first (depth-first, child-priority)
         for (child in component.getChildren()) {
@@ -87,8 +87,8 @@ object EventDispatcher {
         result: MutableSet<IComponent>
     ) {
         val rect = findRect(component)
-        val cx = rect?.x ?: 0
-        val cy = rect?.y ?: 0
+        val cx = rect?.x ?: styleX(component)
+        val cy = rect?.y ?: styleY(component)
 
         // Check children with local coordinates
         for (child in component.getChildren()) {
@@ -119,6 +119,13 @@ object EventDispatcher {
         if (w == 0 && h == 0) return null
         return LayoutRect(x, y, w, h)
     }
+
+    // 未参与布局的容器在 PanelRenderer 里按 style 的 x/y 平移子组件，命中换算要与之一致
+    private fun styleX(component: IComponent): Int =
+        (component as? IWidget)?.style?.getInt(StyleProperty.X) ?: 0
+
+    private fun styleY(component: IComponent): Int =
+        (component as? IWidget)?.style?.getInt(StyleProperty.Y) ?: 0
 
     private fun isVisible(component: IComponent): Boolean {
         if (component is IWidget) {
