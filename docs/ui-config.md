@@ -252,6 +252,50 @@ root:
         y: 8
 ```
 
+### 区块 `div`
+
+不画任何东西的空容器，只用来圈出一块区域，类似网页里的 `div`。可以用它占住一块空白、
+在[自动排列](#自动排列)里当间隔，或者把一组内容包起来统一摆放、统一[裁掉超出部分](#裁掉超出部分)。
+用法和 `panel` 完全一样，写了 `background` 也会画背景。
+
+在一行里用固定宽度的 div 隔开两组内容：
+
+```yml
+- type: div
+  style:
+    display: flex
+    flex-direction: row
+    align-items: center
+  children:
+    - type: text
+      text: "左边"
+    - type: div
+      style:
+        width: 40
+        height: 1
+    - type: text
+      text: "右边"
+```
+
+把一组内容包起来，整体挪位置时只改外层的 `x`、`y`：
+
+```yml
+- type: div
+  style:
+    x: 20
+    y: 40
+    width: 120
+    height: 60
+  children:
+    - type: image
+      texture: "lantern:textures/ui/icon.png"
+    - type: text
+      text: "说明"
+      style:
+        x: 20
+        y: 4
+```
+
 ### 文字 `text`
 
 显示一段文字，可直接写变量插件文字。
@@ -500,13 +544,14 @@ style 里的设置：
 | `border-color` | 输入框边框颜色 |
 | `placeholder-color` | 输入框提示文字颜色 |
 | `visible` | 是否显示，`true` 或 `false` |
+| `overflow` | 写 `hidden` 时裁掉超出自己区域的部分，见[裁掉超出部分](#裁掉超出部分) |
 | `tooltip` | 鼠标放上去时显示的提示文字 |
 
 颜色可以写成 `#ffffff`，也可以写成带透明度的 `#80ffffff`。
 
 ### 背景 `background`
 
-和 CSS 一样，所有组件（panel、button、input、slot、text、image、hotbar-selection、
+和 CSS 一样，所有组件（panel、div、button、input、slot、text、image、hotbar-selection、
 vanilla、icon-bar、progress-bar）都用同一个 `background`，写法与效果完全一致：
 
 | 写法 | 效果 |
@@ -520,7 +565,7 @@ vanilla、icon-bar、progress-bar）都用同一个 `background`，写法与效�
 
 | 组件 | 默认背景 |
 |---|---|
-| panel、text、image、hotbar-selection、vanilla、icon-bar、progress-bar | 无 |
+| panel、div、text、image、hotbar-selection、vanilla、icon-bar、progress-bar | 无 |
 | button | `#333333` |
 | input | `#1a1a1a`（边框另由 `border-color` 控制） |
 | slot | 原版风格灰框 |
@@ -568,6 +613,41 @@ style:
 | `gap` | 内容之间的间距 |
 | `padding`、`padding-left` 等 | 内容离面板边缘的距离 |
 | `margin`、`margin-top` 等 | 自己离外面内容的距离 |
+
+## 裁掉超出部分
+
+和 CSS 的 `overflow: hidden` 一样：组件写了 `overflow: hidden` 后，自己和里面的内容
+只在自己的区域内显示，超出的部分被裁掉。适合固定大小的列表框、只露出一部分的贴图、
+限定宽度的长文字。
+
+```yml
+- type: div
+  style:
+    x: 20
+    y: 20
+    width: 100
+    height: 40
+    overflow: hidden
+  children:
+    - type: text
+      text: "这一行很长，超过 100 宽度的部分不会显示"
+    - type: image
+      texture: "lantern:textures/ui/banner.png"
+      style:
+        y: 20
+        width: 160
+        height: 40
+```
+
+- 区域就是组件的 `x`、`y`、`width`、`height`；在[自动排列](#自动排列)里按排好的位置和大小算。
+- 没写宽高时按组件的自动大小算：文字是文字宽度，面板和区块是里面内容撑开的大小，
+  所以不写宽高不会把内容全部裁掉。
+- 可以多层嵌套，内层只会在外层区域和自己区域重叠的部分显示。
+- 被裁掉的部分不能点击，鼠标放上去也不会显示 `tooltip`。提示文字本身不会被裁。
+- 宽或高为 0 时整个组件不显示。
+- 以下内容不受裁切影响：`vanilla` 节点（原版元素由原版自己画）、容器 `overlay` 里的
+  `slot` 节点（移动的是原版槽位）。`hotbar-selection` 自己写 `overflow` 无效，
+  但放在写了 `overflow: hidden` 的容器里时会被容器正常裁掉。
 
 ## 复用外观
 
