@@ -3,6 +3,7 @@ package org.lantern.uix.event
 import org.lantern.uix.IComponent
 import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.layout.LayoutRect
+import org.lantern.uix.layout.Overflow
 import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.widget.IWidget
 import java.util.Collections
@@ -30,6 +31,7 @@ object EventDispatcher {
         mouseY: Int,
         button: Int
     ): Boolean {
+        if (isClippedOut(component, mouseX, mouseY)) return false
         val rect = findRect(component)
         val cx = rect?.x ?: styleX(component)
         val cy = rect?.y ?: styleY(component)
@@ -86,6 +88,7 @@ object EventDispatcher {
         mouseY: Int,
         result: MutableSet<IComponent>
     ) {
+        if (isClippedOut(component, mouseX, mouseY)) return
         val rect = findRect(component)
         val cx = rect?.x ?: styleX(component)
         val cy = rect?.y ?: styleY(component)
@@ -119,6 +122,10 @@ object EventDispatcher {
         if (w == 0 && h == 0) return null
         return LayoutRect(x, y, w, h)
     }
+
+    /** 鼠标落在 overflow: hidden 组件的区域外：它和子组件都已被裁掉，不参与命中。 */
+    private fun isClippedOut(component: IComponent, mouseX: Int, mouseY: Int): Boolean =
+        component is IWidget && Overflow.isHidden(component) && !Overflow.contains(component, mouseX, mouseY)
 
     // 未参与布局的容器在 PanelRenderer 里按 style 的 x/y 平移子组件，命中换算要与之一致
     private fun styleX(component: IComponent): Int =

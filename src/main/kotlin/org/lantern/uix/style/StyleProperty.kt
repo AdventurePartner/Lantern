@@ -22,6 +22,7 @@ enum class StyleProperty(val key: String) {
     ALIGN_ITEMS("align-items"),
     GAP("gap"),
     ANCHOR("anchor"),
+    OVERFLOW("overflow"),
 
     // Padding
     PADDING("padding"),

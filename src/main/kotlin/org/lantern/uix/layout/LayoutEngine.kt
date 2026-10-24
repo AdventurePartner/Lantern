@@ -293,9 +293,9 @@ object LayoutEngine {
         result.put(child, LayoutRect(x, y, w, h))
     }
 
-    private data class MeasuredSize(val width: Int, val height: Int)
+    internal data class MeasuredSize(val width: Int, val height: Int)
 
-    private fun measureWidget(widget: IWidget): MeasuredSize {
+    internal fun measureWidget(widget: IWidget): MeasuredSize {
         val style = widget.style
         val explicitWidth = style.getInt(StyleProperty.WIDTH)
         val explicitHeight = style.getInt(StyleProperty.HEIGHT)

@@ -1,6 +1,7 @@
 package org.lantern.uix.renderer
 
 import net.minecraft.client.gui.GuiGraphics
+import org.lantern.uix.layout.Overflow
 import org.lantern.uix.renderer.impl.ButtonRenderer
 import org.lantern.uix.renderer.impl.HotbarSelectionRenderer
 import org.lantern.uix.renderer.impl.IconBarRenderer
@@ -39,6 +40,18 @@ object WidgetRendererRegistry {
     @Suppress("UNCHECKED_CAST")
     fun render(widget: IWidget, graphics: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
         val renderer = renderers[widget.widgetType] as? IWidgetRenderer<IWidget> ?: return
-        renderer.render(widget, widget.style, graphics, mouseX, mouseY, delta)
+        if (!Overflow.isHidden(widget)) {
+            renderer.render(widget, widget.style, graphics, mouseX, mouseY, delta)
+            return
+        }
+        // 空裁切矩形在各版本上的处理不一致，整块不可见时直接不画
+        val box = Overflow.box(widget)
+        if (box.width <= 0 || box.height <= 0) return
+        ScissorClip.push(graphics, box.x, box.y, box.width, box.height)
+        try {
+            renderer.render(widget, widget.style, graphics, mouseX, mouseY, delta)
+        } finally {
+            ScissorClip.pop(graphics)
+        }
     }
 }
