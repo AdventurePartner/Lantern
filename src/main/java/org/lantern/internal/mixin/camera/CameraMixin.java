@@ -135,8 +135,8 @@ public abstract class CameraMixin {
             this.setPosition(new Vec3(
                 base.getX() + pose.getDx(), base.getY() + pose.getDy(), base.getZ() + pose.getDz()));
         }
-        // 拾取修正必须在 setup 尾部（本帧位姿定稿后）而非 GameRenderer.pick 尾部：
-        // 帧内顺序是 pick 在前 setup 在后，后者只能拿到上一帧相机（详见 CameraPick）
+        // 渲染帧的拾取修正在 setup 尾部（本帧位姿定稿后）：帧内 pick 在前 setup 在后，
+        // pick 尾部只能拿到上一帧相机；tick 内交互用的那次由 GameRendererMixin 补（详见 CameraPick）
         CameraPick.recompute(partialTick);
     }
 

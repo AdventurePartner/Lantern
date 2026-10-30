@@ -17,14 +17,21 @@ import org.lantern.core.camera.ShoulderCameraState
 import org.lantern.platform.InteractionBridge
 
 /**
- * 准星拾取修正：以**本帧相机位姿**重算方块/实体命中并写回 Minecraft.hitResult。
+ * 准星拾取修正：以**相机位姿**重算方块/实体命中并写回 Minecraft.hitResult。
  *
- * 在 Camera.setup 尾部调用：renderLevel 帧内 pick 先于 Camera.setup，在 pick 尾部
- * 只能读到上一帧的相机——快速转头时准星目标拖后一帧。
+ * 挂两处：
+ * - GameRenderer.pick 尾部：Minecraft.tick 在 handleKeybinds 之前调 pick(1.0F)，攻击/使用/
+ *   挖掘读的是这次结果，不在这里重算就是原版眼睛射线；此时相机仍是上一帧渲染的位姿，
+ *   正是玩家点击时看到的画面
+ * - Camera.setup 尾部：renderLevel 帧内 pick 先于 Camera.setup，在 pick 尾部只能读到
+ *   上一帧的相机——快速转头时描边拖后一帧
+ *
+ * 射线起点推到过眼睛、垂直视线的平面：越肩相机在身后数格，从相机量射程会够不到眼前的
+ * 目标，还会选中相机与玩家之间的东西。
  *
  * 生效门控：越肩（F5 第三视角）**或** 演出朝向激活（offset/lock 会旋转任意视角形态
  * 下的视图）。最终仍按玩家眼睛 + 交互距离过滤（复刻原版 filterHitResult），射程语义不变。
- * 1.21.10 有同名副本（camera/control 整包被 NeoForge 排除）。
+ * 1.21.10 / 1.21.11 有同名副本（camera 整包被 NeoForge 排除）。
  */
 object CameraPick {
 
@@ -49,9 +56,12 @@ object CameraPick {
         val entityRange = InteractionBridge.entityRange(player)
         val reach = maxOf(blockRange, entityRange)
 
-        val origin = camera.position
+        val eye = player.getEyePosition(partialTick)
+        val cameraPos = camera.position
         val look = camera.lookVector
         val direction = Vec3(look.x().toDouble(), look.y().toDouble(), look.z().toDouble())
+        // 起点推到眼睛平面；离眼睛不超过 reach 的射线点必在 origin + reach 以内（横向偏移只会缩短这段）
+        val origin = cameraPos.add(direction.scale(maxOf(0.0, eye.subtract(cameraPos).dot(direction))))
         var end = origin.add(direction.scale(reach))
 
         val blockHit = level.clip(
@@ -68,7 +78,6 @@ object CameraPick {
         val entityHit = ProjectileUtil.getEntityHitResult(
             cameraEntity, origin, end, searchBox, PICKABLE, effectiveReachSq)
 
-        val eye = player.getEyePosition(partialTick)
         val result = if (entityHit != null && entityHit.location.distanceToSqr(origin) < blockDistSq) {
             filterHitResult(entityHit, eye, entityRange)
         } else {

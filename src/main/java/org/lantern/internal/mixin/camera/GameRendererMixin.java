@@ -2,10 +2,12 @@ package org.lantern.internal.mixin.camera;
 
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.GameRenderer;
+import org.lantern.camera.control.CameraPick;
 import org.lantern.core.camera.CameraControl;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
@@ -24,5 +26,14 @@ public abstract class GameRendererMixin {
         CallbackInfoReturnable<Double> cir
     ) {
         cir.setReturnValue((double) CameraControl.fov(cir.getReturnValue().floatValue()));
+    }
+
+    /**
+     * Minecraft.tick 在 handleKeybinds 之前会调 pick(1.0F)，原版眼睛射线结果会盖掉
+     * setup 尾部的修正，攻击/使用/挖掘随之按玩家朝向选目标；这里在每次原版 pick 后重算
+     */
+    @Inject(method = "pick(F)V", at = @At("TAIL"))
+    private void lantern$recomputePick(float partialTick, CallbackInfo ci) {
+        CameraPick.recompute(partialTick);
     }
 }

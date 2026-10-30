@@ -98,6 +98,7 @@ public abstract class Camera1201Mixin {
             this.setPosition(new Vec3(
                 base.getX() + pose.getDx(), base.getY() + pose.getDy(), base.getZ() + pose.getDz()));
         }
+        // 渲染帧的拾取修正；tick 内交互用的那次由共享 GameRendererMixin 补（详见 CameraPick）
         CameraPick.recompute(partialTick);
     }
 
