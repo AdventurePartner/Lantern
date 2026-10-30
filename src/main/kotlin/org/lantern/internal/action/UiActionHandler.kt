@@ -33,10 +33,18 @@ object UiActionHandler {
         }
     }
 
-    private fun openGui(screenId: String) {
+    /** 在主线程调用。 */
+    fun openGui(screenId: String) {
         val mc = Minecraft.getInstance()
         val entry = org.lantern.internal.storage.UiScreenStorage.get(screenId) ?: return
         if (entry.type != org.lantern.internal.storage.ScreenType.GUI) return
+        // 带 slot 的界面操作的是背包菜单；服务端还开着箱子等容器时先关掉，否则点击包的容器编号对不上
+        val player = mc.player
+        if (player != null && player.containerMenu !== player.inventoryMenu
+            && org.lantern.uix.widget.slot.SlotWidgetImpl.containsSlot(entry.rootWidget)
+        ) {
+            player.closeContainer()
+        }
         mc.setScreen(org.lantern.uix.canvas.impl.GuiCanvas(screenId, entry.rootWidget))
     }
 }

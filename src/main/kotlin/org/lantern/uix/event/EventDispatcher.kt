@@ -59,6 +59,22 @@ object EventDispatcher {
         return false
     }
 
+    /**
+     * 鼠标下方第一个满足 [filter] 的可见组件（子组件优先），坐标换算与裁切规则同点击分发；
+     * 不可见容器的子组件不会画出来，也不参与查找。
+     */
+    fun findDeepest(root: IComponent, mouseX: Int, mouseY: Int, filter: (IComponent) -> Boolean): IComponent? {
+        if (isClippedOut(root, mouseX, mouseY) || !isVisible(root)) return null
+        val rect = findRect(root)
+        val cx = rect?.x ?: styleX(root)
+        val cy = rect?.y ?: styleY(root)
+        for (child in root.getChildren()) {
+            findDeepest(child, mouseX - cx, mouseY - cy, filter)?.let { return it }
+        }
+        if (!filter(root) || rect == null) return null
+        return root.takeIf { mouseX in rect.x until rect.x + rect.width && mouseY in rect.y until rect.y + rect.height }
+    }
+
     fun updateHover(root: IComponent, mouseX: Int, mouseY: Int) {
         scratchSet.clear()
         collectHovered(root, mouseX, mouseY, scratchSet)

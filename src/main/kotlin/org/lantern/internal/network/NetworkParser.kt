@@ -259,13 +259,7 @@ object NetworkParser {
 
     private fun openGuiScreen(obj: JsonObject) {
         val screenId = obj.get("screen-id")?.asString ?: return
-        val entry = org.lantern.internal.storage.UiScreenStorage.get(screenId) ?: return
-        if (entry.type != org.lantern.internal.storage.ScreenType.GUI) return
-        Minecraft.getInstance().execute {
-            Minecraft.getInstance().setScreen(
-                org.lantern.uix.canvas.impl.GuiCanvas(screenId, entry.rootWidget)
-            )
-        }
+        Minecraft.getInstance().execute { org.lantern.internal.action.UiActionHandler.openGui(screenId) }
     }
 
     private fun parseEntityModels(obj: JsonObject) {

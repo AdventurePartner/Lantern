@@ -12,7 +12,8 @@ import java.util.WeakHashMap
 
 /**
  * 槽位重定位：容器界面 overlay 中的 slot 节点是"位置声明"——
- * 把 menu.slots[N] 的原版槽位移动到节点布局位置（容器锚定坐标系，支持嵌套 panel 偏移累加）。
+ * 把 source 指向的原版槽位（`slot_N` 是菜单第 N 格，`hotbar_N` 等按玩家背包定位）
+ * 移动到节点布局位置（容器锚定坐标系，支持嵌套 panel 偏移累加）。
  * 原版的渲染、点击命中、拖拽、shift 快移、tooltip 全部实时读取 Slot.x/y，移动后原位逻辑自动跟随。
  *
  * 每帧幂等应用：先把已触碰 menu 的全部槽位恢复原始坐标，再按声明写入——
@@ -31,17 +32,16 @@ object SlotLayoutManager {
         matches: List<OverlayMatch>
     ) {
         if (panel == null) return
-        if (matches.none { hasSlotNode(it.rootWidget) }) return
+        if (matches.none { SlotWidgetImpl.containsSlot(it.rootWidget) }) return
         val menu = container.menu
 
         restore(menu)
 
         for (match in matches) {
-            if (!hasSlotNode(match.rootWidget)) continue
+            if (!SlotWidgetImpl.containsSlot(match.rootWidget)) continue
             OverlayRenderer.layoutMatch(match, container, panel)
             walk(match.rootWidget, 0, 0) { widget, absX, absY ->
-                if (widget.slotIndex !in menu.slots.indices) return@walk
-                val bridge = menu.slots[widget.slotIndex] as? SlotMutableBridge ?: return@walk
+                val bridge = widget.resolve(menu) as? SlotMutableBridge ?: return@walk
                 if (widget.style.getBoolean(StyleProperty.VISIBLE)) {
                     bridge.`lantern$setSlotX`(absX - panel.`lantern$getLeftPos`())
                     bridge.`lantern$setSlotY`(absY - panel.`lantern$getTopPos`())
@@ -74,14 +74,6 @@ object SlotLayoutManager {
             bridge.`lantern$setSlotX`(snapshot[i * 2])
             bridge.`lantern$setSlotY`(snapshot[i * 2 + 1])
         }
-    }
-
-    private fun hasSlotNode(widget: IWidget): Boolean {
-        if (widget is SlotWidgetImpl && widget.slotIndex >= 0) return true
-        if (widget is PanelWidgetImpl) {
-            for (child in widget.children) if (hasSlotNode(child)) return true
-        }
-        return false
     }
 
     /**

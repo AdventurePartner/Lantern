@@ -1,5 +1,6 @@
 package org.lantern.uix.canvas.impl
 
+import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.input.CharacterEvent
@@ -12,6 +13,7 @@ import org.lantern.uix.enums.MountPoint
 import org.lantern.uix.event.EventDispatcher
 import org.lantern.uix.event.MouseEvent
 import org.lantern.uix.input.FocusManager
+import org.lantern.uix.interaction.InventorySlotInteraction
 import org.lantern.uix.layout.LayoutCache
 import org.lantern.uix.renderer.TooltipRenderer
 import org.lantern.uix.renderer.WidgetRendererRegistry
@@ -58,18 +60,46 @@ class GuiCanvas(
     override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         graphics.fill(0, 0, width, height, 0x80000000.toInt())
         LayoutCache.getOrCompute(rootWidget, width, height)
+        InventorySlotInteraction.frame(rootWidget, mouseX, mouseY)
         WidgetRendererRegistry.render(rootWidget, graphics, mouseX, mouseY, partialTick)
         EventDispatcher.updateHover(this, mouseX, mouseY)
         TooltipRenderer.renderTooltipPass(rootWidget, graphics, mouseX, mouseY)
+        renderCarriedItem(graphics, mouseX, mouseY)
+    }
+
+    private fun renderCarriedItem(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
+        val (stack, countText) = InventorySlotInteraction.carriedDisplay() ?: return
+        graphics.nextStratum()
+        graphics.renderItem(stack, mouseX - 8, mouseY - 8)
+        graphics.renderItemDecorations(font, stack, mouseX - 8, mouseY - 8, countText)
     }
 
     override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
         if (event.button() == 0) {
             FocusManager.blur()
         }
+        if (InventorySlotInteraction.mouseClicked(event.x(), event.y(), event.button(), event.hasShiftDown(), isPickKey(event))) {
+            return true
+        }
         EventDispatcher.dispatchClick(this, event.x().toInt(), event.y().toInt(), event.button())
         return super.mouseClicked(event, doubleClick)
     }
+
+    override fun mouseDragged(event: MouseButtonEvent, dragX: Double, dragY: Double): Boolean {
+        if (InventorySlotInteraction.mouseDragged(event.x(), event.y())) return true
+        return super.mouseDragged(event, dragX, dragY)
+    }
+
+    override fun mouseReleased(event: MouseButtonEvent): Boolean {
+        val released = super.mouseReleased(event)
+        val handled = InventorySlotInteraction.mouseReleased(
+            event.x(), event.y(), event.button(), event.hasShiftDown(), isPickKey(event)
+        )
+        return handled || released
+    }
+
+    private fun isPickKey(event: MouseButtonEvent): Boolean =
+        Minecraft.getInstance().options.keyPickItem.matchesMouse(event)
 
     override fun charTyped(event: CharacterEvent): Boolean {
         val codePoint = event.codepoint()
@@ -83,11 +113,15 @@ class GuiCanvas(
         if (FocusManager.handleKey(event.key())) {
             return true
         }
+        if (InventorySlotInteraction.keyPressed({ it.matches(event) }, event.hasControlDown())) {
+            return true
+        }
         return super.keyPressed(event)
     }
 
     override fun removed() {
         FocusManager.blur()
+        InventorySlotInteraction.close()
         super.removed()
     }
 
