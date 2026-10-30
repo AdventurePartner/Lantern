@@ -3,6 +3,7 @@ package org.lantern.internal.icon
 import net.minecraft.client.Minecraft
 import org.lantern.Lantern
 import org.lantern.internal.asset.AssetSync
+import org.lantern.internal.asset.RenderProbe
 import org.lantern.internal.handler.ResourceHandler
 import org.lantern.platform.IdentifierBridge
 import java.util.concurrent.CompletableFuture
@@ -48,25 +49,48 @@ object ItemIconMeshes {
         if (entries.putIfAbsent(customModelData, token) != null) return null
         CompletableFuture.supplyAsync({ load(spec) }, AssetSync.executor).whenComplete { mesh, error ->
             if (error != null) {
-                Lantern.logger.warn("[Lantern] Failed to build item icon {}: {}", spec.identifier, error.message)
+                RenderProbe.hit("mesh.error")
+                Lantern.logger.warn("[Lantern] Failed to build item icon {}: {}", spec.identifier, error.toString())
             }
             entries.replace(customModelData, token, mesh ?: Failed)
         }
         return null
     }
 
+    /** 诊断用：该 CustomModelData 当前的网格状态 */
+    fun stateOf(customModelData: Int): String = when (entries[customModelData]) {
+        null -> "absent"
+        is IconMesh -> "mesh"
+        is Pending -> "pending"
+        Failed -> "failed"
+        NotIcon -> "not_icon"
+        else -> "unknown"
+    }
+
+    /** 诊断用：各状态的条目数 */
+    fun stateCounts(): Map<String, Int> =
+        entries.keys.groupingBy(::stateOf).eachCount()
+
     private fun load(spec: IconSpec): IconMesh? {
         val parsed = IdentifierBridge.parse(spec.texture)
         val texture = IdentifierBridge.of(parsed.namespace, "textures/${parsed.path}.png")
         val resource = Minecraft.getInstance().resourceManager.getResource(texture).orElse(null)
         if (resource == null) {
+            RenderProbe.hit("mesh.texture_missing")
             // 资源还在后台加载时缺贴图是正常的，加载完成的刷新会作废这条结果重新生成
             if (!AssetSync.isLoading && warnedTextures.add(spec.texture)) {
                 Lantern.logger.warn("[Lantern] Item icon texture not found: {} (icon {})", texture, spec.identifier)
             }
             return null
         }
-        val image = resource.open().use(ImageIO::read) ?: return null
+        val image = resource.open().use(ImageIO::read) ?: run {
+            RenderProbe.hit("mesh.imageio_null")
+            if (warnedTextures.add(spec.texture)) {
+                Lantern.logger.warn("[Lantern] ImageIO could not decode item icon texture {} (icon {})", texture, spec.identifier)
+            }
+            return null
+        }
+        RenderProbe.hit("mesh.built")
         val width = image.width
         val height = image.height
         // 动画贴图多帧竖排，只取第一帧

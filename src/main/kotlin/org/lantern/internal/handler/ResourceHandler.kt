@@ -25,6 +25,7 @@ import org.lantern.internal.asset.AssetSync
 import org.lantern.internal.asset.LanternAssets
 import org.lantern.internal.icon.IconSpec
 import org.lantern.internal.icon.ItemIconMeshes
+import org.lantern.model.handler.RenderReadinessReport
 import org.lantern.model.handler.RendererHandler
 
 /*
@@ -92,6 +93,12 @@ object ResourceHandler {
 
     fun getItemIconSpec(customModelData: Int): IconSpec? =
         clientStorage.itemIcons[customModelData]?.let { (identifier, texture, type) -> IconSpec(identifier, texture, type) }
+
+    /** 诊断用：服务端下发的物品图标条数 */
+    fun itemIconCount(): Int = clientStorage.itemIcons.size
+
+    /** 诊断用：字符图标的贴图路径 */
+    fun characterTexturePaths(): List<String> = characterWrappers.values.map { it.resource }
 
     /**
      * 根据 ModelBakery 传入的模型路径（如 "item/custom_wrapper"）查找对应纹理路径。
@@ -283,6 +290,7 @@ object ResourceHandler {
             BlockRendererHandler.markSectionsDirty()
         }
         ModelDiagnostics.validateEntityModels(RendererHandler.getCustomModelWrappers())
+        RenderReadinessReport.schedule()
     }
 
     /**
@@ -365,6 +373,8 @@ object ResourceHandler {
         CostumeHandler.refreshRenderers()
         ItemIconMeshes.invalidate()
         AssetSync.onResourceReloaded()
+        // 启动时的首轮重载还没进服，报告会在倒计时结束时因没有世界而跳过
+        RenderReadinessReport.schedule()
         Lantern.logger.debug("[Lantern] rebuild: restored {} entity models", clientStorage.entityModels.size)
         Lantern.logger.debug("[Lantern] rebuild: END - itemCustomIcons={}, blockCustomModels={}", itemCustomIcons.size, blockCustomModels.size)
     }

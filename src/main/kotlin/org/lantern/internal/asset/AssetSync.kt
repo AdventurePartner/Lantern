@@ -103,6 +103,11 @@ object AssetSync {
         LanternAssets.invalidate()
     }
 
+    /** 诊断用：[isLoading] 的各组成部分与发布版本 */
+    fun debugState(): String =
+        "sessionSynced=$sessionSynced refreshing=$refreshing decryptDone=${pendingDecrypt.isDone} " +
+            "publishedVersion=${EncryptedPackLoader.publishedVersion} geckoSyncedVersion=$geckoSyncedVersion"
+
     fun onDisconnect() {
         sessionSynced = false
         refreshQueued = false

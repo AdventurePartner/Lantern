@@ -35,6 +35,7 @@ import org.lantern.internal.listen.FabricClientListener
 import org.lantern.model.block.LanternBlockEntity
 import org.lantern.model.block.LanternBlockRenderer
 import org.lantern.model.handler.BlockRendererHandler
+import org.lantern.model.handler.RenderReadinessReport
 import org.lantern.internal.network.PacketNetwork
 import org.lantern.model.util.EntityStateUtil
 import org.lantern.uix.renderer.CanvasRenderer
@@ -117,6 +118,7 @@ class LanternFabric : ClientModInitializer {
                 )
             }
             TextureHandler.tick()
+            RenderReadinessReport.tick()
         }
 
         // 全链路诊断：首次 AFTER_ENTITIES 时检查每个 tracked 位置的实际状态

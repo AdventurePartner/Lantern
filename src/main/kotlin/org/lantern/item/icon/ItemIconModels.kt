@@ -8,8 +8,10 @@ import net.minecraft.client.renderer.entity.ItemRenderer
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.item.ItemStack
+import org.lantern.internal.asset.RenderProbe
 import org.lantern.internal.icon.IconVertexEmitter
 import org.lantern.internal.icon.ItemIconMeshes
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 运行时物品图标（Fabric 1.21.1 / NeoForge 1.21.1 / Forge 1.20.1）：
@@ -18,10 +20,20 @@ import org.lantern.internal.icon.ItemIconMeshes
  */
 object ItemIconModels {
 
+    /** 诊断用：最近经过物品挂钩的 CustomModelData，最多记 64 个 */
+    private val seen = ConcurrentHashMap.newKeySet<Int>()
+
+    fun drainSeen(): List<Int> = seen.sorted().also { seen.clear() }
+
     /** 图标网格已生成时返回占位模型，否则 null（调用方继续走烘焙模型或原版物品） */
     @JvmStatic
     fun model(customModelData: Int, stack: ItemStack): BakedModel? {
-        val mesh = ItemIconMeshes.get(customModelData) ?: return null
+        if (seen.size < 64) seen.add(customModelData)
+        val mesh = ItemIconMeshes.get(customModelData) ?: run {
+            RenderProbe.hit("icon.no_mesh")
+            return null
+        }
+        RenderProbe.hit("icon.mesh")
         (mesh.platformModel as? LanternIconBakedModel)?.let { return it }
         // 粒子（吃东西、工具损坏）沿用原物品模型的贴图：图标贴图不在方块图集里
         val particle = Minecraft.getInstance().itemRenderer.itemModelShaper.getItemModel(stack).particleIcon
@@ -41,6 +53,7 @@ object ItemIconModels {
         overlay: Int
     ): Boolean {
         if (model !is LanternIconBakedModel) return false
+        RenderProbe.hit("icon.drawn")
         poseStack.pushPose()
         model.transforms.getTransform(displayContext).apply(leftHand, poseStack)
         poseStack.translate(-0.5f, -0.5f, -0.5f)

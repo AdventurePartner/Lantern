@@ -20,6 +20,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import org.lantern.Lantern;
+import org.lantern.internal.asset.RenderProbe;
 import org.lantern.internal.handler.ResourceHandler;
 import org.lantern.item.icon.ItemIconModels;
 import org.lantern.model.block.LanternBlockEntity;
@@ -66,8 +67,12 @@ public abstract class ForgeItemRendererMixin {
         if (identifier == null) return;
 
         BakedModel model = lantern$resolveModel(Minecraft.getInstance().getModelManager(), identifier);
-        if (model == null) return;
+        if (model == null) {
+            RenderProbe.hit("icon.baked_miss");
+            return;
+        }
 
+        RenderProbe.hit("icon.baked");
         cir.setReturnValue(model);
         cir.cancel();
     }

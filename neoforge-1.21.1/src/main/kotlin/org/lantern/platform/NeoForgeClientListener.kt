@@ -19,6 +19,7 @@ import org.lantern.internal.handler.SessionCleanup
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.storage.HudLayer
 import org.lantern.internal.storage.UiScreenStorage
+import org.lantern.model.handler.RenderReadinessReport
 import org.lantern.model.util.EntityStateUtil
 import org.lantern.uix.canvas.impl.GuiCanvas
 import org.lantern.uix.event.EventDispatcher
@@ -88,6 +89,7 @@ object NeoForgeClientListener {
         val client = Minecraft.getInstance()
         LanternNeoForge.initializeContext(client)
         TextureHandler.tick()
+        RenderReadinessReport.tick()
         FeatureHooks.onClientTick(client)
 
         if (client.screen is GuiCanvas) {

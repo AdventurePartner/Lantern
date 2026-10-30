@@ -2,6 +2,7 @@ package org.lantern.uix.renderer
 
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
+import org.lantern.internal.asset.RenderProbe
 import org.lantern.internal.storage.HudLayer
 import org.lantern.internal.storage.UiScreenStorage
 
@@ -14,7 +15,11 @@ object HudRenderer {
     fun renderBase(graphics: GuiGraphics) {
         if (!inWorld()) return
         val roots = UiScreenStorage.hudRoots(HudLayer.BASE)
-        if (roots.isEmpty()) return
+        if (roots.isEmpty()) {
+            RenderProbe.hit("hud.base_empty")
+            return
+        }
+        RenderProbe.hit("hud.base")
         CanvasRenderer.hudCanvas.renderLayer(graphics, roots)
     }
 
@@ -22,7 +27,11 @@ object HudRenderer {
     fun renderTop(graphics: GuiGraphics) {
         if (!inWorld() || Minecraft.getInstance().screen != null) return
         val roots = UiScreenStorage.hudRoots(HudLayer.TOP)
-        if (roots.isEmpty()) return
+        if (roots.isEmpty()) {
+            RenderProbe.hit("hud.top_empty")
+            return
+        }
+        RenderProbe.hit("hud.top")
         CanvasRenderer.hudCanvas.renderLayer(graphics, roots)
     }
 

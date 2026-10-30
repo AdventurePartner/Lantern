@@ -9,6 +9,7 @@ import org.lantern.Lantern
 import org.lantern.internal.handler.TextureHandler
 import org.lantern.internal.handler.CycleHandler
 import org.lantern.internal.asset.LanternAssets
+import org.lantern.internal.asset.RenderProbe
 import org.lantern.model.renderer.GenericGeoRenderer
 import org.lantern.core.anim.statemap.AnimationStateMapping
 import org.lantern.model.wrapper.CustomModelWrapper
@@ -116,8 +117,12 @@ object RendererHandler {
     }
 
     fun getRenderer(entityType: EntityType<*>, customName: String, uuid: UUID): GenericGeoRenderer<*>? {
-        if (CycleHandler.context == null) return null
+        if (CycleHandler.context == null) {
+            RenderProbe.hit("entity.no_context")
+            return null
+        }
         val wrapper = getCustomModelWrapper(customName) ?: run {
+            RenderProbe.hit("entity.unmatched")
             // 名字未匹配时原版渲染器无声接管，是模型不渲染且无日志的主要静默分支，DEBUG 级留痕
             if (unmatchedLogged.add(customName)) {
                 Lantern.logger.debug("[Lantern] 实体自定义名 \"{}\" 未匹配任何已注册模型，回退原版渲染器", customName)
@@ -125,13 +130,26 @@ object RendererHandler {
             return null
         }
         // 模型或贴图还在后台加载：先画原版模型，就绪后下一帧自动切换
-        if (!LanternAssets.isModelReady(wrapper.modelLocation, wrapper.textureLocation, wrapper.textureUrl)) return null
+        if (!LanternAssets.isGeoReady(wrapper.modelLocation)) {
+            RenderProbe.hit("entity.geo_not_ready")
+            return null
+        }
+        if (!LanternAssets.isTextureReady(wrapper.textureLocation, wrapper.textureUrl)) {
+            RenderProbe.hit("entity.texture_not_ready")
+            return null
+        }
+        RenderProbe.hit("entity.renderer")
         val byUuid = renderers.computeIfAbsent(entityType) { mutableMapOf() }
         val cached = byUuid[uuid]
         // 实体改名换了模型：旧渲染器的骨骼树属于旧模型，必须重建
         if (cached != null && cached.wrapper === wrapper) return cached
         return GenericGeoRenderer(entityType, normalizeName(customName), wrapper).also { byUuid[uuid] = it }
     }
+
+    /** 自定义名能否匹配到已注册模型（与 [getRenderer] 同一套归一化规则），供诊断报告用 */
+    fun matchesModel(customName: String): Boolean = getCustomModelWrapper(customName) != null
+
+    fun normalizedName(customName: String): String = normalizeName(customName)
 
     /** 实体离开世界时淘汰其渲染器，释放克隆骨骼树；重新进入视距时由 getRenderer 懒重建 */
     fun evict(uuid: UUID) {

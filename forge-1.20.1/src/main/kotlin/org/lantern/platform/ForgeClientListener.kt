@@ -43,6 +43,7 @@ object ForgeClientListener {
         val client = Minecraft.getInstance()
         LanternForge.initializeContext(client)
         org.lantern.internal.handler.TextureHandler.tick()
+        org.lantern.model.handler.RenderReadinessReport.tick()
         org.lantern.feature.FeatureHooks.onClientTick(client)
 
         if (client.screen is GuiCanvas) {
