@@ -35,7 +35,9 @@ object PacketNetwork {
         PayloadTypeRegistry.playS2C().register(LanternMainPacket.TYPE, LanternMainPacket.CODEC)
         ClientPlayNetworking.registerGlobalReceiver(LanternMainPacket.TYPE) { payload, context ->
             context.client().execute {
-                mainPayloadDecoder.decode(payload.data)?.let { packet ->
+                // DISCONNECT 可能已经在 Netty 线程上清过解码器，旧连接还排着的包不能进下一个连接的暂存区
+                if (context.client().connection?.getConnection()?.isConnected != true) return@execute
+                mainPayloadDecoder.decode(payload.data).forEach { packet ->
                     NetworkParser.parse(packet.packetId, packet.payload)
                 }
             }

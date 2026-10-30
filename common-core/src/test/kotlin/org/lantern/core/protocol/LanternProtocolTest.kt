@@ -8,7 +8,6 @@ import java.util.Random
 import java.util.zip.Deflater
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -23,24 +22,29 @@ class LanternProtocolTest {
     }
 
     @Test
-    fun `data before the protocol info packet is dropped`() {
+    fun `data before the protocol info packet is delivered right after it`() {
         val decoder = MainPayloadDecoder()
-        val frame = LanternProtocol.encodeS2C(7, JsonObject().also { it.addProperty("key", "k") })
+        val frame = keyFrame("k")
 
-        assertNull(decoder.decode(frame))
-        val info = decoder.decode(LanternProtocol.encodeProtocolInfo())
-        assertEquals(LanternProtocol.PROTOCOL_INFO_PACKET_ID, info?.packetId)
-        assertEquals(LanternProtocol.PROTOCOL_VERSION, info?.payload?.get("version")?.asInt)
-        assertEquals("k", decoder.decode(frame)?.payload?.get("key")?.asString)
+        assertTrue(decoder.decode(frame).isEmpty())
+        val packets = decoder.decode(LanternProtocol.encodeProtocolInfo())
+
+        assertEquals(listOf(LanternProtocol.PROTOCOL_INFO_PACKET_ID, 7), packets.map { it.packetId })
+        assertEquals(LanternProtocol.PROTOCOL_VERSION, packets[0].payload.get("version").asInt)
+        assertEquals(1, packets[0].payload.get("held").asInt)
+        assertEquals("k", packets[1].payload.get("key").asString)
+        assertEquals("k", decoder.decode(frame).single().payload.get("key").asString)
     }
 
     @Test
-    fun `a different protocol version is reported and blocks data`() {
+    fun `a different protocol version is reported and discards held and later data`() {
         val decoder = MainPayloadDecoder()
-        val info = decoder.decode(byteArrayOf(LanternProtocol.PROTOCOL_INFO_PACKET_ID.toByte(), 3))
 
-        assertEquals(3, info?.payload?.get("version")?.asInt)
-        assertNull(decoder.decode(LanternProtocol.encodeS2C(7, JsonObject().also { it.addProperty("key", "k") })))
+        assertTrue(decoder.decode(keyFrame("k")).isEmpty())
+        val packets = decoder.decode(byteArrayOf(LanternProtocol.PROTOCOL_INFO_PACKET_ID.toByte(), 3))
+
+        assertEquals(3, packets.single().payload.get("version").asInt)
+        assertTrue(decoder.decode(keyFrame("k")).isEmpty())
     }
 
     @Test
@@ -48,19 +52,60 @@ class LanternProtocolTest {
         val decoder = MainPayloadDecoder()
         val legacy = legacyJsonFrame(1, "{\"characters\":[]}")
 
-        assertEquals(LanternProtocol.LEGACY_JSON_PROTOCOL_VERSION, decoder.decode(legacy)?.payload?.get("version")?.asInt)
-        assertNull(decoder.decode(legacyJsonFrame(2, "{\"models\":[]}")))
+        assertEquals(LanternProtocol.LEGACY_JSON_PROTOCOL_VERSION, decoder.decode(legacy).single().payload.get("version").asInt)
+        assertTrue(decoder.decode(legacyJsonFrame(2, "{\"models\":[]}")).isEmpty())
+    }
+
+    @Test
+    fun `a legacy JSON frame discards held data`() {
+        val decoder = MainPayloadDecoder()
+        decoder.decode(keyFrame("k"))
+        decoder.decode(legacyJsonFrame(1, "{\"characters\":[]}"))
+
+        val packets = decoder.decode(LanternProtocol.encodeProtocolInfo())
+
+        assertEquals(listOf(LanternProtocol.PROTOCOL_INFO_PACKET_ID), packets.map { it.packetId })
+        assertNull(packets[0].payload.get("held"))
     }
 
     @Test
     fun `clear resets the protocol handshake`() {
         val decoder = PacketCodecTest.acceptedDecoder()
-        val frame = LanternProtocol.encodeS2C(7, JsonObject().also { it.addProperty("key", "k") })
-        assertNotNull(decoder.decode(frame))
+        assertEquals(1, decoder.decode(keyFrame("k")).size)
 
         decoder.clear()
 
-        assertNull(decoder.decode(frame))
+        assertTrue(decoder.decode(keyFrame("k")).isEmpty())
+        assertEquals(
+            listOf(LanternProtocol.PROTOCOL_INFO_PACKET_ID, 7),
+            decoder.decode(LanternProtocol.encodeProtocolInfo()).map { it.packetId }
+        )
+    }
+
+    @Test
+    fun `clear drops held data`() {
+        val decoder = MainPayloadDecoder()
+        decoder.decode(keyFrame("k"))
+
+        decoder.clear()
+
+        assertEquals(
+            listOf(LanternProtocol.PROTOCOL_INFO_PACKET_ID),
+            decoder.decode(LanternProtocol.encodeProtocolInfo()).map { it.packetId }
+        )
+    }
+
+    @Test
+    fun `frames beyond the hold limit are dropped and counted`() {
+        val decoder = MainPayloadDecoder()
+        val limit = 4096
+        repeat(limit + 3) { decoder.decode(keyFrame("k$it")) }
+
+        val packets = decoder.decode(LanternProtocol.encodeProtocolInfo())
+
+        assertEquals(limit, packets[0].payload.get("held").asInt)
+        assertEquals(3, packets[0].payload.get("overflow").asInt)
+        assertEquals((0 until limit).map { "k$it" }, packets.drop(1).map { it.payload.get("key").asString })
     }
 
     @Test
@@ -79,11 +124,13 @@ class LanternProtocolTest {
         val body = LanternProtocol.encodeBody(5, PacketSamples.uiScreens(2), null)
         val compressed = deflate(body)
 
-        assertNotNull(PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, body.size, compressed)))
-        assertNull(PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, body.size - 1, compressed)))
-        assertNull(PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, body.size + 1, compressed)))
-        assertNull(PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, Int.MAX_VALUE, compressed)))
-        assertNull(PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, body.size, compressed.copyOf(compressed.size / 2))))
+        assertEquals(1, PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, body.size, compressed)).size)
+        assertTrue(PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, body.size - 1, compressed)).isEmpty())
+        assertTrue(PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, body.size + 1, compressed)).isEmpty())
+        assertTrue(PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, Int.MAX_VALUE, compressed)).isEmpty())
+        assertTrue(
+            PacketCodecTest.acceptedDecoder().decode(compressedFrame(5, body.size, compressed.copyOf(compressed.size / 2))).isEmpty()
+        )
     }
 
     @Test
@@ -96,7 +143,7 @@ class LanternProtocolTest {
 
         val decoder = PacketCodecTest.acceptedDecoder()
         val order = chunks.indices.reversed()
-        val decoded = order.mapNotNull { decoder.decode(chunks[it]) }
+        val decoded = order.flatMap { decoder.decode(chunks[it]) }
 
         assertEquals(1, decoded.size)
         assertEquals(PacketCodecTest.viaJson(payload).toString(), decoded.single().payload.toString())
@@ -107,9 +154,9 @@ class LanternProtocolTest {
         val chunks = LanternProtocol.splitIntoChunks(LanternProtocol.encodeS2C(5, incompressiblePayload()), 3)
         val decoder = PacketCodecTest.acceptedDecoder()
 
-        assertNull(decoder.decode(chunks[0]))
-        assertNull(decoder.decode(chunks[0]))
-        val decoded = chunks.drop(1).mapNotNull { decoder.decode(it) }
+        assertTrue(decoder.decode(chunks[0]).isEmpty())
+        assertTrue(decoder.decode(chunks[0]).isEmpty())
+        val decoded = chunks.drop(1).flatMap { decoder.decode(it) }
 
         assertEquals(1, decoded.size)
     }
@@ -119,11 +166,58 @@ class LanternProtocolTest {
         val chunks = LanternProtocol.splitIntoChunks(LanternProtocol.encodeS2C(5, incompressiblePayload()), 9)
         val decoder = PacketCodecTest.acceptedDecoder()
 
-        assertNull(decoder.decode(chunks[0]))
+        assertTrue(decoder.decode(chunks[0]).isEmpty())
         decoder.clear()
         decoder.decode(LanternProtocol.encodeProtocolInfo())
 
-        assertTrue(chunks.drop(1).mapNotNull { decoder.decode(it) }.isEmpty())
+        assertTrue(chunks.drop(1).flatMap { decoder.decode(it) }.isEmpty())
+    }
+
+    @Test
+    fun `chunks that arrive before the protocol info packet are reassembled after it`() {
+        val payload = incompressiblePayload()
+        val chunks = LanternProtocol.splitIntoChunks(LanternProtocol.encodeS2C(5, payload), 11)
+        val decoder = MainPayloadDecoder()
+
+        assertTrue(decoder.decode(chunks[0]).isEmpty())
+        assertEquals(
+            listOf(LanternProtocol.PROTOCOL_INFO_PACKET_ID),
+            decoder.decode(LanternProtocol.encodeProtocolInfo()).map { it.packetId }
+        )
+        val decoded = chunks.drop(1).flatMap { decoder.decode(it) }
+
+        assertEquals(PacketCodecTest.viaJson(payload).toString(), decoded.single().payload.toString())
+    }
+
+    @Test
+    fun `a reordered join burst is delivered in full wherever the protocol info packet lands`() {
+        val samples = PacketSamples.all()
+        // NetworkHandler.sendPackets 的发送顺序，外加一个要分片的大包
+        val burst = listOf(7, 1, 2, 3, 18, 14, 4, 5, 8, 9, 10, 19, 22, 11)
+            .map { id -> id to samples.first { it.first == id }.second } + (5 to incompressiblePayload())
+        val dataFrames = burst.flatMapIndexed { index, (packetId, payload) ->
+            LanternProtocol.splitIntoChunks(LanternProtocol.encodeS2C(packetId, payload), index + 1)
+        }
+        assertTrue(dataFrames.size > burst.size, "expected a chunked message in the burst")
+        val expected = burst
+            .map { (packetId, payload) -> "$packetId ${PacketCodecTest.canonical(PacketCodecTest.viaJson(payload))}" }
+            .sorted()
+
+        repeat(50) { seed ->
+            val infoFrame = LanternProtocol.encodeProtocolInfo()
+            val frames = (dataFrames + listOf(infoFrame)).shuffled(Random(seed.toLong()))
+            val decoder = MainPayloadDecoder()
+
+            val packets = frames.flatMap { decoder.decode(it) }
+
+            val info = packets.single { it.packetId == LanternProtocol.PROTOCOL_INFO_PACKET_ID }
+            assertEquals(frames.indexOf(infoFrame), info.payload.get("held")?.asInt ?: 0, "seed $seed")
+            val delivered = packets
+                .filter { it.packetId != LanternProtocol.PROTOCOL_INFO_PACKET_ID }
+                .map { "${it.packetId} ${PacketCodecTest.canonical(it.payload)}" }
+                .sorted()
+            assertEquals(expected, delivered, "seed $seed")
+        }
     }
 
     @Test
@@ -131,21 +225,21 @@ class LanternProtocolTest {
         val decoder = PacketCodecTest.acceptedDecoder()
         val good = LanternProtocol.encodeS2C(15, PacketSamples.animationControl())
 
-        assertNull(decoder.decode(good.copyOf(good.size - 3)))
-        assertNull(decoder.decode(good + byteArrayOf(0)))
+        assertTrue(decoder.decode(good.copyOf(good.size - 3)).isEmpty())
+        assertTrue(decoder.decode(good + byteArrayOf(0)).isEmpty())
         // 有无标记里多了字段表之外的位
-        assertNull(decoder.decode(byteArrayOf(99, 0x04)))
+        assertTrue(decoder.decode(byteArrayOf(99, 0x04)).isEmpty())
         // 布尔字节只能是 0 / 1
-        assertNull(decoder.decode(byteArrayOf(99, 0x02, 0x07)))
+        assertTrue(decoder.decode(byteArrayOf(99, 0x02, 0x07)).isEmpty())
         // 通用编码里的未知标签
-        assertNull(decoder.decode(byteArrayOf(5, 1, 0, 1, 'a'.code.toByte(), 99)))
+        assertTrue(decoder.decode(byteArrayOf(5, 1, 0, 1, 'a'.code.toByte(), 99)).isEmpty())
         // 字符串引用越界
-        assertNull(decoder.decode(byteArrayOf(5, 1, 3, BinaryJson.TRUE.toByte())))
+        assertTrue(decoder.decode(byteArrayOf(5, 1, 3, BinaryJson.TRUE.toByte())).isEmpty())
         // 元素个数大于剩余字节
-        assertNull(decoder.decode(byteArrayOf(5, 100)))
+        assertTrue(decoder.decode(byteArrayOf(5, 100)).isEmpty())
         // 分片帧里装的是分片 / 协议版本
-        assertNull(decoder.decode(byteArrayOf(0, 1, 1, 0, 0x7F, 2)))
-        assertNotNull(decoder.decode(good))
+        assertTrue(decoder.decode(byteArrayOf(0, 1, 1, 0, 0x7F, 2)).isEmpty())
+        assertEquals(1, decoder.decode(good).size)
     }
 
     @Test
@@ -186,6 +280,9 @@ class LanternProtocolTest {
         }
         return JsonObject().also { it.add("noise", array) }
     }
+
+    private fun keyFrame(key: String): ByteArray =
+        LanternProtocol.encodeS2C(7, JsonObject().also { it.addProperty("key", key) })
 
     private fun legacyJsonFrame(packetId: Int, json: String): ByteArray {
         val output = ByteArrayOutputStream()

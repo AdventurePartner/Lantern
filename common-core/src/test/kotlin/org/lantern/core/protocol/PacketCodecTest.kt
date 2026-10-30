@@ -10,7 +10,6 @@ import java.math.BigDecimal
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -179,7 +178,7 @@ class PacketCodecTest {
         writer.writeVarInt(0)
         val frame = byteArrayOf(5) + writer.toByteArray()
 
-        assertNull(acceptedDecoder().decode(frame))
+        assertTrue(acceptedDecoder().decode(frame).isEmpty())
     }
 
     @Test
@@ -204,7 +203,7 @@ class PacketCodecTest {
         fun roundTrip(packetId: Int, payload: JsonObject, misses: MutableList<String>? = null): JsonObject {
             val decoder = acceptedDecoder()
             val frame = LanternProtocol.encodeS2C(packetId, payload) { misses?.add(it) }
-            val packets = LanternProtocol.splitIntoChunks(frame, 1).mapNotNull { decoder.decode(it) }
+            val packets = LanternProtocol.splitIntoChunks(frame, 1).flatMap { decoder.decode(it) }
             val packet = packets.single()
             assertEquals(packetId, packet.packetId)
             return packet.payload

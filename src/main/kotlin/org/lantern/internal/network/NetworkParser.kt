@@ -32,6 +32,7 @@ import net.minecraft.resources.ResourceLocation
 
 import org.lantern.platform.IdentifierBridge
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 object NetworkParser {
 
@@ -105,6 +106,17 @@ object NetworkParser {
     var inputLockHandler: ((obj: JsonObject) -> Unit)? = null
 
     /**
+     * 外观分配（packet 9）先于外观定义（packet 8）到达时先记在这里，等定义到了再补：
+     * 代理链路会打乱同一批包的顺序，而 CostumeHandler 查不到定义的分配会直接丢掉
+     */
+    private val pendingCostumeAssignments = ConcurrentHashMap<Pair<UUID, CostumeSlot>, String>()
+
+    /** 断线清理：暂存的外观分配属于上一个会话 */
+    fun clearSession() {
+        pendingCostumeAssignments.clear()
+    }
+
+    /**
      * 分发表。未匹配的 packetId 自然落空（when 语句无 else 分支）——
      * 老客户端收到新增包号即为静默跳过，wire 兼容靠这一点维持，勿改成穷举分支
      */
@@ -139,11 +151,22 @@ object NetworkParser {
 
     /**
      * 服务端的协议版本。版本不一致时解码器已经在丢弃后续数据，这里只负责告诉玩家为什么
-     * 自定义内容一个都没加载。旧版 JSON 插件由解码器识别出来，报成 v1
+     * 自定义内容一个都没加载。旧版 JSON 插件由解码器识别出来，报成 v1。
+     * 版本一致时记下有多少帧早于版本包到达：代理链路打乱顺序时，这是唯一能在日志里看到的痕迹
      */
     private fun onProtocolInfo(obj: JsonObject) {
         val serverVersion = obj.get("version")?.asInt ?: return
-        if (serverVersion == LanternProtocol.PROTOCOL_VERSION) return
+        if (serverVersion == LanternProtocol.PROTOCOL_VERSION) {
+            val held = obj.get("held")?.asInt ?: 0
+            val overflow = obj.get("overflow")?.asInt ?: 0
+            if (held > 0 || overflow > 0) {
+                Lantern.logger.info(
+                    "[Lantern] {} 帧数据早于协议版本包到达，已在版本确认后按到达顺序补交（{} 帧超出暂存上限被丢弃）",
+                    held, overflow
+                )
+            }
+            return
+        }
         val message = "服务端 LanternPlugin 与客户端 Lantern 的通信协议不一致" +
             "（服务端 v$serverVersion，客户端 v${LanternProtocol.PROTOCOL_VERSION}），" +
             "自定义内容不会加载，请同时更新服务端插件和客户端模组"
@@ -262,6 +285,7 @@ object NetworkParser {
             val character = it.get("character").asString.first()
             ResourceHandler.addCharacterWrapper(character, CharacterWrapper.parse(it))
         }
+        Lantern.logger.info("[Lantern] Received {} character icons", array.size())
     }
 
     private fun parseKeyboard(obj: JsonObject) {
@@ -404,6 +428,7 @@ object NetworkParser {
             definitions[id] = wrapper
         }
         CostumeHandler.replaceDefinitions(definitions)
+        applyPendingCostumeAssignments()
         Lantern.logger.info("[Lantern] Received {} costume definitions", costumes.size())
     }
 
@@ -414,13 +439,12 @@ object NetworkParser {
             if (entry.has("costumes") && entry.get("costumes").isJsonArray) {
                 // New multi-slot format: { "uuid": "...", "costumes": [{ "slot": "...", "costume": "..." }] }
                 entry.getAsJsonArray("costumes").map { it as JsonObject }.forEach { slotEntry ->
-                    val costumeId = slotEntry.get("costume").asString
-                    CostumeHandler.assignCostume(uuid, costumeId)
+                    val slot = CostumeSlot.fromString(slotEntry.get("slot")?.asString ?: "full_body")
+                    assignCostume(uuid, slot, slotEntry.get("costume").asString)
                 }
             } else {
                 // Legacy format: { "uuid": "...", "costume": "..." } — treat as FULL_BODY
-                val costumeId = entry.get("costume").asString
-                CostumeHandler.assignCostume(uuid, costumeId)
+                assignCostume(uuid, CostumeSlot.FULL_BODY, entry.get("costume").asString)
             }
         }
 
@@ -428,18 +452,38 @@ object NetworkParser {
         removals?.forEach { element ->
             if (element.isJsonPrimitive) {
                 // Legacy format: array of UUID strings — remove all slots
-                CostumeHandler.removeCostume(UUID.fromString(element.asString))
+                removeCostume(UUID.fromString(element.asString), null)
             } else {
                 // New format: { "uuid": "...", "slot": "..." } — remove specific slot (or all if no slot)
                 val removalObj = element.asJsonObject
                 val uuid = UUID.fromString(removalObj.get("uuid").asString)
-                val slotStr = removalObj.get("slot")?.asString
-                if (slotStr != null) {
-                    CostumeHandler.removeCostume(uuid, CostumeSlot.fromString(slotStr))
-                } else {
-                    CostumeHandler.removeCostume(uuid)
-                }
+                removeCostume(uuid, removalObj.get("slot")?.asString?.let(CostumeSlot::fromString))
             }
+        }
+    }
+
+    private fun assignCostume(uuid: UUID, slot: CostumeSlot, costumeId: String) {
+        if (CostumeHandler.getCostume(costumeId) == null) {
+            pendingCostumeAssignments[uuid to slot] = costumeId
+            return
+        }
+        pendingCostumeAssignments.remove(uuid to slot)
+        CostumeHandler.assignCostume(uuid, costumeId)
+    }
+
+    private fun removeCostume(uuid: UUID, slot: CostumeSlot?) {
+        pendingCostumeAssignments.keys.removeIf { (owner, pendingSlot) ->
+            owner == uuid && (slot == null || pendingSlot == slot)
+        }
+        CostumeHandler.removeCostume(uuid, slot)
+    }
+
+    /** 定义是整表下发：这一轮还解析不了的分配，以后也等不到定义了 */
+    private fun applyPendingCostumeAssignments() {
+        val pending = HashMap(pendingCostumeAssignments)
+        pendingCostumeAssignments.clear()
+        pending.forEach { (key, costumeId) ->
+            if (CostumeHandler.getCostume(costumeId) != null) CostumeHandler.assignCostume(key.first, costumeId)
         }
     }
 

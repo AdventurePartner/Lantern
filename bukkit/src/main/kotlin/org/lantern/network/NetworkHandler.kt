@@ -93,8 +93,15 @@ object NetworkHandler {
     }
 
     fun sendPackets(player: Player) {
-        // 协议版本包必须最先到：客户端收到同版本号之前丢弃一切数据
+        // 版本包单独先发，其余数据下一 tick 再发：代理链路会打乱同一 tick 内插件消息的先后，
+        // 旧版客户端在版本包之前收到的数据会直接丢掉
         sendPluginMessage(player, protocolInfoBytes)
+        Bukkit.getScheduler().runTaskLater(LanternPlugin.instance, Runnable {
+            if (player.isOnline) sendSyncData(player)
+        }, 1L)
+    }
+
+    private fun sendSyncData(player: Player) {
         sendResourcePackKey(player)
         sendCharactersPacket(player, Configurations.characters)
         sendEntityModelsPacket(player, Configurations.models)

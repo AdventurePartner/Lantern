@@ -46,8 +46,7 @@ public final class NeoForgePacketNetwork {
     }
 
     private static void handleClientPayload(LanternMainPayload payload, IPayloadContext context) {
-        MainS2CPacket packet = DECODER.decode(payload.data());
-        if (packet != null) {
+        for (MainS2CPacket packet : DECODER.decode(payload.data())) {
             NetworkParser.INSTANCE.parse(packet.getPacketId(), packet.getPayload());
         }
     }

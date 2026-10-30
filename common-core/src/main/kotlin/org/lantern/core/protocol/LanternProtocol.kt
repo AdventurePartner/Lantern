@@ -30,11 +30,17 @@ data class AnimationEventC2SPacket(
 /**
  * 客户端 lantern:main 解码器，每个连接一份（断线时 [clear]）。
  *
- * 收到同版本的协议版本包之前丢弃一切数据：字段表按位置编码，版本不一致时
- * 解出来的不是报错就是错位的值。协议版本包本身（以及识别出的旧版 JSON 帧）
- * 作为 [LanternProtocol.PROTOCOL_INFO_PACKET_ID] 交给上层提示玩家
+ * 字段表按位置编码，版本不一致时解出来的不是报错就是错位的值，所以数据要等同版本的协议版本包确认后才解。
+ * 服务端最先发版本包，但代理链路会打乱同一 tick 内插件消息的先后：版本包之前到的帧按到达顺序暂存，
+ * 版本一致时跟在版本包后面一起交出，不一致或识别出旧版 JSON 帧时丢弃。
+ * 协议版本包本身（以及旧版 JSON 帧）作为 [LanternProtocol.PROTOCOL_INFO_PACKET_ID] 交给上层提示玩家，
+ * payload 里的 held / overflow 是补交的帧数和超出暂存上限丢掉的帧数。
+ *
+ * Fabric 的断线事件可能在 Netty 线程上调 [clear]，两个入口都加锁
  */
 class MainPayloadDecoder {
+    private enum class Handshake { PENDING, ACCEPTED, REJECTED }
+
     private class PendingMessage(val totalChunks: Int) {
         val chunks = arrayOfNulls<ByteArray>(totalChunks)
         var receivedChunks = 0
@@ -42,49 +48,99 @@ class MainPayloadDecoder {
     }
 
     private val pendingMessages = LinkedHashMap<Int, PendingMessage>()
-    private var accepted = false
+    private val heldFrames = ArrayList<ByteArray>()
+    private var heldBytes = 0L
+    private var heldOverflow = 0
+    private var handshake = Handshake.PENDING
     private var legacyReported = false
     private val reportedFailures = HashSet<Int>()
 
-    fun decode(data: ByteArray): MainS2CPacket? {
-        if (data.isEmpty()) return null
+    @Synchronized
+    fun decode(data: ByteArray): List<MainS2CPacket> {
+        if (data.isEmpty()) return emptyList()
         val head = data[0].toInt() and 0xFF
         return try {
             when {
+                head == LanternProtocol.PROTOCOL_INFO_PACKET_ID -> onProtocolInfo(data)
                 head == LanternProtocol.CHUNK_FRAME_HEAD && isLegacyJsonFrame(data) -> reportLegacy()
-                head == LanternProtocol.CHUNK_FRAME_HEAD -> {
-                    if (!accepted) return null
-                    decodeChunk(data)?.let { decodeFrame(it, fromChunks = true) }
+                handshake == Handshake.ACCEPTED -> listOfNotNull(decodeData(data))
+                handshake == Handshake.PENDING -> {
+                    hold(data)
+                    emptyList()
                 }
-                else -> decodeFrame(data, fromChunks = false)
+                else -> emptyList()
             }
         } catch (e: Exception) {
-            if (reportedFailures.add(head and LanternProtocol.PACKET_ID_MASK)) {
-                CoreLog.logger.warning(
-                    "lantern:main packet ${head and LanternProtocol.PACKET_ID_MASK} failed to decode and was dropped: ${e.message}"
-                )
-            }
-            null
+            reportFailure(head, e)
+            emptyList()
         }
     }
 
+    @Synchronized
     fun clear() {
         pendingMessages.clear()
-        accepted = false
+        releaseHeld()
+        handshake = Handshake.PENDING
         legacyReported = false
+        reportedFailures.clear()
     }
 
-    private fun decodeFrame(frame: ByteArray, fromChunks: Boolean): MainS2CPacket? {
+    private fun onProtocolInfo(frame: ByteArray): List<MainS2CPacket> {
+        val reader = PacketReader(frame, 1)
+        val version = reader.readVarInt()
+        reader.expectEnd()
+        val held = ArrayList(heldFrames)
+        val overflow = heldOverflow
+        releaseHeld()
+        if (version != LanternProtocol.PROTOCOL_VERSION) {
+            handshake = Handshake.REJECTED
+            return listOf(LanternProtocol.protocolInfoPacket(version))
+        }
+        handshake = Handshake.ACCEPTED
+        val packets = ArrayList<MainS2CPacket>(held.size + 1)
+        packets.add(LanternProtocol.protocolInfoPacket(version, held.size, overflow))
+        held.forEach { heldFrame ->
+            try {
+                decodeData(heldFrame)?.let { packets.add(it) }
+            } catch (e: Exception) {
+                reportFailure(heldFrame[0].toInt() and 0xFF, e)
+            }
+        }
+        return packets
+    }
+
+    private fun hold(frame: ByteArray) {
+        if (heldFrames.size >= MAX_HELD_FRAMES || heldBytes + frame.size > MAX_HELD_BYTES) {
+            heldOverflow++
+            return
+        }
+        heldFrames.add(frame)
+        heldBytes += frame.size
+    }
+
+    private fun releaseHeld() {
+        heldFrames.clear()
+        heldBytes = 0L
+        heldOverflow = 0
+    }
+
+    private fun reportFailure(head: Int, e: Exception) {
+        val packetId = head and LanternProtocol.PACKET_ID_MASK
+        if (reportedFailures.add(packetId)) {
+            CoreLog.logger.warning("lantern:main packet $packetId failed to decode and was dropped: ${e.message}")
+        }
+    }
+
+    private fun decodeData(data: ByteArray): MainS2CPacket? {
+        if ((data[0].toInt() and 0xFF) == LanternProtocol.CHUNK_FRAME_HEAD) {
+            return decodeChunk(data)?.let { decodeFrame(it) }
+        }
+        return decodeFrame(data)
+    }
+
+    private fun decodeFrame(frame: ByteArray): MainS2CPacket {
         val head = frame[0].toInt() and 0xFF
         val packetId = head and LanternProtocol.PACKET_ID_MASK
-        if (head == LanternProtocol.PROTOCOL_INFO_PACKET_ID && !fromChunks) {
-            val reader = PacketReader(frame, 1)
-            val version = reader.readVarInt()
-            reader.expectEnd()
-            accepted = version == LanternProtocol.PROTOCOL_VERSION
-            return LanternProtocol.protocolInfoPacket(version)
-        }
-        if (!accepted) return null
         if (packetId == LanternProtocol.CHUNK_FRAME_HEAD || packetId == LanternProtocol.PROTOCOL_INFO_PACKET_ID) {
             throw MalformedPacketException("frame head $head is not a data packet")
         }
@@ -147,12 +203,15 @@ class MainPayloadDecoder {
 
     /** 旧版 JSON 帧：type 0 + int packetId，packetId 都小于 256，所以前四个字节全是 0 */
     private fun isLegacyJsonFrame(data: ByteArray): Boolean =
-        !accepted && data.size >= 5 && data[1].toInt() == 0 && data[2].toInt() == 0 && data[3].toInt() == 0
+        handshake != Handshake.ACCEPTED && data.size >= 5 &&
+            data[1].toInt() == 0 && data[2].toInt() == 0 && data[3].toInt() == 0
 
-    private fun reportLegacy(): MainS2CPacket? {
-        if (legacyReported) return null
+    private fun reportLegacy(): List<MainS2CPacket> {
+        handshake = Handshake.REJECTED
+        releaseHeld()
+        if (legacyReported) return emptyList()
         legacyReported = true
-        return LanternProtocol.protocolInfoPacket(LanternProtocol.LEGACY_JSON_PROTOCOL_VERSION)
+        return listOf(LanternProtocol.protocolInfoPacket(LanternProtocol.LEGACY_JSON_PROTOCOL_VERSION))
     }
 
     private companion object {
@@ -160,6 +219,8 @@ class MainPayloadDecoder {
         const val MAX_CHUNKS = 4096
         const val MAX_CHUNK_BYTES = 32766
         const val MAX_MESSAGE_BYTES = LanternProtocol.MAX_MESSAGE_BYTES
+        const val MAX_HELD_FRAMES = MAX_CHUNKS
+        const val MAX_HELD_BYTES = MAX_MESSAGE_BYTES
     }
 }
 
@@ -268,9 +329,11 @@ object LanternProtocol {
         return payload
     }
 
-    internal fun protocolInfoPacket(version: Int): MainS2CPacket {
+    internal fun protocolInfoPacket(version: Int, held: Int = 0, overflow: Int = 0): MainS2CPacket {
         val payload = JsonObject()
         payload.addProperty("version", version)
+        if (held > 0) payload.addProperty("held", held)
+        if (overflow > 0) payload.addProperty("overflow", overflow)
         return MainS2CPacket(PROTOCOL_INFO_PACKET_ID, payload)
     }
 

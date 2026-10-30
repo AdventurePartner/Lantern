@@ -14,6 +14,7 @@ import org.lantern.costume.handler.CostumeHandler
 import org.lantern.internal.asset.AssetSync
 import org.lantern.internal.chat.ChatChannelHandler
 import org.lantern.internal.chat.ChatStyleHandler
+import org.lantern.internal.network.NetworkParser
 import org.lantern.internal.parser.UiParser
 import org.lantern.model.handler.AnimationControlHandler
 import org.lantern.model.handler.RendererHandler
@@ -31,6 +32,7 @@ object SessionCleanup {
     fun onDisconnect() {
         ChatChannelHandler.clear()
         ChatStyleHandler.clear()
+        NetworkParser.clearSession()
         ResourceHandler.clearSession()
         AssetSync.onDisconnect()
         TextureHandler.reload()

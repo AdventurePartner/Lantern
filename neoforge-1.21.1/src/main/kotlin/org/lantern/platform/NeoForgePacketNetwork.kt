@@ -32,7 +32,7 @@ object NeoForgePacketNetwork {
     // 21.1 的处理器默认在主线程执行
     private fun handleMainPayload(payload: LanternMainPayload, context: IPayloadContext) {
         if (context.flow() != PacketFlow.CLIENTBOUND) return
-        mainPayloadDecoder.decode(payload.data)?.let { packet ->
+        mainPayloadDecoder.decode(payload.data).forEach { packet ->
             NetworkParser.parse(packet.packetId, packet.payload)
         }
     }

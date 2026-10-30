@@ -22,7 +22,7 @@ object ForgePacketNetwork {
         .eventNetworkChannel()
 
     fun handleMainPayload(bytes: ByteArray) {
-        mainPayloadDecoder.decode(bytes)?.let { packet ->
+        mainPayloadDecoder.decode(bytes).forEach { packet ->
             NetworkParser.parse(packet.packetId, packet.payload)
         }
     }
