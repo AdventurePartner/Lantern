@@ -26,6 +26,7 @@
     "input.MouseHandlerMixin",
     "uix.ContainerBackgroundRenderMixin",
     "network.GeckoLibNetworkingNeoForgeMixin",
+    "resource.FolderPackDetectorMixin",
     "AvatarAttachLayerMixin",
     "EntityMixin",
     "EntityRenderDispatcherMixin",

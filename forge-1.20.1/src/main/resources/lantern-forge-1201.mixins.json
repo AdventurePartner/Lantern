@@ -23,6 +23,7 @@
     "model.ModelBakery1201Mixin",
     "renderer.EntityRenderer1201Mixin",
     "resource.FallbackResourceManager1201Mixin",
+    "resource.FolderRepositorySource1201Mixin",
     "network.ClientPacketListener1201Mixin",
     "costume.ItemInHandRenderer1201Mixin",
     "costume.LivingEntityRendererHostMixin",

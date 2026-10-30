@@ -23,6 +23,7 @@
     "model.ModelBakeryMixin",
     "renderer.EntityRendererMixin",
     "resource.FallbackResourceManagerMixin",
+    "resource.FolderPackDetectorMixin",
     "costume.ItemInHandRendererMixin",
     "costume.LivingEntityRendererHostMixin",
     "costume.PlayerModelHostPoseMixin",

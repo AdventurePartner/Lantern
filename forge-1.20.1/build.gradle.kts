@@ -79,6 +79,8 @@ sourceSets {
             "org/lantern/internal/mixin/font/StringRenderOutputMixin.java",
             "org/lantern/internal/mixin/renderer/EntityRendererMixin.java",
             "org/lantern/internal/mixin/resource/FallbackResourceManagerMixin.java",
+            // 1.20.1 没有 FolderPackDetector，由 FolderRepositorySource1201Mixin 顶替
+            "org/lantern/internal/mixin/resource/FolderPackDetectorMixin.java",
             "org/lantern/internal/mixin/accessor/ChatComponentAccessor.java",
             "org/lantern/internal/mixin/chat/ChatComponentMixin.java",
             "org/lantern/internal/mixin/uix/ContainerBackgroundRenderMixin.java",
