@@ -94,15 +94,28 @@ assets/lantern/animations/entity/example_pig.animation.json
 
 除了 `idle`/`walk` 这些自动状态，还可以随时让生物播放动画文件里的任意一个动画。动画名就是 `.animation.json` 里 `animations` 下面的那个名字。
 
-站在生物旁边（8 格内），执行：
+这些命令作用于**执行者 8 格内最近的、已命名的生物**（控制台不能用，走 MythicMobs 机制或插件 API）：
 
 ```
-/lantern anim play <动画名>                # 循环播放，直到停止
-/lantern anim play <动画名> 5 once         # 播一遍自动结束，5 tick 过渡
-/lantern anim stop <动画名>                # 停止循环播放
+/lantern anim play <动画名>                    # 循环播放，直到停止
+/lantern anim play <动画名> 5 once             # 播一遍自动结束，5 tick 过渡
+/lantern anim play <动画名> 5 loop 1.5         # 1.5 倍速循环
+/lantern anim stop <动画名>                    # 停止播放
+/lantern anim pause <动画名>                   # 暂停，冻结时间轴
+/lantern anim resume <动画名>                  # 恢复暂停的动画
+/lantern anim seek <动画名> 2.5                # 跳转到 2.5 秒处（loop 取模 / once 钳制）
 ```
 
-第一个数字是过渡时间（tick，默认 5），`once` 表示只播一遍，不写就是循环。
+`play` 的参数按顺序：过渡时间（tick，默认 5）、`loop` 或 `once`（默认循环）、速度倍率（默认 1.0）。
+
+还可以给附近生物设置 molang 变量，动画表达式里用 `variable.名字` 读取：
+
+```
+/lantern var amplitude 0.5                     # 设置变量
+/lantern var amplitude del                     # 删除变量
+```
+
+值支持数字或 molang 表达式（如 `math.sin(query.time_stamp/100)`）。
 
 ## 配合 MythicMobs
 
@@ -119,9 +132,11 @@ Skills:
   - lanternanim{anim=skill_slash;remove=true;time=0} @Self  # 停止
 ```
 
-参数（都可以只写首字母）：`anim/a` 动画名、`remove/r` 是否停止（默认 false）、`time/t` 过渡 tick（默认 5）、`mode/m` `loop` 或 `once`（默认 loop）。目标写法随意（`@Self`、`@PlayersInRadius{r=10}` 等），不是 Lantern 模型的生物会被自动忽略。
+参数（都可以只写首字母）：`anim/a` 动画名、`remove/r` 是否停止（默认 false）、`time/t` 过渡 tick（默认 5）、`mode/m` `loop` 或 `once`（默认 loop）、`speed/sp` 速度倍率、`file/lib` 动画库。完整参数见 [MythicMobs 机制](../integrations/mythic-mechanics.md#1-lanternanim动画播控别名-lanim)。
 
 没装 MythicMobs 时这个机制不会注册，插件其他功能不受影响。
+
+播控指令只广播给实体周围一定范围内的玩家（被播放动画的玩家本人除外，无论距离都会收到），半径在 `config.yml` 的 `animation-broadcast-radius` 里调（默认 96 格，设 0 或负数退回全服广播——不推荐，人多时每秒可达数万包）。
 
 ## 常见问题
 
@@ -131,4 +146,5 @@ Skills:
 | 只有影子或不显示 | 模型、贴图、动画文件位置是否正确 |
 | 名字挡住模型 | 调整 `offset-y` 或把 `hidden` 改成 `true` |
 | 碰撞范围不合适 | 调整 `height` 和 `width` |
+| 命令提示附近没有已命名生物 | anim/var 命令找的是 8 格内最近的自定义名生物，先给生物命名 |
 | 配置很多时报 “plugin message too large” | 同时更新服务端插件和客户端模组；新版会把大的模型配置自动拆包发送，不需要删配置 |

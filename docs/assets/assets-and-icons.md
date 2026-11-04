@@ -146,3 +146,4 @@ client-full-reload: true
 | 加密资源包没读取 | 密码是否正确，zip 是否在玩家客户端的 `resourcePacks` 文件夹里 |
 | 进服后一小段时间显示原版样子 | 正常，资源还在后台读取，读完会自动换成自定义内容 |
 | 加密包里的声音或语言没生效 | 这类资源需要完整重新加载，见上方 `client-full-reload` |
+| 客户端日志报 `invalid CEN header` | 无害噪音：原版启动时会扫描 `resourcepacks/` 文件夹，读不了加密 zip；加密包由 Lantern 自己读取，新版客户端也会在扫描时跳过它们 |

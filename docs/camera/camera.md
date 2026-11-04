@@ -1,9 +1,7 @@
-# Lantern 相机系统操作指南
+# 相机系统
 
 > 面向服管与玩家视角的完整操作手册：越肩视角、演出指令（锁定/震屏/FOV/偏移）、打点运镜与动作轨道编排。
-> 版本要求：服务端 LanternPlugin + 客户端 Lantern mod（NeoForge 1.21.10）；纯客户端安装时相机功能静默不生效（无服务端下发）。
-
----
+> 版本要求：服务端 LanternPlugin + 客户端 Lantern 模组（五个客户端模块都已实现）；纯客户端安装时相机功能静默不生效（无服务端下发）。
 
 ## 1. 玩家操作（越肩视角）
 
@@ -33,8 +31,6 @@
 - 调整结果实时同步服务端会话，掉线重进后恢复默认值（V1 不持久化）；
 - 打开任何 GUI（聊天栏、背包）时微调键不触发；
 - 调整范围受 camera.yml 限幅约束（见 §2）。
-
----
 
 ## 2. 服务端配置（camera.yml）
 
@@ -70,11 +66,9 @@ shoulder:
 - 相机键与 keys.yml 键位冲突时**相机优先**（同名命令绑定不触发），启动日志会告警冲突列表；
 - `enabled: false` 改完 reload：在线玩家立即回原版视角（无需重进）。
 
----
-
 ## 3. 命令参考
 
-统一入口 `/lantern help`（玩家端每条命令可点击直接填入聊天框）。
+统一入口 `/lantern help`（玩家端每条命令可点击直接填入聊天框）。`cam` / `campath` 都需要 `lantern.camera` 权限（默认 OP），见[命令与权限](../getting-started/commands.md#权限节点)。
 
 ### 3.1 越肩管理（/lantern cam）
 
@@ -95,7 +89,7 @@ shoulder:
 | `/lantern cam shake [幅度] [频率] [时长秒] [玩家]` | 震屏；幅度单位格（≤0.5），默认线性衰减 |
 | `/lantern cam fov [度数] [过渡秒] [玩家]` | 临时 FOV；**不带度数 = 恢复**；不改玩家设置滑条 |
 | `/lantern cam offset <pitch> <yaw> [roll] [过渡秒] [玩家]` | 朝向偏移叠加（度） |
-| `/lantern cam path <路径ID> [玩家] [速度]` | 播放打点运镜（见 §4） |
+| `/lantern cam path <路径ID> [玩家] [速度]` | 播放打点运镜（见 §3.3） |
 | `/lantern cam watch <x> <y> <z> <看向x> <看向y> <看向z> [持续秒] [平滑秒] [玩家]` | 相机飞到观察点看向目标点，到期自动回程 |
 | `/lantern cam clear [玩家]` | 清除全部演出状态（lock/shake/fov/offset/watch；不影响越肩设置） |
 
@@ -140,7 +134,7 @@ shoulder:
 /lantern cam path boss_intro    # 正式播放（可带 [玩家] [速度]）
 ```
 
-**三种插值（每个关键帧声明"上一帧 → 本帧"怎么走）**：
+**三种插值（每个关键帧声明「上一帧 → 本帧」怎么走）**：
 
 | interp | 行为 | 用途 |
 |---|---|---|
@@ -153,8 +147,6 @@ shoulder:
 - 播完或 `/lantern cam clear` 打断都有 250ms 回程过渡；
 - 运镜期间可以打字、移动（不改输入语义）；运镜中可叠加震屏；
 - 存档是明文 yml（speed/loop/keyframes），可手工精修；tab 补全会列出已存档路径 ID。
-
----
 
 ## 4. 动作轨道编排（动画轨道里直接配相机）
 
@@ -176,7 +168,7 @@ shoulder:
 - `action: path` 用 `id` 引用 cameraPaths 存档（缺档写日志告警，不影响轨道其余动作）；
 - 同一轨道可混排 sound/command/mm-skill/camera；轨道被打断时未到点的相机动作一并取消。
 
----
+轨道文件（`animations.yml`）的完整写法见[玩家动作](../player/actions.md#伤害帧与特效帧)。
 
 ## 5. 行为边界与已知限制
 
@@ -188,5 +180,5 @@ shoulder:
 | 旁观模式 | F5 走原版循环；越肩残留状态不生效 |
 | 持久化 | 越肩开关与微调值不跨服保存（会话态）；原版视角选择正常保存 |
 | 断线 | 演出状态（lock/shake/fov/offset/watch）断线即清，不跨服残留 |
-| 权限 | 当前所有子命令无权限节点限制（后续版本计划为演出类子命令加权限开关） |
-| 平台 | 当前仅 NeoForge 1.21.10 客户端实现；其余平台移植后行为一致 |
+| 权限 | `cam` / `campath` 子命令需要 `lantern.camera` 权限（默认 OP） |
+| 平台 | 五个客户端模块（Fabric 1.21.1、NeoForge 1.21.1、Forge 1.20.1、NeoForge 1.21.10、NeoForge 1.21.11）行为一致 |

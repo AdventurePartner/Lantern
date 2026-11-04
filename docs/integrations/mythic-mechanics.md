@@ -188,7 +188,7 @@ skills:
     - damage{a=20} @PlayersInRadius{r=4}
 ```
 
-完整说明见[载体绑定与输入锁](bind-and-input-lock.md)。
+完整说明见[载体绑定与输入锁](../interaction/bind-and-input-lock.md)。
 
 ---
 
@@ -218,7 +218,7 @@ skills:
 实体直接设成技能目标，不经字符串替换，也不需要 `delay` 等实体落地。占位符那条路
 在 targeter 落空时会把字面量原样发出去，绑定静默失效。
 
-完整说明见[载体绑定与输入锁](bind-and-input-lock.md)。
+完整说明见[载体绑定与输入锁](../interaction/bind-and-input-lock.md)。
 
 ---
 

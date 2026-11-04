@@ -2,7 +2,11 @@
 
 玩家外观写在 `plugins/Lantern/costumes.yml`。
 
-这个文件负责登记可用外观。当前 `/lantern` 指令包含重载、打开界面、给予自定义方块；没有外观发放指令。外观是否显示，需要由服务器已有玩法安排。
+这个文件负责登记可用外观。给玩家安排外观有三条路：
+
+- **衣柜**：玩家自己在界面里挑，见[衣柜](wardrobe.md)；
+- **命令**：`/lantern costume equip <玩家> <槽位> <装扮ID>`，见[命令与权限](../getting-started/commands.md#装扮)；
+- **其他玩法/插件**：外观是否发放、怎么发放，由服务器已有玩法安排。
 
 ## 添加一个外观
 
@@ -52,7 +56,7 @@ angel_wings:
 
 ## 可用位置
 
-`slot` 可以填写：
+`slot` 可以填写（和[衣柜](wardrobe.md)的槽位一一对应）：
 
 | 写法 | 用途 |
 |---|---|
@@ -88,3 +92,4 @@ assets/lantern/animations/costume/angel_wings.animation.json
 | 外观位置不对 | 调整 `offset.x`、`offset.y`、`offset.z` |
 | 外观动作不跟随玩家 | `bone-sync` 是否为 `true`，模型里的部位名字是否和 `bone-mapping` 一致 |
 | 外观太大或太小 | 调整 `scale` |
+| 衣柜里看不到某件外观 | 条目是否写在了 `costumes.yml` 顶层，`/lantern reload` 是否执行过 |

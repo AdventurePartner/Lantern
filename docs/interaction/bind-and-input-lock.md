@@ -250,6 +250,6 @@ PlayerActionGateway.markServerChecked("处决");
 
 ## 相关文档
 
-- [玩家动作](player-actions.md) —— 翻滚、连招、动作组
-- [生物模型](entity-models.md) —— 载体的模型怎么配
-- [MythicMobs 联动](mythic-mechanics.md) —— 全部机制一览
+- [玩家动作](../player/actions.md) —— 翻滚、连招、动作组
+- [生物模型](../world/entity-models.md) —— 载体的模型怎么配
+- [MythicMobs 联动](../integrations/mythic-mechanics.md) —— 全部机制一览

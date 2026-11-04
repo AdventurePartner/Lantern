@@ -10,9 +10,7 @@
 
 这三个文件默认都是空的（只有注释），不配就等于没有这些功能，玩家动作维持基础的走跑跳。
 
-所有动作播放都在玩家客户端本地完成，按下按键立刻出招，不等服务器往返。服务器只负责下发"有哪些动作"和"打到谁身上"。
-
----
+所有动作播放都在玩家客户端本地完成，按下按键立刻出招，不等服务器往返。服务器只负责下发「有哪些动作」和「打到谁身上」。
 
 ## 准备动画
 
@@ -32,8 +30,6 @@ LanternPackLocal/assets/lantern/animations/player/你的动画.animation.json
 ```yml
 file: "animations/player/roll.animation.json"
 ```
-
----
 
 ## 翻滚闪避
 
@@ -83,7 +79,7 @@ file: "animations/player/roll.animation.json"
 
 | 设置 | 说明 |
 |---|---|
-| `key` | 触发键，写法和 `keys.yml` 一样（`left_alt`、`space`、`ctrl+q`）。单独用 `alt` / `ctrl` / `shift` 也可以 |
+| `key` | 触发键，写法和 [keys.yml](../interaction/keys.md#可用按键名) 一样（`left_alt`、`space`、`ctrl+q`）。单独用 `alt` / `ctrl` / `shift` 也可以 |
 | `cooldown` | 冷却毫秒，防止连按刷翻滚 |
 | `distance` | 翻多远（格）。配几格就走几格，不受地面摩擦影响。写 0 就只播动画不移动 |
 | `invulnerable` | 无敌帧毫秒。翻滚期间免疫伤害，闪避靠它才有意义 |
@@ -100,8 +96,6 @@ file: "animations/player/roll.animation.json"
 | 起手更快 | `transition` 降到 1 |
 | 收尾有跳变 | `exit-transition` 加大到 5-8 |
 | 带腾空感 | `vertical: 0.2` |
-
----
 
 ## 连招
 
@@ -140,8 +134,6 @@ file: "animations/player/roll.animation.json"
 ### 不配连招会怎样
 
 攻击回落到左右交替，读外观状态表里的 `attack_left` / `attack_right`，和不装这个功能时一样。
-
----
 
 ## 按武器换动作组
 
@@ -190,8 +182,6 @@ file: "animations/player/roll.animation.json"
 
 配了 `costume` 的连招只在那套外观下生效；留空的作为其他外观的通用连招。
 
----
-
 ## 技能动画不要绑在外观库上
 
 `animationGroups.yml` 会按手里的物品换外观，外观一换动画库就换了。技能动画如果只放在某套外观的库里，玩家切个物品再放技能，客户端就找不到这段——技能空放，日志里是：
@@ -205,8 +195,6 @@ file: "animations/player/roll.animation.json"
 ```yml
 - lanternanim{anim=剑仙神剑极阵;m=once;t=3;file=animations/player/sword_immortal.animation.json} @self
 ```
-
----
 
 ## 伤害帧与特效帧
 
@@ -238,7 +226,7 @@ player_default:
 
 这样出招期间玩家打出去的原版伤害被取消，全部交给时间线上的伤害帧。
 
----
+`camera` 节点的全部字段见[相机系统](../camera/camera.md#4-动作轨道编排动画轨道里直接配相机)。
 
 ## 头随视角
 
@@ -262,9 +250,7 @@ player_default:
 
 `query.pitch` 是抬头低头，`query.yaw` 是左右转头，每帧自动取玩家的视角。
 
-这一层是**叠加**上去的，所以走路时头部原本的摆动不会消失，而是"走路摆动 + 视角偏转"一起生效。
-
----
+这一层是**叠加**上去的，所以走路时头部原本的摆动不会消失，而是「走路摆动 + 视角偏转」一起生效。
 
 ## 上半身与下半身
 
@@ -275,16 +261,14 @@ player_default:
 | `motion` | 全身动作，压住走路。翻滚、扑倒这类用 |
 | `combat` | 只用上半身，腿继续跑。挥砍、施法这类用 |
 
-配 `combat` 的动作，站着不动时会播完整动画（包括腿部动作），跑动时腿自动交还给跑步——不会出现"上身挥刀下身僵直"。
+配 `combat` 的动作，站着不动时会播完整动画（包括腿部动作），跑动时腿自动交还给跑步——不会出现「上身挥刀下身僵直」。
 
-哪些骨头算"上半身"默认按标准人模判断。骨架命名不一样的外观可以自己声明：
+哪些骨头算「上半身」默认按标准人模判断。骨架命名不一样的外观可以自己声明：
 
 ```yml
     animations:
       upper-body-bones: [body, head, rightArm, rightForeArm, leftArm, leftForeArm]
 ```
-
----
 
 ## 常见问题
 
@@ -310,8 +294,6 @@ player_default:
 
 `distance` 默认是 0，要显式配。
 
----
-
 ## 交给服务端把关
 
 默认按键即播、不等服务器，这是手感的根基。需要扣蓝扣耐力的招式给它加一行：
@@ -320,13 +302,11 @@ player_default:
   server-checked: true
 ```
 
-之后按键改为上报给服务端，服务端抛 `LanternPlayerActionRequestEvent` 让附属决定放不放，没装附属也照常播出。代价是多一个来回的延迟，翻滚闪避这类吃手感的动作不要开。详见[载体绑定与输入锁](bind-and-input-lock.md)。
-
----
+之后按键改为上报给服务端，服务端抛 `LanternPlayerActionRequestEvent` 让附属决定放不放，没装附属也照常播出。代价是多一个来回的延迟，翻滚闪避这类吃手感的动作不要开。详见[载体绑定与输入锁](../interaction/bind-and-input-lock.md#动作交给服务端把关)。
 
 ## 相关文档
 
-- [玩家外观](player-costumes.md) —— 外观条目怎么写
-- [载体绑定与输入锁](bind-and-input-lock.md) —— 挂件跟随、硬直、服务端把关
-- [按键绑定](keys.md) —— 触发键的写法
-- [MythicMobs 联动](mythic-mechanics.md) —— 伤害帧里调用技能
+- [玩家外观](costumes.md) —— 外观条目怎么写
+- [载体绑定与输入锁](../interaction/bind-and-input-lock.md) —— 挂件跟随、硬直、服务端把关
+- [按键绑定](../interaction/keys.md) —— 触发键的写法
+- [MythicMobs 联动](../integrations/mythic-mechanics.md) —— 伤害帧里调用技能

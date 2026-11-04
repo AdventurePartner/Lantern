@@ -8,7 +8,7 @@ client-full-reload: false
 chat-channels: []
 
 # 聊天样式（可选）。不写就是原版外观；颜色必须加引号，写 #RRGGBB 或 #AARRGGBB。
-# 完整说明见 docs/README.md 的“聊天频道与聊天样式”。
+# 完整说明见 docs/getting-started/chat.md。
 #chat-style:
 #  window:
 #    width: 320
