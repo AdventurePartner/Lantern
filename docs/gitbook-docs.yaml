@@ -1,0 +1,11 @@
+$schema: https://api.gitbook.com/gitbook-docs.yaml
+site:
+  title: Lantern
+  structure:
+    - type: space
+      key: lantern-docs
+      title: Lantern 使用文档
+      path: docs
+      default: true
+      content:
+        directory: ./
