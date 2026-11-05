@@ -13,4 +13,7 @@ class FileResourceWrapper(
     override fun getResourceLocation(): ResourceLocation = resourceLocation
 
     override fun getResource(): InputStream = Files.newInputStream(path)
+
+    /** 扫描后文件可能被改名/删除，与原版 PathPackResources 一致：给出 supplier 前先查存在性 */
+    override fun isAvailable(): Boolean = Files.isRegularFile(path)
 }

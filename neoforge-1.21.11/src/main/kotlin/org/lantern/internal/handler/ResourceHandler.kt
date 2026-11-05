@@ -223,6 +223,11 @@ object ResourceHandler {
         // 加密包按内存快照重新发布，不再解密一遍
         EncryptedPackLoader.republishSnapshot()
         LocalPackLoader.reload()
+        // 本地包表已换代：F3+T prepare 阶段 TextureManager 按旧表重载过的贴图
+        // （改名前 blit 过、现在缺失的会持有 missingno）释放掉，下一帧按新表懒加载
+        Minecraft.getInstance().textureManager.let { tm ->
+            localResources.filter { it.path.startsWith("textures/") }.forEach(tm::release)
+        }
         characters.putAll(clientStorage.characters)
         keyboards.putAll(clientStorage.keyboards)
 

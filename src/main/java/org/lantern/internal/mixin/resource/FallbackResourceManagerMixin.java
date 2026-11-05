@@ -40,6 +40,13 @@ public abstract class FallbackResourceManagerMixin {
             return;
         }
 
+        // 扫描后文件可能被改名/删除：放行原版逻辑按资源缺失处理（FileNotFoundException → missingno），
+        // 否则懒 open 抛 NoSuchFileException 会炸掉整轮资源重载、被原版清空全部资源包
+        if (!wrapper.isAvailable()) {
+            Lantern.logger.warn("[Lantern] Local pack file no longer exists, treating as missing: {}", location);
+            return;
+        }
+
         try (InputStream is = wrapper.getResource()) {
             byte[] bytes = is.readAllBytes();
             cir.setReturnValue(Optional.of(new Resource(
@@ -65,9 +72,9 @@ public abstract class FallbackResourceManagerMixin {
             return;
         }
 
-        // 优先查找动态注册的资源（如 model JSON）
+        // 优先查找动态注册的资源（如 model JSON）；不可用（文件已被改名/删除）的条目按缺失放行
         IResourceWrapper wrapper = ResourceHandler.INSTANCE.getResource(location);
-        if (wrapper != null) {
+        if (wrapper != null && wrapper.isAvailable()) {
             try {
                 cir.setReturnValue(Optional.of(new Resource(
                     LanternVirtualPackResources.INSTANCE,
@@ -89,6 +96,10 @@ public abstract class FallbackResourceManagerMixin {
         Map<ResourceLocation, ? extends IResourceWrapper> dynamicResources = ResourceHandler.INSTANCE.listDynamicResources(namespace, path);
         dynamicResources.forEach((location, wrapper) -> {
             if (predicate.test(location)) {
+                if (!wrapper.isAvailable()) {
+                    Lantern.logger.warn("[Lantern] Local pack file no longer exists, skipping: {}", location);
+                    return;
+                }
                 Resource resource = new Resource(
                     LanternVirtualPackResources.INSTANCE,
                     wrapper::getResource

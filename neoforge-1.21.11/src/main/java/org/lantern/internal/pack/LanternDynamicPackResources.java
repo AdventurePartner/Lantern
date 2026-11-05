@@ -11,6 +11,7 @@ import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.IoSupplier;
+import org.lantern.Lantern;
 import org.lantern.internal.handler.ResourceHandler;
 import org.lantern.internal.wrapper.resource.IResourceWrapper;
 
@@ -48,7 +49,16 @@ public final class LanternDynamicPackResources extends AbstractPackResources {
             return null;
         }
         IResourceWrapper resource = ResourceHandler.INSTANCE.getResource(location);
-        return resource == null ? null : resource::getResource;
+        // 扫描后文件可能被改名/删除：按资源缺失返回 null（原版走 FileNotFoundException → missingno），
+        // 否则懒 open 抛 NoSuchFileException 会炸掉整轮资源重载、被原版清空全部资源包
+        if (resource == null) {
+            return null;
+        }
+        if (!resource.isAvailable()) {
+            Lantern.logger.warn("[Lantern] Local pack file no longer exists, treating as missing: {}", location);
+            return null;
+        }
+        return resource::getResource;
     }
 
     @Override
@@ -62,7 +72,13 @@ public final class LanternDynamicPackResources extends AbstractPackResources {
             return;
         }
         ResourceHandler.INSTANCE.listDynamicResources(namespace, path)
-            .forEach((location, resource) -> output.accept(location, resource::getResource));
+            .forEach((location, resource) -> {
+                if (!resource.isAvailable()) {
+                    Lantern.logger.warn("[Lantern] Local pack file no longer exists, skipping: {}", location);
+                    return;
+                }
+                output.accept(location, resource::getResource);
+            });
     }
 
     @Override
