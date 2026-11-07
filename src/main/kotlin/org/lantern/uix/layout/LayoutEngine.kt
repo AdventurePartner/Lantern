@@ -17,6 +17,7 @@ import org.lantern.uix.widget.stat.IconBarWidgetImpl
 import org.lantern.uix.widget.stat.ProgressBarWidgetImpl
 import org.lantern.uix.widget.text.TextWidgetImpl
 import org.lantern.uix.widget.vanilla.VanillaElementWidgetImpl
+import org.lantern.uix.util.TextLines
 
 /**
  * 无状态布局引擎核心。
@@ -301,13 +302,7 @@ object LayoutEngine {
         val explicitHeight = style.getInt(StyleProperty.HEIGHT)
 
         return when (widget) {
-            is TextWidgetImpl -> {
-                val font = Minecraft.getInstance().font
-                MeasuredSize(
-                    width = explicitWidth.takeIf { it > 0 } ?: font.width(widget.text),
-                    height = explicitHeight.takeIf { it > 0 } ?: font.lineHeight
-                )
-            }
+            is TextWidgetImpl -> measureText(widget, explicitWidth, explicitHeight)
 
             is ImageWidgetImpl -> MeasuredSize(
                 width = explicitWidth.takeIf { it > 0 } ?: DEFAULT_IMAGE_SIZE,
@@ -347,6 +342,26 @@ object LayoutEngine {
             is PanelWidgetImpl -> measurePanel(widget, explicitWidth, explicitHeight)
             else -> MeasuredSize(explicitWidth, explicitHeight)
         }
+    }
+
+    /** 多行文字：宽取最宽一行，高按行数；折行规则同 TextRenderer（[TextLines]）。 */
+    private fun measureText(widget: TextWidgetImpl, explicitWidth: Int, explicitHeight: Int): MeasuredSize {
+        if (explicitWidth > 0 && explicitHeight > 0) {
+            return MeasuredSize(explicitWidth, explicitHeight)
+        }
+        val font = Minecraft.getInstance().font
+        val wrapWidth = TextLines.wrapWidth(widget.style)
+        if (TextLines.isSingleLine(font, widget.text, wrapWidth)) {
+            return MeasuredSize(
+                width = explicitWidth.takeIf { it > 0 } ?: font.width(widget.text),
+                height = explicitHeight.takeIf { it > 0 } ?: font.lineHeight
+            )
+        }
+        val lines = TextLines.layout(font, widget.text, wrapWidth)
+        return MeasuredSize(
+            width = explicitWidth.takeIf { it > 0 } ?: TextLines.width(font, lines),
+            height = explicitHeight.takeIf { it > 0 } ?: lines.size * font.lineHeight
+        )
     }
 
     private fun measurePanel(widget: PanelWidgetImpl, explicitWidth: Int, explicitHeight: Int): MeasuredSize {

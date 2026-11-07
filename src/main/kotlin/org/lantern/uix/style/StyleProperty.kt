@@ -13,6 +13,8 @@ enum class StyleProperty(val key: String) {
     PLACEHOLDER_COLOR("placeholder-color"),
     OPACITY("opacity"),
     VISIBLE("visible"),
+    // text 写了 width 时默认按宽度折行，nowrap 关闭折行（换行符始终生效）
+    WHITE_SPACE("white-space"),
 
     // Layout properties
     DISPLAY("display"),

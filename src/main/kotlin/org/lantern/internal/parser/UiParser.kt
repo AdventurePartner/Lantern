@@ -104,10 +104,10 @@ object UiParser {
 
         val widget: IWidget = when (type) {
             "text" -> TextWidgetImpl(
-                text = node.get("text")?.asString ?: ""
+                text = readText(node, "text")
             )
             "button" -> ButtonWidgetImpl(
-                text = node.get("text")?.asString ?: "",
+                text = readText(node, "text"),
                 action = node.get("action")?.asString ?: ""
             )
             "input" -> InputWidgetImpl(
@@ -131,7 +131,7 @@ object UiParser {
         }
 
         widget.style = if (widget is SlotWidgetImpl) withLegacySlotTexture(node, resolvedStyle) else resolvedStyle
-        widget.tooltip = node.get("tooltip")?.asString ?: ""
+        widget.tooltip = readText(node, "tooltip")
 
         if (widget is PanelWidgetImpl) {
             // 节点级 index：兄弟节点间升序稳定排序（同值保持书写顺序），不改变所属渲染层
@@ -146,6 +146,18 @@ object UiParser {
         }
 
         return widget
+    }
+
+    /** 多行文字：服务端把列表拼成带 `\n` 的字符串下发，收到数组时同样按行拼接。 */
+    private fun readText(node: JsonObject, key: String): String {
+        val element = node.get(key) ?: return ""
+        return when {
+            element.isJsonPrimitive -> element.asString
+            element.isJsonArray -> element.asJsonArray.joinToString("\n") { line ->
+                if (line.isJsonPrimitive) line.asString else ""
+            }
+            else -> ""
+        }
     }
 
     private fun sourceOf(node: JsonObject): String? =

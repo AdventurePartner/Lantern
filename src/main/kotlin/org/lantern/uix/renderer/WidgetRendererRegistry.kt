@@ -2,6 +2,7 @@ package org.lantern.uix.renderer
 
 import net.minecraft.client.gui.GuiGraphics
 import org.lantern.uix.layout.Overflow
+import org.lantern.uix.layout.WidgetGeometry
 import org.lantern.uix.renderer.impl.ButtonRenderer
 import org.lantern.uix.renderer.impl.HotbarSelectionRenderer
 import org.lantern.uix.renderer.impl.IconBarRenderer
@@ -45,7 +46,7 @@ object WidgetRendererRegistry {
             return
         }
         // 空裁切矩形在各版本上的处理不一致，整块不可见时直接不画
-        val box = Overflow.box(widget)
+        val box = WidgetGeometry.box(widget)
         if (box.width <= 0 || box.height <= 0) return
         ScissorClip.push(graphics, box.x, box.y, box.width, box.height)
         try {

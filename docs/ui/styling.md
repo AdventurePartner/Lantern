@@ -14,7 +14,9 @@
 | `placeholder-color` | 输入框提示文字颜色 |
 | `visible` | 是否显示，`true` 或 `false` |
 | `overflow` | 写 `hidden` 时裁掉超出自己区域的部分，见[裁掉超出部分](#裁掉超出部分) |
-| `tooltip` | 鼠标放上去时显示的提示文字 |
+| `white-space` | 写 `nowrap` 时文字不按 `width` 自动折行（换行符照常生效），见[多行文字](components.md#多行文字) |
+
+鼠标提示 `tooltip` 不是样式，要和 `type` 写在同一层，见[鼠标提示](components.md#鼠标提示-tooltip)。
 
 颜色可以写成 `#ffffff`，也可以写成带透明度的 `#80ffffff`。配置里颜色值要加引号（`#` 在 YAML 里是注释）。
 

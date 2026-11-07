@@ -26,7 +26,7 @@ object OverlayRenderer {
             layoutMatch(match, screen, panel)
             WidgetRendererRegistry.render(match.rootWidget, graphics, mouseX, mouseY, delta)
             EventDispatcher.updateHover(match.rootWidget, mouseX, mouseY)
-            TooltipRenderer.renderTooltipPass(match.rootWidget, graphics, mouseX, mouseY)
+            TooltipRenderer.renderOverlayTooltipPass(match.rootWidget, graphics, mouseX, mouseY)
         }
     }
 

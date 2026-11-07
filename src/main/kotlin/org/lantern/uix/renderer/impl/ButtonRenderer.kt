@@ -10,6 +10,7 @@ import org.lantern.uix.style.StyleProperty
 import org.lantern.uix.style.StyleRule
 import org.lantern.uix.widget.button.ButtonWidgetImpl
 import org.lantern.uix.util.ColorUtil
+import org.lantern.uix.util.TextLines
 
 object ButtonRenderer : IWidgetRenderer<ButtonWidgetImpl> {
 
@@ -35,8 +36,19 @@ object ButtonRenderer : IWidgetRenderer<ButtonWidgetImpl> {
         val colorHex = style.getString(StyleProperty.COLOR, "#ffffff")
         val color = ColorUtil.parseColor(colorHex, 0xFFFFFFFF.toInt())
         val font = Minecraft.getInstance().font
-        val textX = x + (w - font.width(widget.text)) / 2
-        val textY = y + (h - font.lineHeight) / 2
-        graphics.drawString(font, widget.text, textX, textY, color, false)
+        if (TextLines.isSingleLine(font, widget.text, 0)) {
+            val textX = x + (w - font.width(widget.text)) / 2
+            val textY = y + (h - font.lineHeight) / 2
+            graphics.drawString(font, widget.text, textX, textY, color, false)
+            return
+        }
+
+        // 只认换行符、不按宽度折行（按钮默认宽 80，折行会改掉现有长按钮文字）；整块垂直居中，每行水平居中
+        val lines = TextLines.layout(font, widget.text, 0)
+        val top = y + (h - lines.size * font.lineHeight) / 2
+        lines.forEachIndexed { index, line ->
+            val lineX = x + (w - font.width(line)) / 2
+            graphics.drawString(font, line, lineX, top + index * font.lineHeight, color, false)
+        }
     }
 }

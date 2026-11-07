@@ -2,11 +2,10 @@ package org.lantern.uix.renderer
 
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.network.chat.Component
-import org.lantern.uix.IComponent
 import org.lantern.uix.interaction.InventorySlotInteraction
 import org.lantern.uix.widget.IWidget
 import org.lantern.uix.event.EventDispatcher
+import org.lantern.uix.util.TextLines
 
 object TooltipRenderer {
 
@@ -17,20 +16,19 @@ object TooltipRenderer {
             graphics.renderTooltip(font, item, mouseX, mouseY)
             return
         }
-        if (!EventDispatcher.hasHoveredComponents()) return
-        val tooltip = findDeepestTooltip(root) ?: return
-        graphics.renderTooltip(font, Component.literal(tooltip), mouseX, mouseY)
+        val tooltip = findTooltip(root, mouseX, mouseY) ?: return
+        graphics.renderComponentTooltip(font, TextLines.components(tooltip), mouseX, mouseY)
     }
 
-    private fun findDeepestTooltip(component: IComponent): String? {
-        // Depth-first: check children first, deepest hovered widget wins
-        for (child in component.getChildren()) {
-            val childTooltip = findDeepestTooltip(child)
-            if (childTooltip != null) return childTooltip
-        }
-        if (component is IWidget && component.hovered && component.tooltip.isNotEmpty()) {
-            return component.tooltip
-        }
-        return null
-    }
+    /**
+     * 贴在原版界面上的 overlay，在原版界面画完之后调用。1.20.1 / 1.21.1 的 renderTooltip 本来就立即绘制，
+     * 与 GuiCanvas 同一套；1.21.10 / 1.21.11 副本的延迟提示此时已画不出来，那边改为立即绘制。
+     */
+    fun renderOverlayTooltipPass(root: IWidget, graphics: GuiGraphics, mouseX: Int, mouseY: Int) =
+        renderTooltipPass(root, graphics, mouseX, mouseY)
+
+    /** 鼠标下最深、最上层写了 tooltip 的可见组件；命中规则同点击（裁切、不可见容器、未参与布局的默认尺寸）。 */
+    private fun findTooltip(root: IWidget, mouseX: Int, mouseY: Int): String? =
+        (EventDispatcher.findDeepest(root, mouseX, mouseY) { it is IWidget && it.tooltip.isNotEmpty() } as? IWidget)
+            ?.tooltip
 }
