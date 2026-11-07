@@ -198,7 +198,7 @@ texture: "https://example.com/icon.png"
 - 弹出界面里，鼠标停在有物品的 `slot` 上时显示物品自己的提示。
 - 组件互相重叠时，优先显示画在最上面那个组件的提示；它没写 `tooltip` 时，依次看它下面的组件和外层容器。
 - `visible: false` 的组件和它里面的内容都不会显示提示。
-- 提示文字里的变量（`%player_name%`、`{health}` 等）不会被替换。
+- 提示文字里可以写界面 `placeholders` 里声明的变量（如 `%player_name%`），按 `update-interval` 刷新，见[变量文字](styling.md#变量文字)；`{health}` 这类[实时数值](status-widgets.md#实时数值)不会被替换。
 
 ## 其它节点
 

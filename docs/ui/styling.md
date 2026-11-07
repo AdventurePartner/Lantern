@@ -171,6 +171,7 @@ root:
         color: "#ffffff"
 ```
 
+- `text`、`button` 的文字和任何组件的 `tooltip` 都可以写变量；用到的变量都要列进 `placeholders`，没列的原样显示。
 - `update-interval` 是变量刷新间隔（毫秒），不填时 2000。
 - 如果没有安装 PlaceholderAPI，变量文字不会自动变成真实数值。
 - 血量、饥饿等客户端本地状态不用 PlaceholderAPI，直接写[实时数值](status-widgets.md#实时数值)（`{health}` 等）。
